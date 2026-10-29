@@ -119,7 +119,7 @@ git config core.autocrlf false   # 仅本仓库
 | -------------------------------------- | --------- | ---------------------------------------------------- |
 | `jj-view.nativeScm.enabled`            | `false`   | 是否注册到原生 SCM 视图                              |
 | `jj-view.codeForge.enabled`            | `false`   | 是否读取远端 PR/CI/评论                              |
-| `jj-view.fileWatcherMode`              | `polling` | 建议改 `watch`（事件驱动，无 5s 轮询）               |
+| `jj-view.fileWatcherMode`              | `watch`   | 事件驱动；watcher 启动失败自动回退 `polling`（5s/仓库） |
 | `jj-view.refreshDebounceMillis`        | `100`     | 文件事件防抖                                         |
 | `jj-view.refreshDebounceMaxMultiplier` | `4`       | 持续事件时的最大放大倍数                             |
 | `jj-view.maxMutableAncestors`          | `10`      | 快照里抓取的祖先数量，影响单次刷新耗时               |
