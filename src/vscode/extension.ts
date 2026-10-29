@@ -426,6 +426,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         'repos',
         outputChannel,
     );
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration((e) => {
+            if (!e.affectsConfiguration('jj-view.nativeScm.enabled')) {
+                return;
+            }
+            void vscode.window
+                .showInformationMessage(
+                    'JJ View: reload the window to apply the native Source Control integration setting.',
+                    'Reload Window',
+                )
+                .then((choice) => {
+                    if (choice === 'Reload Window') {
+                        void vscode.commands.executeCommand('workbench.action.reloadWindow');
+                    }
+                });
+        }),
+    );
+
     const changesWebviewProvider = new VsCodeChangesWebviewProvider(
         context.extensionUri,
         repositoryManager,
@@ -463,6 +481,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
     );
 
     // SCM Discovery Lifecycle integration
+    const isNativeScmEnabled = (): boolean =>
+        vscode.workspace.getConfiguration('jj-view').get<boolean>('nativeScm.enabled', false);
+
     context.subscriptions.push(
         repositoryManager.onDidOpenRepository((repo) => {
             const repoPrefix = path.basename(repo.rootUri.fsPath);
@@ -475,6 +496,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
                 viewFileSystemProvider,
                 editFileSystemProvider,
                 () => repositoryManager.focusedRepository?.rootUri.fsPath === repo.rootUri.fsPath,
+                undefined,
+                isNativeScmEnabled(),
             );
 
             const decorationProvider = vscode.window.registerFileDecorationProvider(scmProvider.decorationProvider);

@@ -206,6 +206,11 @@
                     "default": false,
                     "description": "Suppress the warning to disable the built-in Git extension in colocated repositories."
                 },
+                "jj-view.nativeScm.enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Register JJ View as a provider in the built-in Source Control view. Disabled by default so that JJ only appears in the JJ View activity bar container; enabling it restores gutter quick diff and the SCM input box. Requires a window reload."
+                },
                 "jj-view.binaryPath": {
                     "type": "string",
                     "default": "",

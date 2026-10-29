@@ -319,7 +319,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 // (jj-view.commit) picks up the text typed in the changes webview.
                 const scm = this._scmProviders.get(message.payload.root);
                 if (scm) {
-                    scm.sourceControl.inputBox.value = message.payload.description;
+                    scm.setInputBoxValue(message.payload.description);
                 }
                 return;
             }
@@ -352,7 +352,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 if (scm) {
                     // Mirror the webview input into the SCM input box so `jj-view.commit`
                     // (which reads SourceControl.inputBox) commits the right description.
-                    scm.sourceControl.inputBox.value = description;
+                    scm.setInputBoxValue(description);
                 }
                 await vscode.commands.executeCommand('jj-view.setDescription', description);
                 await vscode.commands.executeCommand('jj-view.commit');

@@ -53,6 +53,31 @@ test.describe('JJ View Container E2E', () => {
         await expect(frame.locator('.scm-resource-item')).toHaveCount(3);
     });
 
+    test('native SCM integration can be disabled without breaking the container', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('a.txt', 'a\n');
+        repo.describe('initial');
+
+        const { page } = await vscode.openWorkspace(repo, { 'jj-view.nativeScm.enabled': false });
+
+        const hasNativeSourceControl = await vscode.evaluate(async (_vscodeApi, api) => {
+            return Array.from(api.scmProviders.values()).map((provider) => {
+                try {
+                    void provider.sourceControl;
+                    return true;
+                } catch {
+                    return false;
+                }
+            });
+        });
+        expect(hasNativeSourceControl).toEqual([false]);
+
+        await vscode.executeCommand('jj-view.changesView.focus');
+        const frame = await getWebviewFrame(page, 'jj-changes-root');
+        await expect(frame.locator('.scm-resource-item')).toHaveCount(1);
+    });
+
     test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();

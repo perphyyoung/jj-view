@@ -66,6 +66,9 @@ export const DEFAULT_SETTINGS: Record<string, unknown> = {
     'jj-view.fileWatcherMode': 'watch',
     'jj-view.minChangeIdLength': 3,
     'jj-view.autoRepositoryDetection': false,
+    // Most existing specs drive the native SCM view; the container-only flow is
+    // covered explicitly by changes-view.spec.ts (which overrides this to false).
+    'jj-view.nativeScm.enabled': true,
     'telemetry.telemetryLevel': 'off',
     'update.mode': 'none',
     'extensions.autoCheckUpdates': false,

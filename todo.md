@@ -91,6 +91,15 @@
 - [x] 清理 CI：`build:server:all`、web binaries artifact、`Run Web E2E Tests`、release 里的 `dist/release/*`、`build-outputs` 中的 `web/dist/`
 - [ ] 清理 `.vscodeignore` / `.gitignore` / `.biomeignore` 中已删除路径的条目（无害，可留待下次）
 
+### 原生 SCM 开关
+
+- [x] 新增配置 `jj-view.nativeScm.enabled`（boolean，**默认 `false`**）：关闭后不再调用 `vscode.scm.createSourceControl`，也不创建 resource group / inputBox / quickDiffProvider
+- [x] e2e `DEFAULT_SETTINGS` 中显式开启（`true`），避免既有 SCM 用例因新默认值失效；`changes-view.spec.ts` 单独覆盖为 `false`
+- [x] 数据层保留：`ScmModel` 与 `FileDecorationProvider` 照常工作，Changes / Repositories 视图不受影响
+- [x] 描述回退：`setInputBoxValue()` 在无输入框时缓存到 `_inputBoxFallback`，`jj-view.commit` 仍能读到新容器输入的文字
+- [x] 修改该设置后提示 “Reload Window” 生效
+- [x] e2e 覆盖：`native SCM integration can be disabled without breaking the container`
+
 ### 独立窗口测试
 
 - [x] 修复 e2e fixture 在 Windows 上的路径比较（VS Code 返回小写盘符 `c:\`，原严格比较导致所有用例 15s 超时）
