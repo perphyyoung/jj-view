@@ -27,6 +27,8 @@ interface Props {
     compactInput?: boolean;
     onDescriptionChange?: (message: string) => void;
     viewMode?: 'list' | 'tree';
+    /** Whether ancestor (`@-1`, `@-2`, ...) groups start expanded. */
+    expandAncestors?: boolean;
 }
 
 let {
@@ -45,6 +47,7 @@ let {
     compactInput = false,
     onDescriptionChange,
     viewMode = 'list',
+    expandAncestors = true,
 }: Props = $props();
 
 // Update root context keys when snapshot changes
@@ -183,7 +186,7 @@ $effect(() => {
                     contextValue={ancestor.contextValue}
                     items={ancestorItems}
                     {workspaceRoot}
-                    expanded={true}
+                    expanded={expandAncestors}
                     {rootContext}
                     {menuRegistry}
                     onGroupAction={(cmd) =>

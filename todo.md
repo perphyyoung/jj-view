@@ -65,6 +65,7 @@
 - [x] `ScmTreeItem.svelte` 递归渲染目录，文件夹可折叠；文件行不再显示目录后缀
 - [x] 缩进从分组下一级开始（顶层文件夹 chevron 18px），文件行与所属文件夹图标对齐
 - [x] `ScmResourceGroup` 按 `viewMode` 在 tree / list 之间切换，`ScmPane` / `ChangesApp` 透传
+- [x] Changes 视图默认只展开 Working Copy / Merge Conflicts，`@-1` 及更早的 ancestor 分组默认折叠（`ScmPane` 新增 `expandAncestors`，Changes 视图传 `false`；web 独立版默认仍为 `true`）
 
 ### 提交输入框（Changes 视图）
 

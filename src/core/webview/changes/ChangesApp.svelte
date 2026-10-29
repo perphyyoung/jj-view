@@ -273,6 +273,7 @@ $effect(() => {
                 showHeader={false}
                 compactInput
                 {viewMode}
+                expandAncestors={false}
                 onOpenResource={(state) => openResource(state)}
                 onDescriptionChange={(message) =>
                     post({ type: 'draft', payload: { root: focusedRoot, description: message } })}
