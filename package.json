@@ -1261,7 +1261,7 @@
         "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
         "watch:tsc:web": "tsc --noEmit --watch --project web/tsconfig.json",
         "watch:themes": "node tooling/generate-themes.ts --watch",
-        "package": "pnpm vsce package --no-dependencies",
+        "package": "pnpm vsce package --no-dependencies --target win32-x64",
         "release": "pnpm ovsx publish --no-dependencies && pnpm vsce publish --no-dependencies",
         "clean:tests": "rimraf out",
         "build:tests": "tsc -p . --outDir out",

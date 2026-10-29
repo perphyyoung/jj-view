@@ -20,19 +20,17 @@ if (!fs.existsSync(vsixPath)) {
 const zip = new AdmZip(vsixPath);
 const entries = zip.getEntries().map((e: AdmZip.IZipEntry) => e.entryName);
 
-// Essential platform-specific native binaries to check for a universal build.
+// Only the host platform is packaged (win32-x64 build), so exactly one
+// platform-specific native binary is expected.
 // (Filenames in VSIX are prefixed with 'extension/')
+const platformPackage = `@parcel/watcher-${process.platform}-${process.arch}`;
+const scriptExt = process.platform === 'win32' ? 'bat' : 'sh';
 const requiredEntries = [
-    'extension/dist/node_modules/@parcel/watcher-linux-x64-glibc/watcher.node',
-    'extension/dist/node_modules/@parcel/watcher-win32-x64/watcher.node',
-    'extension/dist/node_modules/@parcel/watcher-darwin-arm64/watcher.node',
+    `extension/dist/node_modules/${platformPackage}/watcher.node`,
     // Runtime helper scripts
-    'extension/scripts/batch-diff.sh',
-    'extension/scripts/batch-diff.bat',
-    'extension/scripts/batch-edit.sh',
-    'extension/scripts/batch-edit.bat',
-    'extension/scripts/conflict-capture.sh',
-    'extension/scripts/conflict-capture.bat',
+    `extension/scripts/batch-diff.${scriptExt}`,
+    `extension/scripts/batch-edit.${scriptExt}`,
+    `extension/scripts/conflict-capture.${scriptExt}`,
 ];
 
 let missing = 0;

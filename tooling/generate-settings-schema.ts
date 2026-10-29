@@ -121,10 +121,11 @@ export const PACKAGE_SETTINGS: readonly SettingDefinition[] = ${JSON.stringify(d
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, fileContent, 'utf8');
 
-    const biomeBin = path.join(rootDir, 'node_modules', '.bin', 'biome');
+    const isWin = process.platform === 'win32';
+    const biomeBin = path.join(rootDir, 'node_modules', '.bin', isWin ? 'biome.cmd' : 'biome');
     if (fs.existsSync(biomeBin)) {
         try {
-            cp.execFileSync(biomeBin, ['check', '--write', outputPath], { stdio: 'ignore' });
+            cp.execFileSync(biomeBin, ['check', '--write', outputPath], { stdio: 'ignore', shell: isWin });
         } catch {
             // Ignore format errors if biome fails
         }

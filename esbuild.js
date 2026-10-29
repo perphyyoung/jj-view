@@ -60,12 +60,13 @@ const browserShimsPlugin = {
 
 function formatFile(filePath, { ignoreUnmatched = false } = {}) {
     try {
-        const pnpmCmd = os.platform() === 'win32' ? 'pnpm.cmd' : 'pnpm';
+        const isWin = os.platform() === 'win32';
+        const pnpmCmd = isWin ? 'pnpm.cmd' : 'pnpm';
         const args = ['biome', 'format', '--write', filePath];
         if (ignoreUnmatched) {
             args.push('--no-errors-on-unmatched');
         }
-        execFileSync(pnpmCmd, args, { stdio: 'inherit' });
+        execFileSync(pnpmCmd, args, { stdio: 'inherit', shell: isWin });
         console.log(`[build] Formatted ${filePath}`);
     } catch (e) {
         console.error(`[build] Failed to format ${filePath}: ${e.message}`);
@@ -227,58 +228,43 @@ async function copyAssets() {
 }
 
 /**
- * Install all platform-specific @parcel/watcher binaries so the VSIX is universal.
- * We download tarballs directly from the npm registry for all platforms and
- * place them in dist/node_modules so they are bundled in the VSIX.
+ * Copy the platform-specific @parcel/watcher binary for the host platform into
+ * dist/node_modules so it is bundled in the VSIX.
+ *
+ * This build only targets the host platform (win32-x64), so no cross-platform
+ * tarballs are downloaded and no network access is required.
  */
 async function installNativeDeps() {
-    const watcherPkg = require('@parcel/watcher/package.json');
-    const optionalDeps = watcherPkg.optionalDependencies || {};
     const distNodeModules = path.join(__dirname, 'dist', 'node_modules');
+    // Resolve from @parcel/watcher's own location so pnpm's virtual store is used.
+    const watcherDir = path.dirname(require.resolve('@parcel/watcher'));
 
-    for (const [name, version] of Object.entries(optionalDeps)) {
-        const destDir = path.join(distNodeModules, name);
-        const cleanVersion = version.replace(/^[\^~>=<]+/, '');
+    const candidates = [
+        `@parcel/watcher-${process.platform}-${process.arch}`,
+        `@parcel/watcher-${process.platform}-${process.arch}-glibc`,
+    ];
 
-        // Check if the dependency is already installed with the correct version
-        const pkgPath = path.join(destDir, 'package.json');
-        if (fs.existsSync(pkgPath)) {
-            try {
-                const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-                if (pkg.version === cleanVersion) {
-                    console.log(`[build] Skipping ${name}@${cleanVersion} (already installed)`);
-                    continue;
-                }
-            } catch (_) {
-                console.warn(`[build] Failed to read ${pkgPath}, re-installing...`);
-            }
-        }
-
-        const unscoped = name.split('/').pop();
-        const tarballUrl = `https://registry.npmjs.org/${name}/-/${unscoped}-${cleanVersion}.tgz`;
-
-        console.log(`[build] Downloading ${name}@${cleanVersion}...`);
+    for (const name of candidates) {
+        let pkgJsonPath;
         try {
-            const response = await fetch(tarballUrl);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            const buffer = Buffer.from(await response.arrayBuffer());
-            const tarballPath = path.join(os.tmpdir(), `${unscoped}-${cleanVersion}.tgz`);
-            fs.writeFileSync(tarballPath, buffer);
-
-            fs.rmSync(destDir, { recursive: true, force: true });
-            fs.mkdirSync(destDir, { recursive: true });
-
-            execSync(`tar xzf "${tarballPath}" --strip-components=1 -C "${destDir}"`, {
-                stdio: 'inherit',
-            });
-            fs.unlinkSync(tarballPath);
-            console.log(`[build] Installed ${name}@${cleanVersion}`);
-        } catch (e) {
-            console.warn(`[build] Failed to install ${name}@${cleanVersion}: ${e.message}`);
+            pkgJsonPath = require.resolve(`${name}/package.json`, { paths: [watcherDir] });
+        } catch {
+            continue;
         }
+
+        const srcDir = path.dirname(pkgJsonPath);
+        const destDir = path.join(distNodeModules, name);
+
+        fs.rmSync(destDir, { recursive: true, force: true });
+        fs.mkdirSync(destDir, { recursive: true });
+        fs.cpSync(srcDir, destDir, { recursive: true });
+        console.log(`[build] Copied ${name} from ${srcDir}`);
+        return;
     }
+
+    throw new Error(
+        `No @parcel/watcher binary found for ${process.platform}-${process.arch}. Run "pnpm install" first.`,
+    );
 }
 
 async function buildIcons() {
