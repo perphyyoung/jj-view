@@ -114,24 +114,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
     const authManager = new CodeForgeAuthManager(hostEnvironment, outputChannel);
     context.subscriptions.push(authManager);
 
-    context.subscriptions.push(
-        codeForgeRegistry.register({
-            id: 'github',
-            create: (outputChannel) => new GitHubProvider(authManager, outputChannel),
-        }),
-    );
-    context.subscriptions.push(
-        codeForgeRegistry.register({
-            id: 'gitlab',
-            create: (outputChannel, host) => new GitLabProvider(authManager, outputChannel, host),
-        }),
-    );
-    context.subscriptions.push(
-        codeForgeRegistry.register({
-            id: 'gerrit',
-            create: (outputChannel, host) => new GerritProvider(outputChannel, host),
-        }),
-    );
+    // Code forge providers read remote status (PR/MR, CI, comments). They are only
+    // registered when explicitly enabled; the extension is local-only by default.
+    if (hostEnvironment.config.get<boolean>('codeForge.enabled', false)) {
+        context.subscriptions.push(
+            codeForgeRegistry.register({
+                id: 'github',
+                create: (outputChannel) => new GitHubProvider(authManager, outputChannel),
+            }),
+            codeForgeRegistry.register({
+                id: 'gitlab',
+                create: (outputChannel, host) => new GitLabProvider(authManager, outputChannel, host),
+            }),
+            codeForgeRegistry.register({
+                id: 'gerrit',
+                create: (outputChannel, host) => new GerritProvider(outputChannel, host),
+            }),
+        );
+    }
 
     const processTracker = new JjProcessTracker();
     context.subscriptions.push(processTracker);

@@ -31,6 +31,21 @@ export class ChangeDetectionManager implements HostDisposable {
     public static readonly ACTIVE_REFRESH_THROTTLE_MS = 10000;
     public static readonly FOCUS_REFRESH_THROTTLE_MS = ChangeDetectionManager.ACTIVE_REFRESH_THROTTLE_MS;
 
+    /**
+     * Window after one of our own jj commands during which `op_heads` changes are treated
+     * as self-produced. jj snapshots the working copy (creating an operation) for every
+     * command, including read-only `jj status` / `jj log`, so reacting to our own op would
+     * schedule a redundant second refresh for a single edit.
+     */
+    public static readonly SELF_OP_SUPPRESS_MS = 1500;
+
+    /** True when an `op_heads` change was most likely written by a jj command we started. */
+    private isSelfProducedOpHeadsEvent(): boolean {
+        return (
+            this.jj.hasActiveWriteOps || Date.now() - this.jj.lastWriteTime < ChangeDetectionManager.SELF_OP_SUPPRESS_MS
+        );
+    }
+
     private async _runLifecycleTask(task: () => Promise<void>): Promise<void> {
         this._lifecyclePromise = this._lifecyclePromise
             .catch(() => {})
@@ -79,6 +94,8 @@ export class ChangeDetectionManager implements HostDisposable {
         private triggerRefresh: (event: { forceSnapshot: boolean; reason: string }) => Promise<void>,
         private readonly host: HostEnvironment,
         private readonly watcherBackend?: BackendType,
+        /** Only the focused repository refreshes when the window becomes active. */
+        private readonly isFocused: () => boolean = () => true,
     ) {
         // Initialize poller with 5 second interval
         this._poller = new Poller(5000, async () => {
@@ -187,6 +204,10 @@ export class ChangeDetectionManager implements HostDisposable {
             return;
         }
 
+        if (!this.isFocused()) {
+            return;
+        }
+
         const now = Date.now();
         if (now - this._lastActiveRefreshTime <= ChangeDetectionManager.ACTIVE_REFRESH_THROTTLE_MS) {
             return;
@@ -253,6 +274,9 @@ export class ChangeDetectionManager implements HostDisposable {
                 this._opHeadsWatcher = new DirectoryWatcher(
                     realOpHeadsPath,
                     () => {
+                        if (this.isSelfProducedOpHeadsEvent()) {
+                            return;
+                        }
                         const writes = this.hasActiveOrRecentWrites;
                         if (writes) {
                             this._scheduleDeferredRefresh();

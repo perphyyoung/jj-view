@@ -325,6 +325,41 @@ describe('ChangeDetectionManager', () => {
             );
         });
 
+        it('ignores op_heads changes produced by our own jj commands', async () => {
+            host.config.set('fileWatcherMode', 'watch');
+            setPrivate(jj, '_lastWriteTime', Date.now());
+            changeManager = new ChangeDetectionManager(repo.path, jj, outputChannel, triggerRefreshSpy, host);
+            await waitForLog('OpHeads Watcher] Started');
+            triggerRefreshSpy.mockClear();
+
+            const headsDir = path.join(repo.path, '.jj', 'repo', 'op_heads', 'heads');
+            await fs.writeFile(path.join(headsDir, 'self-produced-op'), 'op');
+
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            expect(triggerRefreshSpy).not.toHaveBeenCalled();
+        });
+
+        it('refreshes on op_heads changes that are not self-produced', async () => {
+            host.config.set('fileWatcherMode', 'watch');
+            setPrivate(jj, '_lastWriteTime', Date.now() - 5000);
+            changeManager = new ChangeDetectionManager(repo.path, jj, outputChannel, triggerRefreshSpy, host);
+            await waitForLog('OpHeads Watcher] Started');
+            triggerRefreshSpy.mockClear();
+
+            const headsDir = path.join(repo.path, '.jj', 'repo', 'op_heads', 'heads');
+            await fs.writeFile(path.join(headsDir, 'external-op'), 'op');
+
+            await vi.waitFor(
+                () => {
+                    expect(triggerRefreshSpy).toHaveBeenCalledWith({
+                        forceSnapshot: false,
+                        reason: 'jj operation',
+                    });
+                },
+                { timeout: 5000, interval: 100 },
+            );
+        });
+
         it('falls back to polling mode when working copy watcher reports permanent failure', async () => {
             host.config.set('fileWatcherMode', 'watch');
             changeManager = new ChangeDetectionManager(repo.path, jj, outputChannel, triggerRefreshSpy, host);

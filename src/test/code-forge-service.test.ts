@@ -77,6 +77,31 @@ describe('CodeForgeService Tests', () => {
 
     afterEach(() => {});
 
+    test('disabled service never creates providers, reads remotes or polls', async () => {
+        const factory = vi.fn(() => new MockProvider());
+        registry.register({ id: 'mock-disabled', create: factory });
+        const remotesSpy = vi.spyOn(jjService1, 'getGitRemotes');
+
+        const service = new CodeForgeService(repo1.path, jjService1, registry, host, NO_OP_LOGGER, false);
+        await service.awaitReady();
+
+        expect(factory).not.toHaveBeenCalled();
+        expect(remotesSpy).not.toHaveBeenCalled();
+        expect(service.isEnabled).toBe(false);
+        expect(service.activeProvider).toBeUndefined();
+        expect(await service.detectActiveProvider(true)).toBe(false);
+
+        service.startPolling();
+        service.forceRefresh();
+        service.requestRefreshWithBackoffs();
+
+        expect(factory).not.toHaveBeenCalled();
+        expect(remotesSpy).not.toHaveBeenCalled();
+
+        service.dispose();
+        remotesSpy.mockRestore();
+    });
+
     test('Each service gets a distinct provider instance with isolated cache', async () => {
         let provider1: MockProvider | undefined;
         let provider2: MockProvider | undefined;

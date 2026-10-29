@@ -52,7 +52,14 @@ export class CodeForgeService implements Disposable {
         private registry: CodeForgeRegistry,
         private host: HostEnvironment,
         private outputChannel: LoggerChannel,
+        /** When false the service never creates providers, detects remotes, polls or fetches status. */
+        private readonly enabled = true,
     ) {
+        if (!this.enabled) {
+            this._initPromise = Promise.resolve();
+            return;
+        }
+
         for (const factory of this.registry.getFactories()) {
             this.providers.set(factory.id, factory.create(this.outputChannel, this.host));
         }
@@ -146,7 +153,7 @@ export class CodeForgeService implements Disposable {
     }
 
     public startPolling() {
-        if (this.poller) {
+        if (!this.enabled || this.poller) {
             return;
         }
 
@@ -172,7 +179,7 @@ export class CodeForgeService implements Disposable {
     }
 
     public forceRefresh() {
-        if (this.isDisposed) {
+        if (!this.enabled || this.isDisposed) {
             return;
         }
         if (this.activeProviderInstance) {
@@ -198,6 +205,10 @@ export class CodeForgeService implements Disposable {
     }
 
     public async detectActiveProvider(force = false): Promise<boolean> {
+        if (!this.enabled) {
+            return false;
+        }
+
         if (this.detectPromise) {
             return this.detectPromise;
         }

@@ -32,6 +32,9 @@ export interface DirectoryWatcherOptions {
     reconnectOptions?: ReconnectOptions;
 }
 
+/** Monotonic id used in logs to tell duplicate events from duplicate watcher instances. */
+let directoryWatcherInstanceCount = 0;
+
 export class DirectoryWatcher implements HostDisposable {
     private readonly name: string;
     private readonly host: HostEnvironment | undefined;
@@ -54,6 +57,12 @@ export class DirectoryWatcher implements HostDisposable {
     private _stopped = false;
     private _backend: Promise<BackendType | undefined>;
     private _lastIgnores: string[] = [];
+    private readonly _instanceId = ++directoryWatcherInstanceCount;
+    private _lastEventSignature: string | undefined;
+    private _lastEventAt = 0;
+
+    /** Windows (ReadDirectoryChangesW) can report the same write twice; collapse identical batches. */
+    private static readonly DUPLICATE_EVENT_WINDOW_MS = 120;
 
     constructor(
         private readonly path: string,
@@ -133,7 +142,17 @@ export class DirectoryWatcher implements HostDisposable {
                     return;
                 }
                 if (events.length > 0) {
-                    this.log(`[${this.name}] Event received: ${JSON.stringify(events)}`);
+                    const signature = JSON.stringify(events);
+                    const now = Date.now();
+                    if (
+                        signature === this._lastEventSignature &&
+                        now - this._lastEventAt < DirectoryWatcher.DUPLICATE_EVENT_WINDOW_MS
+                    ) {
+                        return;
+                    }
+                    this._lastEventSignature = signature;
+                    this._lastEventAt = now;
+                    this.log(`[${this.name}] Event received (#${this._instanceId}): ${signature}`);
                     this.callback(events);
                 }
             };

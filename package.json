@@ -3,7 +3,7 @@
     "publisher": "jj-view",
     "displayName": "JJ View",
     "description": "Integrates Jujutsu (jj) version control into VS Code.",
-    "version": "2.10.2",
+    "version": "2.10.3",
     "repository": {
         "type": "git",
         "url": "https://github.com/brychanrobot/jj-view"
@@ -111,6 +111,11 @@
                         "Use a file watcher (parcel-watcher) for efficient updates (only on changes)."
                     ],
                     "description": "Controls how the extension detects external file changes."
+                },
+                "jj-view.codeForge.enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Read pull/merge request status, CI checks and review comments from GitHub, GitLab or Gerrit. Disabled by default so the extension stays fully local: no remote status is queried and no authentication is requested. Manual upload (push) remains available."
                 },
                 "jj-view.codeForge.provider": {
                     "type": "string",

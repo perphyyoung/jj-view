@@ -44,7 +44,14 @@ export class JjRepository implements Disposable {
             processTracker,
             system: host.system,
         });
-        this._codeForge = new CodeForgeService(rootUri.fsPath, this._jj, registry, host, outputChannel);
+        this._codeForge = new CodeForgeService(
+            rootUri.fsPath,
+            this._jj,
+            registry,
+            host,
+            outputChannel,
+            host.config.get<boolean>('codeForge.enabled', false) ?? false,
+        );
 
         this._refreshQueue = new DebouncingQueue<RefreshPayload>(
             async (options) => {
@@ -101,7 +108,16 @@ export class JjRepository implements Disposable {
                 }
             },
             host,
+            undefined,
+            () => this._isFocused,
         );
+    }
+
+    private _isFocused = true;
+
+    /** Updated by the repository manager whenever the focused repository changes. */
+    public setFocused(focused: boolean): void {
+        this._isFocused = focused;
     }
 
     get activeRefresh(): Promise<void> | undefined {

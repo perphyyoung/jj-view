@@ -202,6 +202,13 @@ export class JjRepositoryManager implements HostDisposable {
         this._focusedRepository = repo;
         this._outputChannel.info(`[RepositoryManager] Focused repository: ${repo?.rootUri.fsPath ?? 'none'}`);
         this.fireEvent(this._onDidChangeFocusedRepository, repo);
+        this.syncRepositoryFocus();
+
+        if (repo) {
+            // Window-activation refreshes only cover the focused repository, so make
+            // sure switching to a stale repository shows fresh state immediately.
+            void repo.refresh({ forceSnapshot: true, reason: 'focused repository' }).catch(() => {});
+        }
 
         if (repo) {
             this._host.storage.update(JjRepositoryManager.LAST_FOCUSED_REPO_KEY, repo.rootUri.fsPath);
@@ -437,7 +444,14 @@ export class JjRepositoryManager implements HostDisposable {
             if (this._disposed) {
                 break;
             }
-            const existing = oldRepos.find((r) => this.isSamePath(r.rootUri.fsPath, info.rootPath));
+            // A repository may be registered dynamically (e.g. from an opened editor) while
+            // this scan is awaiting; reuse it instead of creating a second instance with a
+            // duplicate ChangeDetectionManager (which would double watcher events/refreshes).
+            const existing =
+                oldRepos.find((r) => this.isSamePath(r.rootUri.fsPath, info.rootPath)) ??
+                this._repositories.find(
+                    (r) => !oldRepos.includes(r) && this.isSamePath(r.rootUri.fsPath, info.rootPath),
+                );
             if (existing) {
                 if (this._binaryPath) {
                     existing.jj.binaryPath = this._binaryPath;
@@ -466,16 +480,20 @@ export class JjRepositoryManager implements HostDisposable {
             return;
         }
 
+        // Repositories that were live at reconcile time but are not part of newRepos:
+        // dropped from the workspace, or registered concurrently while this scan ran.
+        const toDispose = [...oldRepos, ...this._repositories].filter(
+            (repo, index, all) => all.indexOf(repo) === index && !newRepos.includes(repo),
+        );
+
         this._repositories = newRepos;
         this.sortRepositories();
+        this.syncRepositoryFocus();
         this.persistRepositories();
 
-        // Any repository in oldRepos that is not in newRepos must be disposed
-        for (const oldRepo of oldRepos) {
-            if (!newRepos.some((r) => this.isSamePath(r.rootUri.fsPath, oldRepo.rootUri.fsPath))) {
-                await oldRepo.dispose();
-                this.fireEvent(this._onDidCloseRepository, oldRepo);
-            }
+        for (const repo of toDispose) {
+            await repo.dispose();
+            this.fireEvent(this._onDidCloseRepository, repo);
         }
 
         if (this._disposed) {
@@ -718,6 +736,14 @@ export class JjRepositoryManager implements HostDisposable {
             if (this._disposed) {
                 await repo.dispose();
                 return undefined;
+            }
+
+            // A scan may have registered the same root while we were probing; keep the
+            // existing instance so we never run two ChangeDetectionManagers per repository.
+            const duplicate = this._repositories.find((r) => this.isSamePath(r.rootUri.fsPath, info.rootPath));
+            if (duplicate) {
+                await repo.dispose();
+                return duplicate;
             }
 
             this.registerRepositories([repo]);
@@ -1083,6 +1109,14 @@ export class JjRepositoryManager implements HostDisposable {
      * @param pathB The second path.
      * @returns True if paths are equivalent, false otherwise.
      */
+    /** Keeps each repository's `isFocused` flag in sync with the focused repository. */
+    private syncRepositoryFocus(): void {
+        const focusedPath = this._focusedRepository?.rootUri.fsPath;
+        for (const repository of this._repositories) {
+            repository.setFocused(this.isSamePath(repository.rootUri.fsPath, focusedPath));
+        }
+    }
+
     private isSamePath(pathA: string | undefined, pathB: string | undefined): boolean {
         if (pathA === pathB) {
             return true;

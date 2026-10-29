@@ -69,6 +69,9 @@ export const DEFAULT_SETTINGS: Record<string, unknown> = {
     // Most existing specs drive the native SCM view; the container-only flow is
     // covered explicitly by changes-view.spec.ts (which overrides this to false).
     'jj-view.nativeScm.enabled': true,
+    // GitHub/GitLab/Gerrit specs rely on remote status; the extension defaults to
+    // local-only (no remote reads), so tests opt in explicitly.
+    'jj-view.codeForge.enabled': true,
     'telemetry.telemetryLevel': 'off',
     'update.mode': 'none',
     'extensions.autoCheckUpdates': false,
