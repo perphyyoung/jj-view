@@ -139,6 +139,7 @@ git config core.autocrlf false   # 仅本仓库
 | `src/core/webview/changes/ChangesApp.svelte`              | 按 `mode` 渲染仓库列表或聚焦仓库的 `ScmPane`，含自绘右键菜单                                                         |
 | `web/src/scm/file-tree.ts`                                | 扁平变更列表 → 目录树（含单链折叠）                                                                                  |
 | `web/src/scm/ScmTreeItem.svelte`                          | 目录树递归渲染                                                                                                       |
+| `media/jj-view-container.svg`                             | 活动栏容器图标（24×24 单色）                                                                                         |
 
 ### 主要修改
 

@@ -1290,7 +1290,7 @@
                 {
                     "id": "jj-view-container",
                     "title": "JJ View",
-                    "icon": "media/icon.png"
+                    "icon": "media/jj-view-container.svg"
                 }
             ],
             "panel": [
