@@ -1108,12 +1108,18 @@ export class VSCodeFixtureImpl implements VSCodeFixture {
             while (Date.now() - start < 15000) {
                 const focused = api.repositoryManager.focusedRepository;
                 if (typeof targetPath === 'string') {
+                    // VS Code may normalize drive letters to lower case on Windows
+                    // (e.g. `c:\Users\...` vs `C:\Users\...`), so compare normalized paths.
+                    const normalizePath = (value: string) =>
+                        process.platform === 'win32'
+                            ? value.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()
+                            : value;
                     const isMatch =
                         focused &&
-                        (focused.rootUri.fsPath === targetPath ||
+                        (normalizePath(focused.rootUri.fsPath) === normalizePath(targetPath) ||
                             (targetPath.endsWith('.code-workspace') &&
                                 (vscode.workspace.workspaceFolders || []).some(
-                                    (f) => f.uri.fsPath === focused.rootUri.fsPath,
+                                    (f) => normalizePath(f.uri.fsPath) === normalizePath(focused.rootUri.fsPath),
                                 )));
                     if (isMatch) {
                         try {

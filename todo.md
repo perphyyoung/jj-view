@@ -79,6 +79,24 @@
 
 - [x] webview 未加载自定义图标字体，导致 `Squash File(s) into Ancestor` 等使用 `$(jj-icon-*)` 的按钮显示为空：`getWebviewHtml()` 现在内联 `media/custom-icons/jj-view-icons.css`（去掉原 `@font-face`）并追加指向 `jj-view-icons.woff2` 的 webview URI 字体声明
 
+### Web 独立版移除
+
+- [x] 删除 `web/index.html`、`web/src/main.ts`、`web/src/App.svelte`、`web/embed.go`、`web/vite.config.ts`、`web/dist/`
+- [x] 删除 Go 服务端：`cmd/`、`internal/`、`go.mod`、`go.sum`、`scripts/embed.go`
+- [x] 删除 `tooling/dev-server.ts`、`tooling/build-web-binaries.ts`、`tooling/setup-sidecar.ts`
+- [x] 删除 `playwright.web.config.ts`、`src/test/e2e-web/`
+- [x] `esbuild.js` 去掉 standalone 构建 context、`browserShimsPlugin`、`--web` 分支与 `web/dist` 资源复制
+- [x] `package.json` 移除 `build:web`、`build:web:prod`、`build:server`、`build:server:all`、`build:all`、`dev`、`dev:web`、`setup:sidecar`、`test:e2e:web`
+- [x] 清理仅 standalone 使用的 `web/src/{bridge,commands,details,diff,host,layout,log,notifications,quick-input,settings,sidecar,status,stubs,styles,tabs}` 及对应 `web/test/*`（`web/src` 现只剩 `scm` / `menu`；测试只剩 6 个）
+- [x] 清理 CI：`build:server:all`、web binaries artifact、`Run Web E2E Tests`、release 里的 `dist/release/*`、`build-outputs` 中的 `web/dist/`
+- [ ] 清理 `.vscodeignore` / `.gitignore` / `.biomeignore` 中已删除路径的条目（无害，可留待下次）
+
+### 独立窗口测试
+
+- [x] 修复 e2e fixture 在 Windows 上的路径比较（VS Code 返回小写盘符 `c:\`，原严格比较导致所有用例 15s 超时）
+- [x] 新增 `src/test/e2e/changes-view.spec.ts`：Changes 视图渲染/树形切换、Repositories 视图与变更数徽标
+- [x] 既有 `jj-log.spec.ts` 冒烟用例恢复通过
+
 ### 验证
 
 - [x] `pnpm lint`（含 core isolation / fs-path 断言）

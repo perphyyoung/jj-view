@@ -12,7 +12,6 @@ const os = require('node:os');
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
-const webOnly = process.argv.includes('--web');
 
 /**
  * @type {import('esbuild').Plugin}
@@ -34,30 +33,6 @@ const esbuildProblemMatcherPlugin = {
     },
 };
 
-/**
- * @type {import('esbuild').Plugin}
- */
-const browserShimsPlugin = {
-    name: 'browser-shims',
-    setup(build) {
-        build.onResolve({ filter: /^@parcel\/watcher/ }, () => {
-            return { path: path.resolve(__dirname, 'web/src/stubs/parcel-watcher.ts') };
-        });
-        build.onResolve({ filter: /[/\\]node-host-system(?:\.[cm]?[jt]sx?)?$/ }, () => {
-            return { path: path.resolve(__dirname, 'web/src/stubs/node-host-system.ts') };
-        });
-        build.onResolve({ filter: /[/\\]binary-utils(?:\.[cm]?[jt]sx?)?$/ }, () => {
-            return { path: path.resolve(__dirname, 'web/src/stubs/binary-utils.ts') };
-        });
-        build.onResolve({ filter: /^(node:)?(fs|child_process|os|path)(\/promises)?$/ }, () => {
-            return { path: path.resolve(__dirname, 'web/src/stubs/empty-stub.ts') };
-        });
-        build.onResolve({ filter: /^detect-libc$/ }, () => {
-            return { path: path.resolve(__dirname, 'web/src/stubs/empty-stub.ts') };
-        });
-    },
-};
-
 function formatFile(filePath, { ignoreUnmatched = false } = {}) {
     try {
         const isWin = os.platform() === 'win32';
@@ -74,46 +49,6 @@ function formatFile(filePath, { ignoreUnmatched = false } = {}) {
 }
 
 async function main() {
-    const standaloneWebCtx = await esbuild.context({
-        entryPoints: {
-            app: 'web/src/main.ts',
-        },
-        bundle: true,
-        format: 'iife',
-        minify: production,
-        sourcemap: !production,
-        sourcesContent: false,
-        platform: 'browser',
-        outdir: 'web/dist',
-        logLevel: 'silent',
-        define: {
-            'process.env.NODE_ENV': production ? '"production"' : '"development"',
-        },
-        plugins: [
-            browserShimsPlugin,
-            sveltePlugin({
-                compilerOptions: {
-                    dev: !production,
-                    css: 'external',
-                },
-            }),
-            esbuildProblemMatcherPlugin,
-        ],
-        banner: {
-            js: `var process = { env: { NODE_ENV: ${production ? '"production"' : '"development"'} } };`,
-        },
-    });
-
-    if (webOnly) {
-        if (watch) {
-            await standaloneWebCtx.watch();
-        } else {
-            await standaloneWebCtx.rebuild();
-            await standaloneWebCtx.dispose();
-        }
-        return;
-    }
-
     const extensionCtx = await esbuild.context({
         entryPoints: ['src/vscode/extension.ts'],
         bundle: true,
@@ -169,10 +104,10 @@ async function main() {
     });
 
     if (watch) {
-        await Promise.all([extensionCtx.watch(), webviewCtx.watch(), standaloneWebCtx.watch()]);
+        await Promise.all([extensionCtx.watch(), webviewCtx.watch()]);
     } else {
-        await Promise.all([extensionCtx.rebuild(), webviewCtx.rebuild(), standaloneWebCtx.rebuild()]);
-        await Promise.all([extensionCtx.dispose(), webviewCtx.dispose(), standaloneWebCtx.dispose()]);
+        await Promise.all([extensionCtx.rebuild(), webviewCtx.rebuild()]);
+        await Promise.all([extensionCtx.dispose(), webviewCtx.dispose()]);
     }
 }
 
@@ -187,22 +122,6 @@ async function copyAssets() {
         {
             src: 'node_modules/@vscode/codicons/dist/codicon.ttf',
             dest: 'media/codicons/codicon.ttf',
-        },
-        {
-            src: 'node_modules/@vscode/codicons/dist/codicon.css',
-            dest: 'web/dist/codicons/codicon.css',
-        },
-        {
-            src: 'node_modules/@vscode/codicons/dist/codicon.ttf',
-            dest: 'web/dist/codicons/codicon.ttf',
-        },
-        {
-            src: 'media/custom-icons/jj-view-icons.css',
-            dest: 'web/dist/custom-icons/jj-view-icons.css',
-        },
-        {
-            src: 'media/custom-icons/jj-view-icons.woff2',
-            dest: 'web/dist/custom-icons/jj-view-icons.woff2',
         },
     ];
 
@@ -287,14 +206,8 @@ async function buildIcons() {
     execSync('pnpm run build:icons', { stdio: 'inherit' });
 }
 
-async function generateSettingsSchema() {
-    execFileSync(process.execPath, [path.join(__dirname, 'tooling/generate-settings-schema.ts')], {
-        stdio: 'inherit',
-    });
-}
-
 // Run prerequisite tasks before main build
-Promise.all([generateSettingsSchema(), buildIcons(), copyAssets(), webOnly ? Promise.resolve() : installNativeDeps()])
+Promise.all([buildIcons(), copyAssets(), installNativeDeps()])
     .then(main)
     .catch((e) => {
         console.error(e);

@@ -91,9 +91,6 @@ jobs:
             - name: Verify VSIX Contents
               run: node tooling/verify-vsix.ts jj-view.vsix
 
-            - name: Build Multi-Platform Web Binaries
-              run: pnpm build:server:all
-
             - name: Generate Unique VSIX Name
               id: vsix_info
               run: |
@@ -114,13 +111,6 @@ jobs:
                   archive: false
                   retention-days: 7
 
-            - name: Upload Web Binaries Artifact
-              uses: actions/upload-artifact@v7
-              with:
-                  name: jj-view-web-binaries
-                  path: dist/release/
-                  retention-days: 7
-
             - name: Upload Build Artifacts
               uses: actions/upload-artifact@v7
               with:
@@ -128,7 +118,6 @@ jobs:
                   path: |
                       dist/
                       out/
-                      web/dist/
                       jj-view.vsix
                       media/custom-icons/
                       src/core/webview/themes.generated.ts
@@ -321,11 +310,6 @@ jobs:
                   PLAYWRIGHT_HTML_REPORT: playwright-report/vscode
               run: xvfb-run -a pnpm exec playwright test -c playwright.e2e.config.ts
 
-            - name: Run Web E2E Tests
-              env:
-                  PLAYWRIGHT_HTML_REPORT: playwright-report/web
-              run: xvfb-run -a pnpm test:e2e:web
-
             - name: Upload Playwright Report
               if: always()
               uses: actions/upload-artifact@v7
@@ -400,13 +384,6 @@ jobs:
                   name: jj-view-extension-packaged
                   path: ${{ steps.release_info.outputs.vsix_name }}
 
-            - name: Upload Web Binaries Artifact
-              uses: actions/upload-artifact@v7
-              with:
-                  name: jj-view-web-binaries
-                  path: dist/release/
-                  retention-days: 7
-
             - name: Update Prerelease
               if: github.ref == 'refs/heads/main'
               uses: softprops/action-gh-release@v3
@@ -415,7 +392,6 @@ jobs:
                   prerelease: true
                   files: |
                       ${{ steps.release_info.outputs.vsix_name }}
-                      dist/release/*
                   body: ${{ steps.release_info.outputs.changes }}
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -426,6 +402,5 @@ jobs:
               with:
                   files: |
                       ${{ steps.release_info.outputs.vsix_name }}
-                      dist/release/*
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -8,8 +8,6 @@ import { describe, expect, it } from 'vitest';
 import type { JjLogEntry } from '../../src/core/jj-types';
 import type { ScmSnapshot } from '../../src/core/scm-model';
 import { createJjResourceState } from '../../src/core/scm-resource-state';
-import AppLayout from '../src/layout/AppLayout.svelte';
-import SplitPane from '../src/layout/SplitPane.svelte';
 import { ContextKeyService } from '../src/menu/context-key-service';
 import { MenuRegistry } from '../src/menu/menu-registry';
 import ScmHeader from '../src/scm/ScmHeader.svelte';
@@ -325,34 +323,6 @@ describe('Web SCM Components (SSR & Rendering)', () => {
             expect(html).toContain('both-file.ts');
             // Working Copy group badge should show 1 item (clean-file.ts)
             expect(html).toContain('clean-file.ts');
-        });
-    });
-
-    describe('AppLayout & SplitPane', () => {
-        it('renders AppLayout shell and main content', () => {
-            const result = render(AppLayout, {
-                props: {
-                    repoPath: '/home/user/my-repo',
-                },
-            });
-            const html = result.body;
-
-            expect(html).toContain('app-shell');
-            expect(html).toContain('app-main-content');
-            expect(html).toContain('split-pane');
-            expect(html).not.toContain('app-top-bar');
-        });
-
-        it('renders SplitPane resizable container', () => {
-            const result = render(SplitPane, {
-                props: {
-                    initialSize: 300,
-                },
-            });
-            const html = result.body;
-
-            expect(html).toContain('split-container');
-            expect(html).toContain('split-handle');
         });
     });
 });
