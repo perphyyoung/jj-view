@@ -3,7 +3,7 @@
     "publisher": "jj-view",
     "displayName": "JJ View",
     "description": "Integrates Jujutsu (jj) version control into VS Code.",
-    "version": "2.10.0",
+    "version": "2.10.1",
     "repository": {
         "type": "git",
         "url": "https://github.com/brychanrobot/jj-view"
@@ -662,6 +662,18 @@
                 "title": "Copy Unresolved Comments",
                 "category": "JJ View",
                 "icon": "$(copy)"
+            },
+            {
+                "command": "jj-view.changesAsTree",
+                "title": "View as Tree",
+                "category": "JJ View",
+                "icon": "$(list-tree)"
+            },
+            {
+                "command": "jj-view.changesAsList",
+                "title": "View as List",
+                "category": "JJ View",
+                "icon": "$(list-flat)"
             }
         ],
         "keybindings": [
@@ -689,6 +701,14 @@
                 {
                     "command": "jj-view.uploadStack",
                     "when": "!config.jj-view.alwaysUploadStack && jj.codeForgeProvider != 'gerrit'"
+                },
+                {
+                    "command": "jj-view.changesAsTree",
+                    "when": "!jj.changesViewAsTree"
+                },
+                {
+                    "command": "jj-view.changesAsList",
+                    "when": "jj.changesViewAsTree"
                 },
                 {
                     "command": "jj-view.killProcess",
@@ -812,6 +832,46 @@
                 }
             ],
             "view/title": [
+                {
+                    "command": "jj-view.commit",
+                    "group": "navigation@1",
+                    "when": "view == jj-view.changesView"
+                },
+                {
+                    "command": "jj-view.refresh",
+                    "group": "navigation@2",
+                    "when": "view == jj-view.changesView"
+                },
+                {
+                    "command": "jj-view.new",
+                    "group": "navigation@3",
+                    "when": "view == jj-view.changesView"
+                },
+                {
+                    "command": "jj-view.workspaceAdd",
+                    "group": "navigation@4",
+                    "when": "view == jj-view.changesView"
+                },
+                {
+                    "command": "jj-view.changesAsTree",
+                    "group": "1_view@1",
+                    "when": "view == jj-view.changesView && !jj.changesViewAsTree"
+                },
+                {
+                    "command": "jj-view.changesAsList",
+                    "group": "1_view@1",
+                    "when": "view == jj-view.changesView && jj.changesViewAsTree"
+                },
+                {
+                    "command": "jj-view.workspaceAdd",
+                    "group": "navigation@1",
+                    "when": "view == jj-view.reposView"
+                },
+                {
+                    "command": "jj-view.refresh",
+                    "group": "navigation@2",
+                    "when": "view == jj-view.reposView"
+                },
                 {
                     "command": "jj-view.undo",
                     "group": "navigation@1",
@@ -1216,6 +1276,13 @@
             ]
         },
         "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "jj-view-container",
+                    "title": "JJ View",
+                    "icon": "media/icon.png"
+                }
+            ],
             "panel": [
                 {
                     "id": "jj-process-monitor-panel",
@@ -1225,7 +1292,17 @@
             ]
         },
         "views": {
-            "scm": [
+            "jj-view-container": [
+                {
+                    "id": "jj-view.reposView",
+                    "name": "Repositories",
+                    "type": "webview"
+                },
+                {
+                    "id": "jj-view.changesView",
+                    "name": "Changes",
+                    "type": "webview"
+                },
                 {
                     "id": "jj-view.logView",
                     "name": "JJ Log",

@@ -26,6 +26,7 @@ import { resolveJjBinary } from '../utils/binary-utils';
 import { toError } from '../utils/error-utils';
 import { type LoggerChannel, OutputChannel } from '../utils/output-channel';
 import { checkGitColocation } from './git-colocation';
+import { VsCodeChangesWebviewProvider } from './providers/vscode-changes-webview-provider';
 import { VsCodeCommentsProvider } from './providers/vscode-comments-provider';
 import { VsCodeCommitDetailsEditorProvider } from './providers/vscode-commit-details-editor-provider';
 import { VsCodeEditFsProvider } from './providers/vscode-edit-fs-provider';
@@ -414,6 +415,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
     context.subscriptions.push(
         logWebviewProvider,
         vscode.window.registerWebviewViewProvider(VsCodeLogWebviewProvider.viewType, logWebviewProvider),
+    );
+
+    const reposWebviewProvider = new VsCodeChangesWebviewProvider(
+        context.extensionUri,
+        repositoryManager,
+        scmProviders,
+        context.extension.packageJSON,
+        context,
+        'repos',
+        outputChannel,
+    );
+    const changesWebviewProvider = new VsCodeChangesWebviewProvider(
+        context.extensionUri,
+        repositoryManager,
+        scmProviders,
+        context.extension.packageJSON,
+        context,
+        'changes',
+        outputChannel,
+    );
+    context.subscriptions.push(
+        reposWebviewProvider,
+        changesWebviewProvider,
+        vscode.window.registerWebviewViewProvider('jj-view.reposView', reposWebviewProvider),
+        vscode.window.registerWebviewViewProvider('jj-view.changesView', changesWebviewProvider),
     );
 
     if (hostEnvironment.nav instanceof VsCodeHostNavigation) {

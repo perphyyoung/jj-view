@@ -7,7 +7,9 @@ import type { JjResourceState } from '../../../src/core/scm-resource-state';
 import type { IContextKeyService } from '../menu/context-key-service';
 import type { MenuRegistry } from '../menu/menu-registry';
 import type { ResolvedMenuItem } from '../menu/menu-types';
+import { buildFileTree } from './file-tree';
 import ScmResourceItem from './ScmResourceItem.svelte';
+import ScmTreeItem from './ScmTreeItem.svelte';
 
 interface Props {
     id: string;
@@ -26,6 +28,8 @@ interface Props {
     onResourceAction: (command: string, state: JjResourceState) => void;
     onGroupContextMenu?: (event: MouseEvent, groupId: string) => void;
     onResourceContextMenu?: (event: MouseEvent, state: JjResourceState) => void;
+    /** `tree` groups files by folder, `list` shows a flat list. */
+    viewMode?: 'list' | 'tree';
 }
 
 let {
@@ -45,6 +49,7 @@ let {
     onResourceAction,
     onGroupContextMenu,
     onResourceContextMenu,
+    viewMode = 'list',
 }: Props = $props();
 
 // svelte-ignore state_referenced_locally
@@ -77,6 +82,8 @@ const groupActions: ResolvedMenuItem[] = $derived.by(() => {
 function toggleExpanded(): void {
     isExpanded = !isExpanded;
 }
+
+const treeNodes = $derived(viewMode === 'tree' ? buildFileTree(items, workspaceRoot) : []);
 
 const groupVsCodeContext = $derived(
     JSON.stringify({
@@ -145,22 +152,37 @@ const groupVsCodeContext = $derived(
 
     {#if isExpanded}
         <div class="group-items-container" role="group">
-            {#each items as item (item.resourceUri.toString())}
-                {@const itemContext = groupContext.createScoped({
-                    scmResourceState: item.contextValue || '',
-                    resourceFilename: item.resourceUri.path.split('/').pop() || '',
-                    resourceScheme: item.resourceUri.scheme,
-                })}
-                <ScmResourceItem
-                    resourceState={item}
-                    {workspaceRoot}
-                    context={itemContext}
-                    {menuRegistry}
-                    onOpen={onOpenResource}
-                    onAction={onResourceAction}
-                    onContextMenu={onResourceContextMenu}
-                />
-            {/each}
+            {#if viewMode === 'tree'}
+                {#each treeNodes as node (node.path)}
+                    <ScmTreeItem
+                        {node}
+                        depth={1}
+                        context={groupContext}
+                        {menuRegistry}
+                        {workspaceRoot}
+                        onOpenResource={onOpenResource}
+                        onResourceAction={onResourceAction}
+                        onResourceContextMenu={onResourceContextMenu}
+                    />
+                {/each}
+            {:else}
+                {#each items as item (item.resourceUri.toString())}
+                    {@const itemContext = groupContext.createScoped({
+                        scmResourceState: item.contextValue || '',
+                        resourceFilename: item.resourceUri.path.split('/').pop() || '',
+                        resourceScheme: item.resourceUri.scheme,
+                    })}
+                    <ScmResourceItem
+                        resourceState={item}
+                        {workspaceRoot}
+                        context={itemContext}
+                        {menuRegistry}
+                        onOpen={onOpenResource}
+                        onAction={onResourceAction}
+                        onContextMenu={onResourceContextMenu}
+                    />
+                {/each}
+            {/if}
         </div>
     {/if}
 </div>

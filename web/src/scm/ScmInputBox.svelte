@@ -16,12 +16,14 @@ interface Props {
     onSetDescription: (message: string) => void;
     onValueChange?: (message: string) => void;
     onDraftWithAgent?: () => Promise<string | undefined>;
+    /** Single-line input that grows with newlines and does not commit on Ctrl+Enter. */
+    compact?: boolean;
 }
 
 let {
     value = '',
     changeId,
-    placeholder = 'Describe your changes... (Ctrl+Enter to commit, Ctrl+S to set description)',
+    placeholder,
     titleWidthRuler = 50,
     bodyWidthRuler = 72,
     isSidecarAvailable = false,
@@ -29,7 +31,15 @@ let {
     onSetDescription,
     onValueChange,
     onDraftWithAgent,
+    compact = false,
 }: Props = $props();
+
+const resolvedPlaceholder = $derived(
+    placeholder ??
+        (compact
+            ? 'Describe your changes...'
+            : 'Describe your changes... (Ctrl+Enter to commit, Ctrl+S to set description)'),
+);
 
 // svelte-ignore state_referenced_locally
 let description = $state(value);
@@ -61,7 +71,7 @@ function triggerCommit(): void {
     description = '';
     previousValue = '';
     onValueChange?.('');
-    if (textareaEl) {
+    if (textareaEl && !compact) {
         textareaEl.style.height = 'auto';
     }
 }
@@ -69,6 +79,10 @@ function triggerCommit(): void {
 function handleKeyDown(e: KeyboardEvent): void {
     const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
     const modKey = isMac ? e.metaKey : e.ctrlKey;
+
+    if (compact) {
+        return;
+    }
 
     if (modKey && e.key === 'Enter') {
         e.preventDefault();
@@ -88,7 +102,12 @@ function handleInput(): void {
         return;
     }
     textareaEl.style.height = 'auto';
-    textareaEl.style.height = `${Math.max(68, textareaEl.scrollHeight)}px`;
+    if (compact) {
+        // One line by default, grows by a line per newline, then scrolls at max-height.
+        textareaEl.style.height = `${textareaEl.scrollHeight + 2}px`;
+    } else {
+        textareaEl.style.height = `${Math.max(68, textareaEl.scrollHeight)}px`;
+    }
     onValueChange?.(description);
 }
 
@@ -120,10 +139,11 @@ onMount(() => {
             bind:this={textareaEl}
             bind:value={description}
             class="scm-textarea"
+            class:compact
             class:with-agent-btn={Boolean(onDraftWithAgent)}
             data-testid="scm-input-textarea"
-            {placeholder}
-            rows={3}
+            placeholder={resolvedPlaceholder}
+            rows={compact ? 1 : 3}
             onkeydown={handleKeyDown}
             oninput={handleInput}
             aria-label="Commit description"
@@ -176,6 +196,15 @@ onMount(() => {
     line-height: 1.5;
     outline: none;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.scm-textarea.compact {
+    /* Starts at a single line (~26px, like the native SCM input) and grows per line. */
+    min-height: 0;
+    max-height: 240px;
+    padding: 3px 8px;
+    resize: none;
+    overflow-y: auto;
 }
 
 .scm-textarea.with-agent-btn {

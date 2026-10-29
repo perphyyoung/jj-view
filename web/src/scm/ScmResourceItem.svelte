@@ -18,9 +18,20 @@ interface Props {
     onOpen: (state: JjResourceState, options?: { preview?: boolean }) => void;
     onAction: (command: string, state: JjResourceState) => void;
     onContextMenu?: (event: MouseEvent, state: JjResourceState) => void;
+    /** Tree mode hides the trailing directory label since folders are shown as rows. */
+    showDirName?: boolean;
 }
 
-let { resourceState, workspaceRoot, context, menuRegistry, onOpen, onAction, onContextMenu }: Props = $props();
+let {
+    resourceState,
+    workspaceRoot,
+    context,
+    menuRegistry,
+    onOpen,
+    onAction,
+    onContextMenu,
+    showDirName = true,
+}: Props = $props();
 
 let version = $state(0);
 
@@ -136,7 +147,7 @@ onDestroy(() => {
     <div class="resource-label-container">
         <FileIcon filename={fileName} />
         <span class="file-name" class:deleted={isDeleted}>{fileName}</span>
-        {#if dirName}
+        {#if dirName && showDirName}
             <span class="dir-name">{dirName}</span>
         {/if}
     </div>

@@ -23,6 +23,10 @@ interface Props {
     onAction: (command: string, payload?: unknown) => void;
     isSidecarAvailable?: boolean;
     onDraftWithAgent?: () => Promise<string | undefined>;
+    showHeader?: boolean;
+    compactInput?: boolean;
+    onDescriptionChange?: (message: string) => void;
+    viewMode?: 'list' | 'tree';
 }
 
 let {
@@ -37,6 +41,10 @@ let {
     onAction,
     isSidecarAvailable = false,
     onDraftWithAgent,
+    showHeader = true,
+    compactInput = false,
+    onDescriptionChange,
+    viewMode = 'list',
 }: Props = $props();
 
 // Update root context keys when snapshot changes
@@ -89,27 +97,30 @@ $effect(() => {
 </script>
 
 <div class="scm-pane" data-testid="scm-pane">
-    <ScmHeader
-        {menuRegistry}
-        context={rootContext}
-        onAction={(cmd) => {
-            if (cmd === 'jj-view.commit') {
-                const msg = currentDescription;
-                currentDescription = '';
-                onCommit(msg);
-            } else if (cmd === 'jj-view.setDescription') {
-                onSetDescription(currentDescription);
-            } else {
-                onAction(cmd);
-            }
-        }}
-    />
+    {#if showHeader}
+        <ScmHeader
+            {menuRegistry}
+            context={rootContext}
+            onAction={(cmd) => {
+                if (cmd === 'jj-view.commit') {
+                    const msg = currentDescription;
+                    currentDescription = '';
+                    onCommit(msg);
+                } else if (cmd === 'jj-view.setDescription') {
+                    onSetDescription(currentDescription);
+                } else {
+                    onAction(cmd);
+                }
+            }}
+        />
+    {/if}
 
     <ScmInputBox
         value={snapshot?.description || ''}
         changeId={currentChangeId}
         {isSidecarAvailable}
         {onDraftWithAgent}
+        compact={compactInput}
         onCommit={(msg) => {
             currentDescription = '';
             onCommit(msg);
@@ -117,6 +128,7 @@ $effect(() => {
         {onSetDescription}
         onValueChange={(val) => {
             currentDescription = val;
+            onDescriptionChange?.(val);
         }}
     />
 
@@ -134,6 +146,7 @@ $effect(() => {
                 onGroupAction={(cmd) => onAction(cmd, { groupId: 'conflicts' })}
                 onOpenResource={onOpenResource}
                 onResourceAction={(cmd, item) => onAction(cmd, item)}
+                {viewMode}
             />
         {/if}
 
@@ -149,6 +162,7 @@ $effect(() => {
             onGroupAction={(cmd) => onAction(cmd, { groupId: 'working-copy' })}
             onOpenResource={onOpenResource}
             onResourceAction={(cmd, item) => onAction(cmd, item)}
+            {viewMode}
         />
 
         {#if snapshot?.ancestors}
@@ -185,6 +199,7 @@ $effect(() => {
                     commitId={ancestor.entry.commit_id}
                     onOpenResource={onOpenResource}
                     onResourceAction={(cmd, item) => onAction(cmd, item)}
+                    {viewMode}
                 />
             {/each}
         {/if}

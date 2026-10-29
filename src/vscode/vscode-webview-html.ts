@@ -13,17 +13,20 @@ const cssContentCache = new LruCache<string, string>({ maxEntries: 20 });
 export function clearCssCache(): void {
     cssContentCache.clear();
     cachedCodiconRules = undefined;
+    cachedJjIconRules = undefined;
 }
 
 export function prewarmWebviewCssCache(extensionUri: Uri): void {
     const mainCssPath = Uri.joinPath(extensionUri, 'media', 'main.css').fsPath;
     const themesCssPath = Uri.joinPath(extensionUri, 'media', 'themes.generated.css').fsPath;
     const codiconsCssPath = Uri.joinPath(extensionUri, 'media', 'codicons', 'codicon.css').fsPath;
+    const jjIconsCssPath = Uri.joinPath(extensionUri, 'media', 'custom-icons', 'jj-view-icons.css').fsPath;
     const commitDetailsCssPath = Uri.joinPath(extensionUri, 'dist', 'webview', 'commit-details.css').fsPath;
 
     readCachedCss(mainCssPath);
     readCachedCss(themesCssPath);
     getCachedCodiconRules(codiconsCssPath);
+    getCachedJjIconRules(jjIconsCssPath);
     readCachedCss(commitDetailsCssPath);
 }
 
@@ -42,6 +45,7 @@ function readCachedCss(filePath: string): string {
 }
 
 let cachedCodiconRules: string | undefined;
+let cachedJjIconRules: string | undefined;
 
 function getCachedCodiconRules(filePath: string): string {
     if (cachedCodiconRules !== undefined) {
@@ -50,6 +54,20 @@ function getCachedCodiconRules(filePath: string): string {
     const raw = readCachedCss(filePath);
     cachedCodiconRules = raw.replace(/@font-face\s*\{[^}]*\}\s*/g, '').trim();
     return cachedCodiconRules;
+}
+
+/**
+ * Custom `jj-icon-*` glyphs come from `media/custom-icons/jj-view-icons.woff2`.
+ * Webviews do not get the `contributes.icons` font registration, so the rules are
+ * inlined here (with `@font-face` rewritten to an absolute webview URI).
+ */
+function getCachedJjIconRules(filePath: string): string {
+    if (cachedJjIconRules !== undefined) {
+        return cachedJjIconRules;
+    }
+    const raw = readCachedCss(filePath);
+    cachedJjIconRules = raw.replace(/@font-face\s*\{[^}]*\}\s*/g, '').trim();
+    return cachedJjIconRules;
 }
 
 export interface WebviewHtmlOptions {
@@ -86,14 +104,19 @@ export function getWebviewHtml(options: WebviewHtmlOptions): string {
     const { webview, extensionUri, scriptPath, title, initialData, initialHtml } = options;
     const scriptUri = webview.asWebviewUri(Uri.joinPath(extensionUri, ...scriptPath));
     const codiconTtfUri = webview.asWebviewUri(Uri.joinPath(extensionUri, 'media', 'codicons', 'codicon.ttf'));
+    const jjIconsFontUri = webview.asWebviewUri(
+        Uri.joinPath(extensionUri, 'media', 'custom-icons', 'jj-view-icons.woff2'),
+    );
 
     const mainCssPath = Uri.joinPath(extensionUri, 'media', 'main.css').fsPath;
     const themesCssPath = Uri.joinPath(extensionUri, 'media', 'themes.generated.css').fsPath;
     const codiconsCssPath = Uri.joinPath(extensionUri, 'media', 'codicons', 'codicon.css').fsPath;
+    const jjIconsCssPath = Uri.joinPath(extensionUri, 'media', 'custom-icons', 'jj-view-icons.css').fsPath;
 
     const inlinedMainCss = readCachedCss(mainCssPath);
     const inlinedThemesCss = readCachedCss(themesCssPath);
     const inlinedCodiconRules = getCachedCodiconRules(codiconsCssPath);
+    const inlinedJjIconRules = getCachedJjIconRules(jjIconsCssPath);
 
     const lastScriptSegment = scriptPath[scriptPath.length - 1] ?? '';
     const companionCssSegment = lastScriptSegment.endsWith('.js')
@@ -133,7 +156,13 @@ export function getWebviewHtml(options: WebviewHtmlOptions): string {
                     font-display: block;
                     src: url("${codiconTtfUri}") format("truetype");
                 }
+                @font-face {
+                    font-family: "jj-view-icons";
+                    font-display: block;
+                    src: url("${jjIconsFontUri}") format("woff2");
+                }
                 ${inlinedCodiconRules}
+                ${inlinedJjIconRules}
                 ${inlinedMainCss}
                 ${inlinedThemesCss}
                 ${inlinedCompanionCss}
