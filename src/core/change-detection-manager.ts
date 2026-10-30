@@ -24,6 +24,50 @@ interface IgnoreRule {
     negated: boolean;
 }
 
+/** Absolute path normalized to POSIX separators without a trailing slash. */
+function toPosixAbsolute(value: string): string {
+    return path.normalize(value).replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
+/**
+ * True when `eventPath` points at the `.jj` / `.git` metadata of a repository nested inside
+ * the current one: e.g. `d:/py-code/jj-view/.jj/repo/...` as seen from `d:/py-code`.
+ * Every jj command inside the nested repository touches those paths, but the parent
+ * repository can never track them, so they must not trigger a parent refresh.
+ */
+export function isNestedRepositoryMetadataPath(eventPath: string, nestedRoots: readonly string[]): boolean {
+    const normalized = toPosixAbsolute(eventPath);
+    const lower = normalized.toLowerCase();
+    for (const nestedRoot of nestedRoots) {
+        const nested = toPosixAbsolute(nestedRoot);
+        if (!lower.startsWith(`${nested.toLowerCase()}/`)) {
+            continue;
+        }
+        const relative = normalized.slice(nested.length + 1).toLowerCase();
+        if (relative === '.jj' || relative.startsWith('.jj/') || relative === '.git' || relative.startsWith('.git/')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** Watcher ignore globs (relative to the parent root) for nested repository metadata. */
+export function getNestedRepositoryIgnoreGlobs(workspaceRoot: string, nestedRoots: readonly string[]): string[] {
+    const root = toPosixAbsolute(workspaceRoot);
+    const rootLower = root.toLowerCase();
+    const globs: string[] = [];
+    for (const nestedRoot of nestedRoots) {
+        const nested = toPosixAbsolute(nestedRoot);
+        const nestedLower = nested.toLowerCase();
+        if (nestedLower === rootLower || !nestedLower.startsWith(`${rootLower}/`)) {
+            continue;
+        }
+        const relative = nested.slice(root.length + 1);
+        globs.push(`${relative}/.jj`, `${relative}/.jj/**`, `${relative}/.git`, `${relative}/.git/**`);
+    }
+    return globs;
+}
+
 export class ChangeDetectionManager implements HostDisposable {
     private _disposed = false;
     private disposables: HostDisposable[] = [];
@@ -108,6 +152,12 @@ export class ChangeDetectionManager implements HostDisposable {
         private readonly watcherBackend?: BackendType,
         /** Only the focused repository refreshes when the window becomes active. */
         private readonly isFocused: () => boolean = () => true,
+        /**
+         * Roots of repositories nested inside this one. Their `.jj`/`.git` metadata must be
+         * ignored: every jj command inside the nested repo touches those directories, and
+         * without this the parent repository refreshes for changes it cannot even track.
+         */
+        private readonly getNestedRepositoryRoots: () => readonly string[] = () => [],
     ) {
         // Initialize poller with 5 second interval
         this._poller = new Poller(5000, async () => {
@@ -391,15 +441,38 @@ export class ChangeDetectionManager implements HostDisposable {
             return;
         }
 
-        const ignore = ['.git', '.jj', '.vscode-test', 'node_modules', ...gitIgnores, ...gitModules, ...workspaceRoots];
+        const nestedRepositoryIgnores = getNestedRepositoryIgnoreGlobs(
+            this.workspaceRoot,
+            this.getNestedRepositoryRoots(),
+        );
+        const ignore = [
+            '.git',
+            '.jj',
+            '.vscode-test',
+            'node_modules',
+            ...gitIgnores,
+            ...gitModules,
+            ...workspaceRoots,
+            ...nestedRepositoryIgnores,
+        ];
         this.outputChannel.debug(`[ChangeDetectionManager] Watcher ignore list: ${JSON.stringify(ignore)}`);
 
         this._workingCopyWatcher = new DirectoryWatcher(
             this.workspaceRoot,
-            () => {
+            (events) => {
                 // While the window is in the background only the focused repository reacts to
                 // file events; the rest refresh when the window becomes active or on focus change.
                 if (!this._isActive && !this.isFocused()) {
+                    return;
+                }
+                // Nested repositories write their `.jj` / `.git` metadata on every command; the
+                // parent cannot track those paths, so ignore batches consisting only of them.
+                const nestedRoots = this.getNestedRepositoryRoots();
+                if (
+                    events.length > 0 &&
+                    !events.some((event) => !isNestedRepositoryMetadataPath(event.path, nestedRoots))
+                ) {
+                    this.outputChannel.debug('[ChangeDetectionManager] Ignored nested repository metadata events');
                     return;
                 }
                 const writes = this.hasActiveOrRecentWrites;

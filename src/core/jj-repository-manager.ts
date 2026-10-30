@@ -772,7 +772,22 @@ export class JjRepositoryManager implements HostDisposable {
             this._host,
             this._binaryPath,
             this._processTracker,
+            () => this.nestedRepositoryRootsFor(rootPath),
         );
+    }
+
+    /**
+     * Roots of already-registered repositories that live inside `rootPath`. Their `.jj`/`.git`
+     * metadata must not trigger a refresh of the parent repository.
+     */
+    private nestedRepositoryRootsFor(rootPath: string): string[] {
+        const normalizedRoot = this.normalizePath(rootPath).replace(/\/+$/, '').toLowerCase();
+        return this.repositories
+            .map((repo) => repo.rootUri.fsPath)
+            .filter((other) => {
+                const normalized = this.normalizePath(other).replace(/\/+$/, '').toLowerCase();
+                return normalized !== normalizedRoot && normalized.startsWith(`${normalizedRoot}/`);
+            });
     }
 
     /**

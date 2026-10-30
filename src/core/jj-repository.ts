@@ -33,6 +33,8 @@ export class JjRepository implements Disposable {
         public readonly host: HostEnvironment,
         binaryPath?: string,
         processTracker?: JjProcessTracker,
+        /** Roots of repositories nested inside this one; their metadata is not watched. */
+        getNestedRepositoryRoots?: () => readonly string[],
     ) {
         this._jj = new JjService(rootUri.fsPath, outputChannel, {
             binaryPath,
@@ -102,6 +104,7 @@ export class JjRepository implements Disposable {
             host,
             undefined,
             () => this._isFocused,
+            getNestedRepositoryRoots,
         );
     }
 
