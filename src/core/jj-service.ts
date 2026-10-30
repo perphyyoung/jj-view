@@ -578,6 +578,22 @@ export class JjService {
         return entries[0];
     }
 
+    /**
+     * Full commit message resolved directly through `jj log -T description`, bypassing the
+     * JSON log template. Used by the line-blame tooltip, which only needs the message text.
+     */
+    async getCommitDescription(commitId: string): Promise<string | undefined> {
+        try {
+            const output = await this.run('log', ['--no-graph', '-r', commitId, '-T', 'description'], {
+                useCachedSnapshot: true,
+                label: 'commitDescription',
+            });
+            return output.trim() || undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
     private async _resolveNearestVisibleAncestors(
         entries: JjLogEntry[],
         visibleIds: Set<string>,

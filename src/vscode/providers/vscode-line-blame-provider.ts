@@ -254,15 +254,23 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             return this._detailsCache.get(commitId);
         }
 
-        let details: CommitDetails | undefined;
-        try {
-            const [entry] = await repo.jj.getLog({ revision: commitId, limit: 1 });
-            if (entry?.description) {
-                details = { description: entry.description.trim() || undefined };
+        // Prefer the dedicated `jj log -T description` call; fall back to the JSON log entry
+        // in case the direct read fails (e.g. abbreviated/ambiguous revision).
+        let description = await repo.jj.getCommitDescription(commitId);
+        if (!description) {
+            try {
+                const [entry] = await repo.jj.getLog({ revision: commitId, limit: 1 });
+                description = entry?.description?.trim() || undefined;
+            } catch (error: unknown) {
+                this._outputChannel?.info?.(
+                    `[LineBlame] commit details lookup failed for ${commitId}: ${String(error)}`,
+                );
             }
-        } catch (error: unknown) {
-            this._outputChannel?.debug?.(`[LineBlame] commit details lookup failed for ${commitId}: ${String(error)}`);
         }
+        if (!description) {
+            this._outputChannel?.info?.(`[LineBlame] no commit message resolved for ${commitId}`);
+        }
+        const details: CommitDetails | undefined = description ? { description } : undefined;
 
         this._detailsCache.set(commitId, details);
         while (this._detailsCache.size > MAX_CACHED_FILES) {
