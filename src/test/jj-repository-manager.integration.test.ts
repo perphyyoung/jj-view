@@ -73,7 +73,7 @@ suite('JjRepositoryManager Integration Test', () => {
 
         return {
             async [Symbol.asyncDispose]() {
-                const extension = vscode.extensions.getExtension<Api>('jj-view.jj-view');
+                const extension = vscode.extensions.getExtension<Api>('perphyyoung.jj-view-local');
                 if (extension) {
                     const api = await extension.activate();
                     await api.repositoryManager.clear();
@@ -132,7 +132,7 @@ suite('JjRepositoryManager Integration Test', () => {
     });
 
     teardown(async () => {
-        const extension = vscode.extensions.getExtension<Api>('jj-view.jj-view');
+        const extension = vscode.extensions.getExtension<Api>('perphyyoung.jj-view-local');
         if (extension) {
             const api = await extension.activate();
             await api.repositoryManager.clear();

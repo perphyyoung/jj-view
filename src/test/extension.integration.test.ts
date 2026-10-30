@@ -20,11 +20,11 @@ suite('Extension Test Suite', () => {
     });
 
     test('Extension should be present', () => {
-        assert.ok(vscode.extensions.getExtension('jj-view.jj-view'));
+        assert.ok(vscode.extensions.getExtension('perphyyoung.jj-view-local'));
     });
 
     test('Extension should activate and export API', async () => {
-        const extension = vscode.extensions.getExtension('jj-view.jj-view');
+        const extension = vscode.extensions.getExtension('perphyyoung.jj-view-local');
         assert.ok(extension, 'Extension not found');
 
         // Activate if not already active

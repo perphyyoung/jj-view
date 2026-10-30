@@ -1,6 +1,17 @@
-# JJ View
+# JJ View Local
 
-**JJ View** brings the power of [Jujutsu (jj)](https://github.com/martinvonz/jj) version control directly into VS Code. Visualize your revision graph, manage changes, and streamline your workflow without leaving the editor.
+> **Unofficial fork.** This is a locally maintained fork of
+> [brychanrobot/jj-view](https://github.com/brychanrobot/jj-view). It is **not affiliated with or
+> endorsed by** the upstream project.
+>
+> Changes are documented in [py-changes.md](py-changes.md): local-only operation (no remote status
+> reads, no automatic fetch), a dedicated activity bar container, Windows-only packaging, and
+> watch-based change detection by default.
+>
+> The application icon is inherited from the upstream project and is used under the Apache-2.0
+> license; it does not imply official status.
+
+**JJ View Local** brings the power of [Jujutsu (jj)](https://github.com/martinvonz/jj) version control directly into VS Code. Visualize your revision graph, manage changes, and streamline your workflow without leaving the editor.
 
 ![JJ View Overview](media/screenshots/scm-view.png)
 _JJ View Source Control & Interactive Revision Graph in VS Code (Theme: Default)._
@@ -301,6 +312,9 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for details.
 ## License
 
 Apache 2.0; see [`LICENSE`](LICENSE) for details.
+
+Original work: Copyright 2026 Google LLC. Modifications in this fork are released under the same
+license.
 
 ## Disclaimer
 

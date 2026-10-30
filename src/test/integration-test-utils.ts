@@ -86,9 +86,9 @@ export async function createTestRepositoryContext(
     }
 
     // Get the global extension API
-    const extension = vscode.extensions.getExtension<Api>('jj-view.jj-view');
+    const extension = vscode.extensions.getExtension<Api>('perphyyoung.jj-view-local');
     if (!extension) {
-        throw new Error('Extension jj-view.jj-view not found');
+        throw new Error('Extension perphyyoung.jj-view-local not found');
     }
     const api = await extension.activate();
     const repositoryManager = api.repositoryManager;

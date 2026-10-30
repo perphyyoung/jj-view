@@ -1,12 +1,14 @@
 {
-    "name": "jj-view",
-    "publisher": "jj-view",
-    "displayName": "JJ View",
-    "description": "Integrates Jujutsu (jj) version control into VS Code.",
-    "version": "2.10.4",
+    "name": "jj-view-local",
+    "publisher": "perphyyoung",
+    "displayName": "JJ View Local (unofficial fork)",
+    "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
+    "version": "3.0.0",
+    "license": "Apache-2.0",
+    "author": "perphyyoung",
     "repository": {
         "type": "git",
-        "url": "https://github.com/brychanrobot/jj-view"
+        "url": "https://github.com/perphyyoung/jj-view-local"
     },
     "icon": "media/icon.png",
     "engines": {

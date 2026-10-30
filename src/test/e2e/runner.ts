@@ -54,7 +54,7 @@ async function handleCommand(req: http.IncomingMessage, res: http.ServerResponse
     const { action, script, args = [], handleId } = payload;
 
     if (action === 'evaluate' || action === 'evaluateHandle') {
-        const extension = vscode.extensions.getExtension('jj-view.jj-view');
+        const extension = vscode.extensions.getExtension('perphyyoung.jj-view-local');
         const api = await extension?.activate();
 
         const resolvedArgs = resolveArgs(args);

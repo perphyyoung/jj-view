@@ -18,6 +18,24 @@
 
 ---
 
+### 0.1 身份与许可（相对上游）
+
+| 项                   | 值                                                           |
+| -------------------- | ------------------------------------------------------------ |
+| 扩展 ID              | `perphyyoung.jj-view-local`                                  |
+| `name` / `publisher` | `jj-view-local` / `perphyyoung`                              |
+| `displayName`        | `JJ View Local (unofficial fork)`                            |
+| `license` / `author` | `Apache-2.0` / `perphyyoung`                                 |
+| `repository`         | `https://github.com/perphyyoung/jj-view-local`               |
+| 图标                 | 沿用上游 `media/icon.png`（Apache-2.0），README 已声明非官方 |
+
+Apache-2.0 合规要点：
+
+- 保留 `LICENSE` 全文与源文件头部 `Copyright 2026 Google LLC` / SPDX 声明
+- README 顶部声明“非官方 fork + 上游链接 + 改动说明”
+- 仓库无 `NOTICE` 文件，无需继承额外声明；若上游新增需同步保留
+- 命令 / 视图 / 设置 ID 仍沿用 `jj-view.*` 前缀，以兼容上游配置（扩展 ID 已区分，可与上游并存）
+
 ## 1. 构建与发布形态
 
 ### 1.1 只构建 win32-x64
