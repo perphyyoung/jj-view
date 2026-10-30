@@ -211,7 +211,16 @@ export function findAnnotation(
     return candidate?.line === target ? candidate : annotations.find((entry) => entry.line === target);
 }
 
-/** Cache key including the document version so edits invalidate the annotations. */
-export function lineBlameCacheKey(repoRoot: string, fsPath: string, documentVersion: number): string {
-    return `${repoRoot}|${fsPath}|${documentVersion}`;
+/**
+ * Cache key including the document version (edits invalidate the annotations) and the
+ * working-copy commit id (new commits / bookmark advances swap `@` without touching the
+ * document, so the annotations must be re-read).
+ */
+export function lineBlameCacheKey(
+    repoRoot: string,
+    fsPath: string,
+    documentVersion: number,
+    workingCopyCommitId: string | undefined,
+): string {
+    return `${repoRoot}|${fsPath}|${documentVersion}|${workingCopyCommitId ?? ''}`;
 }

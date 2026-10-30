@@ -137,7 +137,14 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             return;
         }
 
-        const cacheKey = lineBlameCacheKey(root, document.uri.fsPath, document.version);
+        // The `@` commit id must be resolved first: new commits (advance bookmark / new / squash)
+        // swap `@` without touching the document, so it drives the annotation cache key.
+        const workingCopyCommitId = await this._getWorkingCopyCommitId(repo, root);
+        if (this._disposed || requestId !== this._requestId) {
+            return;
+        }
+
+        const cacheKey = lineBlameCacheKey(root, document.uri.fsPath, document.version, workingCopyCommitId);
         let annotations = this._cache.get(cacheKey);
         if (!this._cache.has(cacheKey)) {
             try {
@@ -158,11 +165,6 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         const annotation = findAnnotation(annotations, line);
         if (!annotation) {
             this._clearEditor(editor);
-            return;
-        }
-
-        const workingCopyCommitId = await this._getWorkingCopyCommitId(repo, root);
-        if (this._disposed || requestId !== this._requestId) {
             return;
         }
         const uncommitted = isUncommittedLine(annotation, workingCopyCommitId);
@@ -190,7 +192,13 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         }
 
         if (uncommitted) {
-            const parentAnnotations = await this._getParentAnnotations(repo, root, document.version, relativePath);
+            const parentAnnotations = await this._getParentAnnotations(
+                repo,
+                root,
+                document.version,
+                relativePath,
+                workingCopyCommitId,
+            );
             const parentAnnotation = findAnnotation(parentAnnotations, line);
             const parentDetails = parentAnnotation
                 ? await this._getCommitDetails(repo, parentAnnotation.commitId)
@@ -232,8 +240,9 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         root: string,
         documentVersion: number,
         relativePath: string,
+        workingCopyCommitId: string | undefined,
     ): Promise<LineAnnotation[] | undefined> {
-        const key = `@-|${root}|${relativePath}|${documentVersion}`;
+        const key = `@-|${root}|${relativePath}|${documentVersion}|${workingCopyCommitId ?? ''}`;
         if (this._parentCache.has(key)) {
             return this._parentCache.get(key);
         }

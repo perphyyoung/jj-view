@@ -293,7 +293,17 @@ describe('findAnnotation', () => {
 });
 
 describe('lineBlameCacheKey', () => {
-    it('includes repository, file and document version', () => {
-        expect(lineBlameCacheKey('D:/repo', 'D:/repo/a.ts', 7)).toBe('D:/repo|D:/repo/a.ts|7');
+    it('includes repository, file, document version and working-copy commit', () => {
+        expect(lineBlameCacheKey('D:/repo', 'D:/repo/a.ts', 7, 'abc123')).toBe('D:/repo|D:/repo/a.ts|7|abc123');
+    });
+
+    it('changes when the working-copy commit is swapped', () => {
+        expect(lineBlameCacheKey('D:/repo', 'D:/repo/a.ts', 7, 'old')).not.toBe(
+            lineBlameCacheKey('D:/repo', 'D:/repo/a.ts', 7, 'new'),
+        );
+    });
+
+    it('tolerates a missing working-copy commit', () => {
+        expect(lineBlameCacheKey('D:/repo', 'D:/repo/a.ts', 7, undefined)).toBe('D:/repo|D:/repo/a.ts|7|');
     });
 });
