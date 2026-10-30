@@ -757,6 +757,75 @@
                     "when": "view == jj-view.logView"
                 }
             ],
+            "jvl/resourceGroup/context": [
+                {
+                    "command": "jj-view.absorb",
+                    "group": "inline",
+                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowAbsorb\\b/"
+                },
+                {
+                    "command": "jj-view.showMultiFileDiff",
+                    "group": "inline@1",
+                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowShowMultiFileDiff\\b/"
+                },
+                {
+                    "command": "jj-view.abandon",
+                    "group": "inline@2",
+                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowAbandon\\b/"
+                },
+                {
+                    "command": "jj-view.squashRevisionIntoAncestor",
+                    "group": "inline@3",
+                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowSquash\\b/"
+                },
+                {
+                    "command": "jj-view.squashRevisionIntoParent",
+                    "group": "inline@4",
+                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowSquash\\b/"
+                },
+                {
+                    "command": "jj-view.showDetails",
+                    "group": "inline@5",
+                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowShowDetails\\b/"
+                },
+                {
+                    "command": "jj-view.edit",
+                    "group": "inline@6",
+                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowEdit\\b/"
+                }
+            ],
+            "jvl/resourceState/context": [
+                {
+                    "command": "jj-view.openFile",
+                    "group": "inline@1",
+                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowOpen\\b/ && jj.openDiffOnClick"
+                },
+                {
+                    "command": "jj-view.openChanges",
+                    "group": "inline@1",
+                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowOpen\\b/ && !jj.openDiffOnClick"
+                },
+                {
+                    "command": "jj-view.restore",
+                    "group": "inline@2",
+                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowRestore\\b/"
+                },
+                {
+                    "command": "jj-view.squashFilesIntoAncestor",
+                    "group": "inline@3",
+                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowSquashIntoAncestor\\b/"
+                },
+                {
+                    "command": "jj-view.squashFilesIntoParent",
+                    "group": "inline@4",
+                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowSquashIntoParent\\b/"
+                },
+                {
+                    "command": "jj-view.squashFilesIntoChild",
+                    "group": "inline@5",
+                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowSquashIntoChild\\b/"
+                }
+            ],
             "webview/context": [
                 {
                     "command": "jj-view.workspaceForget",

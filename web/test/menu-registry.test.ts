@@ -119,7 +119,7 @@ describe('MenuRegistry & Icon Resolution', () => {
         expect(commands).toContain('jj-view.focusRepository');
     });
 
-    it('resolves scm/resourceGroup/context inline actions matching capability flags', () => {
+    it('resolves jvl/resourceGroup/context inline actions matching capability flags', () => {
         const registry = new MenuRegistry();
         const rootContext = new ContextKeyService();
 
@@ -129,7 +129,7 @@ describe('MenuRegistry & Icon Resolution', () => {
                 'jj.group.workingCopy jj.group.allowShowMultiFileDiff jj.group.allowAbandon jj.group.allowSquash',
         });
 
-        const actions = registry.getInlineActions('scm/resourceGroup/context', wcContext);
+        const actions = registry.getInlineActions('jvl/resourceGroup/context', wcContext);
         const commands = actions.map((a) => a.command);
 
         expect(commands).toContain('jj-view.showMultiFileDiff');
@@ -147,7 +147,7 @@ describe('MenuRegistry & Icon Resolution', () => {
         expect(abandonIdx).toBeLessThan(squashParentIdx);
     });
 
-    it('resolves scm/resourceState/context actions toggling openFile and openChanges based on openDiffOnClick', () => {
+    it('resolves jvl/resourceState/context actions toggling openFile and openChanges based on openDiffOnClick', () => {
         const registry = new MenuRegistry();
         const rootContext = new ContextKeyService();
 
@@ -157,7 +157,7 @@ describe('MenuRegistry & Icon Resolution', () => {
             scmResourceState: 'jj.resource.allowOpen jj.resource.allowRestore jj.resource.allowSquashIntoParent',
         });
 
-        let actions = registry.getInlineActions('scm/resourceState/context', itemContextA);
+        let actions = registry.getInlineActions('jvl/resourceState/context', itemContextA);
         let commands = actions.map((a) => a.command);
 
         // When openDiffOnClick is true, inline button is "Open File in Working Copy" (since click already opens diff)
@@ -172,7 +172,7 @@ describe('MenuRegistry & Icon Resolution', () => {
             scmResourceState: 'jj.resource.allowOpen jj.resource.allowRestore jj.resource.allowSquashIntoParent',
         });
 
-        actions = registry.getInlineActions('scm/resourceState/context', itemContextB);
+        actions = registry.getInlineActions('jvl/resourceState/context', itemContextB);
         commands = actions.map((a) => a.command);
 
         // When openDiffOnClick is false, inline button is "Open Changes" (diff)
@@ -189,7 +189,7 @@ describe('MenuRegistry & Icon Resolution', () => {
             scmResourceState: 'jj.resource.allowOpen jj.resource.allowRestore jj.resource.allowSquashIntoParent',
         });
 
-        const groups = registry.getContextActions('scm/resourceState/context', itemContext);
+        const groups = registry.getContextActions('jvl/resourceState/context', itemContext);
         expect(groups.length).toBeGreaterThan(0);
         const allCommands = groups.flatMap((g) => g.items.map((i) => i.command));
         expect(allCommands).toContain('jj-view.openFile');

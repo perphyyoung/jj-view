@@ -49,7 +49,7 @@ const inlineActions: ResolvedMenuItem[] = $derived.by(() => {
     if (version < 0) {
         return [];
     }
-    return menuRegistry.getInlineActions('scm/resourceState/context', context);
+    return menuRegistry.getInlineActions('jvl/resourceState/context', context);
 });
 
 const displayPath = $derived.by(() => {
@@ -86,7 +86,7 @@ const statusBadge = $derived(getStatusBadge());
 
 const vscodeContext = $derived(
     JSON.stringify({
-        menuId: 'scm/resourceState/context',
+        menuId: 'jvl/resourceState/context',
         scmResourceState: resourceState.contextValue || '',
         resourceFilename: fileName,
         resourceScheme: resourceState.resourceUri.scheme,
@@ -266,8 +266,7 @@ onDestroy(() => {
     height: 100%;
 }
 
-.scm-resource-item:hover .hover-actions,
-.scm-resource-item:focus-within .hover-actions {
+.scm-resource-item:hover .hover-actions {
     display: flex;
 }
 

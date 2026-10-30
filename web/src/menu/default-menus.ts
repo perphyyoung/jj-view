@@ -601,7 +601,7 @@ export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
                 group: 'navigation@10',
             },
         ],
-        'scm/resourceGroup/context': [
+        'jvl/resourceGroup/context': [
             {
                 command: 'jj-view.absorb',
                 group: 'inline',
@@ -638,16 +638,16 @@ export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
                 when: 'scmResourceGroupState =~ /\\bjj\\.group\\.allowEdit\\b/',
             },
         ],
-        'scm/resourceState/context': [
+        'jvl/resourceState/context': [
             {
                 command: 'jj-view.openFile',
                 group: 'inline@1',
-                when: 'scmResourceState =~ /\\bjj\\.resource\\.allowOpen\\b/ && jj.openDiffOnClick || scmResourceState =~ /\\bjj\\.resource\\.allowOpenMergeEditor\\b/',
+                when: 'scmResourceState =~ /\\bjj\\.resource\\.allowOpen\\b/ && jj.openDiffOnClick',
             },
             {
                 command: 'jj-view.openChanges',
                 group: 'inline@1',
-                when: 'scmResourceState =~ /\\bjj\\.resource\\.allowOpen\\b/ && !jj.openDiffOnClick || scmResourceState =~ /\\bjj\\.resource\\.allowOpenMergeEditor\\b/',
+                when: 'scmResourceState =~ /\\bjj\\.resource\\.allowOpen\\b/ && !jj.openDiffOnClick',
             },
             {
                 command: 'jj-view.restore',

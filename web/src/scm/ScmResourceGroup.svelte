@@ -76,7 +76,7 @@ const groupActions: ResolvedMenuItem[] = $derived.by(() => {
     if (version < 0) {
         return [];
     }
-    return menuRegistry.getInlineActions('scm/resourceGroup/context', groupContext);
+    return menuRegistry.getInlineActions('jvl/resourceGroup/context', groupContext);
 });
 
 function toggleExpanded(): void {
@@ -87,7 +87,7 @@ const treeNodes = $derived(viewMode === 'tree' ? buildFileTree(items, workspaceR
 
 const groupVsCodeContext = $derived(
     JSON.stringify({
-        menuId: 'scm/resourceGroup/context',
+        menuId: 'jvl/resourceGroup/context',
         scmResourceGroupState: contextValue,
         scmResourceGroupId: id,
         preventDefaultContextMenuItems: true,
@@ -268,8 +268,7 @@ const groupVsCodeContext = $derived(
     height: 100%;
 }
 
-.group-header:hover .group-hover-actions,
-.group-header:focus-within .group-hover-actions {
+.group-header:hover .group-hover-actions {
     display: flex;
 }
 

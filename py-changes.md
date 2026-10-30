@@ -104,7 +104,8 @@ git config core.autocrlf false   # 仅本仓库
 `jj-view.nativeScm.enabled` 开关删除，原生 Source Control 集成整体移除：
 
 - 不再 `createSourceControl`，没有 SCM 输入框、resource group、gutter quick diff
-- `scm/title`、`scm/resourceGroup/context`、`scm/resourceState/context`、`scm/change/title` 菜单与 `scmProvider =~ /^jj/` 的 3 个键位一并删除
+- 删除**仅原生 SCM 使用**的 `scm/title`、`scm/change/title` 菜单与 `scmProvider =~ /^jj/` 的 3 个键位
+- Changes webview 的分组/文件行菜单改用 `jvl/resourceGroup/context` 与 `jvl/resourceState/context`：它们由 `ScmResourceGroup` / `ScmResourceItem` 作为 `menuId` 交给 webview 的 `MenuRegistry` 解析（VS Code 会忽略未知菜单位置），与原生 SCM 的 `scm/*` 命名解耦，避免再被当作原生 SCM 误删
 - **保留** `ScmModel`、`FileDecorationProvider` 与 Changes / Repositories 视图；描述输入缓存于内存（`_inputBoxFallback`）
 - 仅原生 SCM 使用的 `jj-view.focusRepository`、`jj-view.focusDescriptionInput` 命令删除
 

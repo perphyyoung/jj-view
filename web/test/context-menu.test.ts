@@ -149,14 +149,14 @@ describe('Generalized Context Menu System', () => {
             expect(allCommands).toContain('jj-view.workspaceDelete');
         });
 
-        it('returns SCM resource state actions when menuId is scm/resourceState/context', () => {
+        it('returns SCM resource state actions when menuId is jvl/resourceState/context', () => {
             const scopedContext = rootContext.createScoped({
-                menuId: 'scm/resourceState/context',
+                menuId: 'jvl/resourceState/context',
                 scmResourceState: 'jj.resource.workingCopy jj.resource.allowRestore jj.resource.allowOpen',
                 'jj.openDiffOnClick': true,
             });
 
-            const groups = menuRegistry.getContextActions('scm/resourceState/context', scopedContext);
+            const groups = menuRegistry.getContextActions('jvl/resourceState/context', scopedContext);
             expect(groups.length).toBeGreaterThan(0);
 
             const allCommands = groups.flatMap((g) => g.items.map((i) => i.command));
