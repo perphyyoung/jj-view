@@ -304,6 +304,12 @@
                 "icon": "$(refresh)"
             },
             {
+                "command": "jj-view.refreshAll",
+                "title": "Force Refresh All Repositories",
+                "category": "JJ View Local",
+                "icon": "$(refresh)"
+            },
+            {
                 "command": "jj-view.restore",
                 "title": "Restore",
                 "category": "JJ View Local",
@@ -722,7 +728,7 @@
                     "when": "view == jj-view.reposView"
                 },
                 {
-                    "command": "jj-view.refresh",
+                    "command": "jj-view.refreshAll",
                     "group": "navigation@2",
                     "when": "view == jj-view.reposView"
                 },

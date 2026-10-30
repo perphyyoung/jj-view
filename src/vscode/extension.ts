@@ -10,6 +10,7 @@ import { getSquashStorageDir, isSquashInProgress } from '../core/commands/squash
 import { JjContextKey } from '../core/jj-context-keys';
 import { JjEditFsService } from '../core/jj-edit-fs-service';
 import { JjProcessTracker } from '../core/jj-process-tracker';
+import type { JjRepository } from '../core/jj-repository';
 import { JjRepositoryManager } from '../core/jj-repository-manager';
 import { JjViewFsService } from '../core/jj-view-fs-service';
 import { resolveJjBinary } from '../utils/binary-utils';
@@ -292,51 +293,98 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         }),
     );
 
-    context.subscriptions.push(
-        repositoryManager.onDidOpenRepository((repo) => {
-            const repoPrefix = path.basename(repo.rootUri.fsPath);
-            const repoOutputChannel = new OutputChannel(realOutputChannel, repoPrefix);
-            const scmProvider = new VsCodeScmProvider(
-                context,
-                repo,
-                repoOutputChannel,
-                repositoryManager,
-                viewFileSystemProvider,
-                editFileSystemProvider,
-                () => repositoryManager.focusedRepository?.rootUri.fsPath === repo.rootUri.fsPath,
-                undefined,
-            );
+    /**
+     * Creates (or returns) the SCM provider for a repository. Kept separate from
+     * `onDidOpenRepository` so a forced refresh can rebuild providers that failed to
+     * initialize when the extension was (re)installed.
+     */
+    const ensureScmProvider = (repo: JjRepository): VsCodeScmProvider => {
+        const existing = scmProviders.get(repo.rootUri.fsPath);
+        if (existing) {
+            return existing;
+        }
 
-            const decorationProvider = vscode.window.registerFileDecorationProvider(scmProvider.decorationProvider);
-            const repoStatusSub = repo.onDidStatusChange((event) => {
-                if (repositoryManager.focusedRepository?.rootUri.fsPath === repo.rootUri.fsPath) {
-                    // Refresh webview and commit details panel in parallel
-                    Promise.all([
-                        logWebviewProvider.controller.refresh(event.reason),
-                        commitDetailsProvider.refresh(),
-                    ]).catch((err) => {
-                        outputChannel.error('[Extension] Failed to refresh views on status change', toError(err));
-                    });
-                }
-            });
+        const repoPrefix = path.basename(repo.rootUri.fsPath);
+        const repoOutputChannel = new OutputChannel(realOutputChannel, repoPrefix);
+        const scmProvider = new VsCodeScmProvider(
+            context,
+            repo,
+            repoOutputChannel,
+            repositoryManager,
+            viewFileSystemProvider,
+            editFileSystemProvider,
+            () => repositoryManager.focusedRepository?.rootUri.fsPath === repo.rootUri.fsPath,
+            undefined,
+        );
 
-            const composite = vscode.Disposable.from(scmProvider, decorationProvider, repoStatusSub);
-            scmProviders.set(repo.rootUri.fsPath, scmProvider);
-            activeScmSubscriptions.set(repo.rootUri.fsPath, composite);
-
-            if (
-                !logWebviewProvider.repository ||
-                repositoryManager.focusedRepository?.rootUri.fsPath === repo.rootUri.fsPath
-            ) {
-                logWebviewProvider.updateRepository(repo).catch((err) => {
-                    outputChannel.error('[Extension] Failed to update webview repository', toError(err));
+        const decorationProvider = vscode.window.registerFileDecorationProvider(scmProvider.decorationProvider);
+        const repoStatusSub = repo.onDidStatusChange((event) => {
+            if (repositoryManager.focusedRepository?.rootUri.fsPath === repo.rootUri.fsPath) {
+                // Refresh webview and commit details panel in parallel
+                Promise.all([
+                    logWebviewProvider.controller.refresh(event.reason),
+                    commitDetailsProvider.refresh(),
+                ]).catch((err) => {
+                    outputChannel.error('[Extension] Failed to refresh views on status change', toError(err));
                 });
             }
+        });
 
-            // Fire and forget: check if we should warn about git colocation
-            checkGitColocation(repo.jj).catch((e) => {
-                outputChannel.error(`[Extension] Colocation check failed for ${repoPrefix}`, toError(e));
+        const composite = vscode.Disposable.from(scmProvider, decorationProvider, repoStatusSub);
+        scmProviders.set(repo.rootUri.fsPath, scmProvider);
+        activeScmSubscriptions.set(repo.rootUri.fsPath, composite);
+
+        if (
+            !logWebviewProvider.repository ||
+            repositoryManager.focusedRepository?.rootUri.fsPath === repo.rootUri.fsPath
+        ) {
+            logWebviewProvider.updateRepository(repo).catch((err) => {
+                outputChannel.error('[Extension] Failed to update webview repository', toError(err));
             });
+        }
+
+        // Fire and forget: check if we should warn about git colocation
+        checkGitColocation(repo.jj).catch((e) => {
+            outputChannel.error(`[Extension] Colocation check failed for ${repoPrefix}`, toError(e));
+        });
+
+        return scmProvider;
+    };
+
+    /**
+     * Force refresh every repository: drop the cached repository list, rescan the
+     * workspace folders and rebuild + refresh each SCM snapshot. Used by the
+     * Repositories view title button, where a single-repository refresh is not enough
+     * (e.g. after reinstalling the extension, when some providers failed to initialize).
+     */
+    const forceRefreshAllRepositories = async (): Promise<void> => {
+        const start = performance.now();
+        outputChannel.info('[Extension] Force refresh all repositories: clearing and rescanning...');
+        await repositoryManager.clear();
+        await repositoryManager.scanForRepositories();
+
+        const repos = repositoryManager.repositories;
+        await Promise.all(
+            repos.map(async (repo) => {
+                try {
+                    await repo.jj.clearCache();
+                    const scm = ensureScmProvider(repo);
+                    await scm.refresh({ forceSnapshot: true, reason: 'force refresh all' });
+                    outputChannel.info(`[Extension] Refreshed repository ${repo.rootUri.fsPath}`);
+                } catch (e: unknown) {
+                    outputChannel.error(`[Extension] Failed to refresh repository ${repo.rootUri.fsPath}`, toError(e));
+                }
+            }),
+        );
+
+        const elapsed = (performance.now() - start).toFixed(0);
+        outputChannel.info(`[Extension] Force refresh all done in ${elapsed}ms (${repos.length} repositories)`);
+    };
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jj-view.refreshAll', forceRefreshAllRepositories),
+        repositoryManager.onDidOpenRepository((repo) => {
+            ensureScmProvider(repo);
         }),
         repositoryManager.onDidCloseRepository(async (repo) => {
             const sub = activeScmSubscriptions.get(repo.rootUri.fsPath);

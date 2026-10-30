@@ -261,6 +261,29 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 ...this._statePayload(),
             },
         });
+        this._ensureFocusedSnapshot();
+    }
+
+    /**
+     * A freshly (re)installed extension may receive `ready` before any snapshot exists
+     * (the provider's initial refresh can fail or still be in flight). Force one refresh
+     * so the Changes view is not left blank until the next file event.
+     */
+    private _ensureFocusedSnapshot(): void {
+        if (this._mode !== 'changes') {
+            return;
+        }
+        const focusedRoot = this._repositoryManager.focusedRepository?.rootUri.fsPath;
+        if (!focusedRoot) {
+            return;
+        }
+        const scm = this._scmProviders.get(focusedRoot);
+        if (!scm || scm.scmModel.snapshot) {
+            return;
+        }
+        void scm.refresh({ forceSnapshot: true, reason: 'changes-view init' }).catch(() => {
+            this._outputChannel?.debug?.('[ChangesView] Initial snapshot refresh failed');
+        });
     }
 
     private _postState(): void {
@@ -323,7 +346,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 const targets = root
                     ? [this._scmProviders.get(root)].filter((scm): scm is VsCodeScmProvider => Boolean(scm))
                     : Array.from(this._scmProviders.values());
-                await Promise.all(targets.map((scm) => scm.refresh({ reason: 'changes-view' })));
+                await Promise.all(targets.map((scm) => scm.refresh({ forceSnapshot: true, reason: 'changes-view' })));
                 return;
             }
             case 'draft': {

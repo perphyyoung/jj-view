@@ -138,6 +138,8 @@ git config core.autocrlf false   # 仅本仓库
 | Changes 视图只订阅**聚焦仓库**的快照，Repositories 订阅全部 | 减少反序列化与 postMessage 次数 |
 | 非聚焦仓库事件 debounce 1500ms（聚焦为配置的 100ms） | 保存/构建产生的连续事件合并为一次 |
 | 窗口在后台时只有聚焦仓库响应 watcher 事件 | 后台构建不再让所有仓库各自跑一轮 `jj status`/`log` |
+| Repos 标题栏 refresh 改为 `jj-view.refreshAll`：`repositoryManager.clear()` + 重新扫描 + 逐仓库 `forceSnapshot` 并补建缺失的 `VsCodeScmProvider` | 重装后 provider 未创建或快照为空时，单仓库 refresh 修不回来 |
+| Changes 标题栏 refresh 仍只刷新选定仓库，但补上 `forceSnapshot`；`ready` 时若快照为空则主动强制刷新一次 | 面板重建后可能先拿到空快照，等文件事件才恢复 |
 
 ### 2.7 webview 自定义图标
 
