@@ -52,7 +52,7 @@ export interface Api {
 export async function activate(context: vscode.ExtensionContext): Promise<Api> {
     const folders = vscode.workspace.workspaceFolders || [];
     const workspaceRoot = folders.length > 0 ? folders[0].uri.fsPath : '';
-    const realOutputChannel = vscode.window.createOutputChannel('JJ View', { log: true });
+    const realOutputChannel = vscode.window.createOutputChannel('JJ View Local', { log: true });
     const outputChannel = new OutputChannel(realOutputChannel);
     context.subscriptions.push(realOutputChannel);
 
@@ -433,7 +433,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
             }
             void vscode.window
                 .showInformationMessage(
-                    'JJ View: reload the window to apply the native Source Control integration setting.',
+                    'JJ View Local: reload the window to apply the native Source Control integration setting.',
                     'Reload Window',
                 )
                 .then((choice) => {

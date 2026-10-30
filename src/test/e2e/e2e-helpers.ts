@@ -1394,7 +1394,7 @@ export function maybePrintExtensionLogs(userDataDir: string) {
                         if (found) {
                             return found;
                         }
-                    } else if (entry.name.includes('JJ View') && entry.name.endsWith('.log')) {
+                    } else if (entry.name.includes('JJ View Local') && entry.name.endsWith('.log')) {
                         return fullPath;
                     }
                 }

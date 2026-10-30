@@ -20,14 +20,14 @@ test.describe('E2E Utilities', () => {
             // Retrieve output channel logs
             let logs = '';
             await expect(async () => {
-                logs = await vscode.getOutputChannelLogs('JJ View');
+                logs = await vscode.getOutputChannelLogs('JJ View Local');
                 expect(logs).toContain('[RepositoryManager]');
             }).toPass({ timeout: 5000 });
 
             expect(logs).toContain('Total registered repositories: 1');
         } catch (err) {
             console.log('--- TEST FAILED, OUTPUT CHANNEL LOGS ---');
-            console.log(await vscode.getOutputChannelLogs('JJ View'));
+            console.log(await vscode.getOutputChannelLogs('JJ View Local'));
             console.log('----------------------------------------');
             throw err;
         }
@@ -55,7 +55,7 @@ test.describe('E2E Utilities', () => {
             expect(result).toBeGreaterThanOrEqual(3);
         } catch (err) {
             console.log('--- TEST FAILED, OUTPUT CHANNEL LOGS ---');
-            console.log(await vscode.getOutputChannelLogs('JJ View'));
+            console.log(await vscode.getOutputChannelLogs('JJ View Local'));
             console.log('----------------------------------------');
             throw err;
         }
@@ -76,7 +76,7 @@ test.describe('E2E Utilities', () => {
             expect(result).toBe(true);
         } catch (err) {
             console.log('--- TEST FAILED, OUTPUT CHANNEL LOGS ---');
-            console.log(await vscode.getOutputChannelLogs('JJ View'));
+            console.log(await vscode.getOutputChannelLogs('JJ View Local'));
             console.log('----------------------------------------');
             throw err;
         }
