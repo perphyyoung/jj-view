@@ -35,7 +35,6 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
     private readonly _cache = new Map<string, LineAnnotation[] | undefined>();
     private readonly _detailsCache = new Map<string, CommitDetails | undefined>();
     private readonly _parentCache = new Map<string, LineAnnotation[] | undefined>();
-    private readonly _wcCommitIds = new Map<string, string | undefined>();
     private readonly _diffCache = new Map<string, readonly DiffChunkLike[] | undefined>();
     private _timer: ReturnType<typeof setTimeout> | undefined;
     private _disposed = false;
@@ -213,21 +212,18 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         ]);
     }
 
-    /** Commit id of the working-copy commit (`@`), used to detect uncommitted lines. */
+    /**
+     * Commit id of the working-copy commit (`@`), used to detect uncommitted lines.
+     * Queried fresh every time: context-menu actions (advance bookmark / new / squash) swap
+     * `@` without touching any document, so a cached id would go stale and misclassify lines.
+     */
     private async _getWorkingCopyCommitId(repo: JjRepository, root: string): Promise<string | undefined> {
-        if (this._wcCommitIds.has(root)) {
-            return this._wcCommitIds.get(root);
-        }
-
-        let commitId: string | undefined;
         try {
-            const [entry] = await repo.jj.getLog({ revision: '@', limit: 1 });
-            commitId = entry?.commit_id;
+            return (await repo.jj.getLogEntry('@'))?.commit_id;
         } catch (error: unknown) {
             this._outputChannel?.debug?.(`[LineBlame] working copy lookup failed for ${root}: ${String(error)}`);
+            return undefined;
         }
-        this._wcCommitIds.set(root, commitId);
-        return commitId;
     }
 
     /** Annotations of the parent revision (`@-`), resolved lazily for uncommitted lines. */
@@ -340,8 +336,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
     }
 
     private _invalidate(fsPath: string): void {
-        // The working-copy commit id changes with every edit, so drop it along with the file caches.
-        this._wcCommitIds.clear();
+        // The working-copy commit id and diff both change with every edit.
         this._diffCache.clear();
         const suffix = `|${fsPath}|`;
         for (const key of [...this._cache.keys()]) {

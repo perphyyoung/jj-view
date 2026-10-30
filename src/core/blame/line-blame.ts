@@ -89,10 +89,7 @@ export function formatHoverMarkdown(annotation: LineAnnotation, details?: Commit
     if (diff) {
         sections.push(formatDiffBlock(diff));
     }
-    const description = (details?.description ?? annotation.summary ?? '').trim();
-    if (description.length > 0) {
-        sections.push([description]);
-    }
+    sections.push([resolveDescription(details, annotation.summary)]);
     return joinSections(sections);
 }
 
@@ -119,10 +116,7 @@ export function formatUncommittedHoverMarkdown(
     }
     if (parent) {
         sections.push([annotationHeader(parent.author, parent.ago)]);
-        const description = (details?.description ?? parent.summary ?? '').trim();
-        if (description.length > 0) {
-            sections.push([description]);
-        }
+        sections.push([resolveDescription(details, parent.summary)]);
     }
     return joinSections(sections);
 }
@@ -191,6 +185,10 @@ function formatDiffBlock(diff: LineChange): string[] {
 
 function clipDiffLine(text: string): string {
     return text.length > MAX_DIFF_LINE_LENGTH ? `${text.slice(0, MAX_DIFF_LINE_LENGTH - 1)}…` : text;
+}
+
+function resolveDescription(details: CommitDetails | undefined, summary: string | undefined): string {
+    return (details?.description ?? summary ?? '').trim() || '(no commit message)';
 }
 
 function joinSections(sections: readonly string[][]): string {

@@ -135,6 +135,10 @@ describe('formatHoverMarkdown', () => {
     it('falls back to the summary when full details are unavailable', () => {
         expect(formatHoverMarkdown(annotation)).toBe('**py** · 1 day ago\n\nfeat: 默认本地化运行并收敛刷新链路');
     });
+
+    it('shows a placeholder when the commit has no message', () => {
+        expect(formatHoverMarkdown({ ...annotation, summary: '' })).toBe('**py** · 1 day ago\n\n(no commit message)');
+    });
 });
 
 describe('isUncommittedLine', () => {
@@ -174,6 +178,12 @@ describe('formatUncommittedHoverMarkdown', () => {
     it('falls back to the parent summary without full details', () => {
         expect(formatUncommittedHoverMarkdown(parent)).toBe(
             '**Uncommitted changes**\n\n**alice** · 2 days ago\n\nprevious message',
+        );
+    });
+
+    it('shows a placeholder when the parent commit has no message', () => {
+        expect(formatUncommittedHoverMarkdown({ ...parent, summary: '' })).toBe(
+            '**Uncommitted changes**\n\n**alice** · 2 days ago\n\n(no commit message)',
         );
     });
 
