@@ -70,7 +70,6 @@ export interface HostNavigation {
         resources: { leftUri: Uri; rightUri: Uri; label: string }[],
         options?: HostOpenOptions,
     ): Promise<void>;
-    openMergeEditor(resourceUri: Uri): Promise<void>;
     openCommitDetails(
         repoRoot: Uri,
         changeId: string,

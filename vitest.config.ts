@@ -15,7 +15,8 @@ export default defineConfig({
     plugins: [svelte()],
     test: {
         include: ['src/test/**/*.test.{ts,tsx}', 'web/test/**/*.test.ts', 'tooling/**/*.test.ts'],
-        exclude: ['src/test/**/*.integration.test.ts'], // Exclude integration tests
+        // Integration tests need a real VS Code host; repo tests need a real jj/git working copy.
+        exclude: ['src/test/**/*.integration.test.ts', 'src/test/**/*.repo.test.ts'],
         // Temporary global setup to provide vscode mock during host abstraction retrofit
         setupFiles: ['./src/test/vitest-setup.ts'],
         globals: true,
@@ -23,10 +24,14 @@ export default defineConfig({
             JJ_VIEW_PERF_TRACE_FILE: traceFile,
         },
         reporters: ['default', new VitestPerfReporter(traceFile)],
-        testTimeout: isWindows ? 60000 : 20000,
-        hookTimeout: isWindows ? 60000 : 20000,
+        // Threads start far faster than forked processes, which matters on Windows.
+        pool: 'threads',
+        // Unit tests are pure logic; anything slower than this belongs in the repo tier.
+        testTimeout: 15000,
+        hookTimeout: 15000,
         retry: isWindows && process.env.CI ? 1 : 0,
         maxWorkers: isWindows && process.env.CI ? 2 : undefined,
-        execArgv: ['--max-old-space-size=4096'],
+        // `execArgv` is rejected by worker threads (ERR_WORKER_INVALID_EXEC_ARGV); set the heap
+        // limit through NODE_OPTIONS instead when a larger heap is needed.
     },
 });

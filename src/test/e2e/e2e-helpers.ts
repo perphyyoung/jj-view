@@ -1135,20 +1135,6 @@ export async function openScmDiff(
 }
 
 /**
- * Robustly opens a conflict merge editor from the SCM pane.
- */
-export async function openScmMerge(
-    page: Page,
-    fileName: string | RegExp,
-    groupName?: string | RegExp,
-): Promise<Locator> {
-    const start = Date.now();
-    const result = await openScmItem(page, fileName, '.merge-editor', groupName);
-    logPerf(`openScmMerge ${typeof fileName === 'string' ? fileName : 'regex'}`, start);
-    return result;
-}
-
-/**
  * Robustly opens a file (regular editor) from the SCM pane by clicking its tree item.
  */
 export async function openScmFile(

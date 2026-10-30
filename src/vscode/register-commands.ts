@@ -20,7 +20,6 @@ import { discardChangeCommand } from '../core/commands/discard-change';
 import { duplicateCommand } from '../core/commands/duplicate';
 import { editCommand } from '../core/commands/edit';
 import { newMergeChangeCommand } from '../core/commands/merge';
-import { openMergeEditorCommand } from '../core/commands/merge-editor';
 import { showMultiFileDiffCommand } from '../core/commands/multi-diff';
 import { newCommand } from '../core/commands/new';
 import { newAfterCommand } from '../core/commands/new-after';
@@ -71,7 +70,6 @@ import { createDiscardChangePayload } from './payloads/discard-change.payload';
 import { createDuplicatePayload } from './payloads/duplicate.payload';
 import { createEditPayload } from './payloads/edit.payload';
 import { createNewMergeChangePayload } from './payloads/merge.payload';
-import { createOpenMergeEditorPayload } from './payloads/merge-editor.payload';
 import { createShowMultiFileDiffPayload } from './payloads/multi-diff.payload';
 import { createNewPayload } from './payloads/new.payload';
 import { createNewAfterPayload } from './payloads/new-after.payload';
@@ -223,7 +221,6 @@ export function registerCommands(options: RegisterCommandsOptions): void {
         ),
         registerCommandWithPayload('jj-view.deleteBookmark', createDeleteBookmarkPayload, deleteBookmarkCommand),
         registerCommandWithPayload('jj-view.showDetails', createShowDetailsPayload, showDetailsCommand),
-        registerCommandWithPayload('jj-view.openMergeEditor', createOpenMergeEditorPayload, openMergeEditorCommand),
         registerCommandWithPayload('jj-view.absorb', createAbsorbPayload, absorbCommand),
         registerCommandWithPayload(
             'jj-view.showMultiFileDiff',

@@ -17,6 +17,7 @@
     },
     "exclude": [
         "vitest.config.ts",
+        "vitest.repo.config.ts",
         "playwright.config.ts",
         "playwright.e2e.config.ts",
         "playwright.web.config.ts",

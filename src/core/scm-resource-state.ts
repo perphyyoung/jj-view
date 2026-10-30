@@ -59,37 +59,27 @@ export function createJjResourceState(
     };
 
     const command: ResourceCommand =
-        entry.conflicted && options.inConflictGroup
-            ? {
-                  command: 'jj-view.openMergeEditor',
-                  title: 'Open 3-Way Merge',
-                  arguments: [{ resourceUri }],
-              }
-            : openDiffOnClick || isDeleted
-              ? diffCommand
-              : {
-                    command: 'vscode.open',
-                    title: 'Open File',
-                    arguments: [toFileUri(resourceUri)],
-                };
+        openDiffOnClick || isDeleted
+            ? diffCommand
+            : {
+                  command: 'vscode.open',
+                  title: 'Open File',
+                  arguments: [toFileUri(resourceUri)],
+              };
 
     const flags: string[] = [];
 
     flags.push(ScmContextValue.ResourceAllowRestore);
 
-    if (entry.conflicted && options.inConflictGroup) {
-        flags.push(ScmContextValue.ResourceAllowOpenMergeEditor);
-    } else {
-        flags.push(ScmContextValue.ResourceAllowOpen);
-        if (options.squashable) {
-            flags.push(ScmContextValue.ResourceAllowSquashIntoParent);
-            if (options.multipleAncestors) {
-                flags.push(ScmContextValue.ResourceAllowSquashIntoAncestor);
-            }
+    flags.push(ScmContextValue.ResourceAllowOpen);
+    if (options.squashable) {
+        flags.push(ScmContextValue.ResourceAllowSquashIntoParent);
+        if (options.multipleAncestors) {
+            flags.push(ScmContextValue.ResourceAllowSquashIntoAncestor);
         }
-        if (!isCurrentWorkingCopy || options.hasChild) {
-            flags.push(ScmContextValue.ResourceAllowSquashIntoChild);
-        }
+    }
+    if (!isCurrentWorkingCopy || options.hasChild) {
+        flags.push(ScmContextValue.ResourceAllowSquashIntoChild);
     }
 
     const contextValue = flags.join(' ');

@@ -99,23 +99,29 @@ git config core.autocrlf false   # 仅本仓库
 | View as Tree   | 命令 `jj-view.changesAsTree` / `jj-view.changesAsList`，按上下文键 `jj.changesViewAsTree` 互斥显示，模式存 `globalState`（`jj-view.changesViewMode`，默认 `list`）                                                                |
 | 目录树         | `web/src/scm/file-tree.ts` 构建；单链目录折叠成 `src \ core \ webview` 一行（与原生 compact folders 一致）                                                                                                                        |
 
-### 2.3 原生 SCM 开关（默认关闭）
+### 2.3 原生 SCM 集成已移除
 
-`jj-view.nativeScm.enabled`（默认 `false`）：关闭时 `VsCodeScmProvider` 跳过 `createSourceControl`、resource group、`inputBox`、`quickDiffProvider`，但**保留** `ScmModel` 与 `FileDecorationProvider`，因此 Changes / Repositories / 文件装饰不受影响。
+`jj-view.nativeScm.enabled` 开关删除，原生 Source Control 集成整体移除：
 
-- 关闭后失去：gutter quick diff、SCM 输入框、`scm/*` 菜单、`scmProvider =~ /^jj/` 的 3 个键位
-- 修改该设置后提示 Reload Window（provider 按仓库在激活时创建）
+- 不再 `createSourceControl`，没有 SCM 输入框、resource group、gutter quick diff
+- `scm/title`、`scm/resourceGroup/context`、`scm/resourceState/context`、`scm/change/title` 菜单与 `scmProvider =~ /^jj/` 的 3 个键位一并删除
+- **保留** `ScmModel`、`FileDecorationProvider` 与 Changes / Repositories 视图；描述输入缓存于内存（`_inputBoxFallback`）
+- 仅原生 SCM 使用的 `jj-view.focusRepository`、`jj-view.focusDescriptionInput` 命令删除
 
-### 2.4 Code Forge 本地化（默认关闭）
+### 2.4 Code Forge 集成已移除
 
-`jj-view.codeForge.enabled`（默认 `false`）：
+`jj-view.codeForge.enabled` / `jj-view.codeForge.provider` 开关删除，GitHub / GitLab / Gerrit 集成整体移除（约 6.6k 行）：
 
-- 不注册 GitHub/GitLab/Gerrit provider 工厂，`CodeForgeService` 构造时直接返回
-- `detectActiveProvider` / `startPolling` / `forceRefresh` / `requestRefreshWithBackoffs` 全部短路 → 不读 `git remote`、不请求 `api.github.com`、不触发 GitHub 认证
-- `jj.codeForgeAuthManageable` 恒为 false，Manage Auth 按钮隐藏
-- **保留手动上传**：`upload` / `uploadStack` / `advanceBookmarkAndUpload` 仍执行 `jj git push`，只是推送后不再刷新远端状态
+- 删除 provider、auth、registry、service，以及评论（Comments）与 Gerrit 凭据/主机探测工具（`gerrit-credential-utils`、`gerrit-host-detection`、`fetch-utils`）
+- 删除 `jj.codeForge*` 上下文键、`manageAuth` 与全部评论命令/菜单
+- **保留手动上传**：`upload` / `uploadStack` 仍执行 `jj git push`，但不再回读远端状态、不再做 Gerrit stack 准备与 PR 同步
 
-### 2.5 刷新机制
+### 2.5 合并编辑器（冲突解决）已移除
+
+- 删除 `JjMergeService`、`VsCodeMergeContentProvider`、`jj-view.openMergeEditor` 命令与 `jj-merge-output` scheme
+- 冲突文件仍出现在 Changes 视图的冲突组，点击按普通差异打开；`jj-view.newMergeChange`（创建合并提交）不受影响
+
+### 2.6 刷新机制
 
 | 改动                                                                                                                  | 原因                                                                                                                                        |
 | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -132,7 +138,7 @@ git config core.autocrlf false   # 仅本仓库
 | 非聚焦仓库事件 debounce 1500ms（聚焦为配置的 100ms） | 保存/构建产生的连续事件合并为一次 |
 | 窗口在后台时只有聚焦仓库响应 watcher 事件 | 后台构建不再让所有仓库各自跑一轮 `jj status`/`log` |
 
-### 2.6 webview 自定义图标
+### 2.7 webview 自定义图标
 
 `getWebviewHtml()` 现在内联 `media/custom-icons/jj-view-icons.css`（去掉原 `@font-face`），并追加指向 `jj-view-icons.woff2` 的 webview URI 字体声明。否则 `$(jj-icon-squash-into)` 这类自定义图标在 webview 中是空白。
 
@@ -231,19 +237,21 @@ pnpm build              # 主题 + 图标 + 类型 + lint + esbuild
 
 ### 测试
 
-| 类型            | 命令                                                                         | 覆盖                                                                             |
-| --------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| 静态检查        | `pnpm lint`、`pnpm check-types`                                              | biome + core isolation + fsPath 断言；两套 tsconfig                              |
-| 组件单测        | `pnpm exec vitest run web/test/scm-pane.test.ts web/test/file-tree.test.ts`  | 16 个用例（SCM 渲染、树构建）                                                    |
-| 刷新单测        | `pnpm exec vitest run src/test/change-detection-manager.test.ts`             | 23 个用例（watch/polling、deferred、自产 op 抑制、失败回退）                     |
-| Code Forge 单测 | `pnpm exec vitest run src/test/code-forge-service.test.ts`                   | 14 个用例（含“禁用后不建 provider、不读 remote、不轮询”）                        |
-| 激活测试        | `pnpm test:activation`                                                       | 真实 VS Code 激活 + 命令注册                                                     |
-| 容器 e2e        | `pnpm exec playwright test -c playwright.e2e.config.ts changes-view.spec.ts` | 4 个用例：Changes 渲染/树切换、原生 SCM 关闭、Code Forge 关闭、Repositories 徽标 |
+| 层级           | 命令                          | 覆盖                                                          |
+| -------------- | ----------------------------- | ------------------------------------------------------------- |
+| 静态检查       | `pnpm lint`、`pnpm check-types` | biome + core isolation + fsPath + local-only；两套 tsconfig    |
+| 单元测试（快） | `pnpm test:unit`              | 纯逻辑 / 纯 mock，约 670 个用例，4–5 秒                        |
+| 仓库级测试     | `pnpm test:repo`              | `*.repo.test.ts`：真实 `jj`/`git` 工作副本，分钟级             |
+| 按变更执行     | `pnpm test:changed`           | 以 git HEAD 为基线，只跑受影响文件                             |
+| 激活测试       | `pnpm test:activation`        | 真实 VS Code 激活 + 命令注册                                   |
+| 容器 e2e       | `pnpm test:e2e changes-view`  | Changes 渲染/树切换、Repositories 徽标                         |
+
+单测分层约定：`*.test.ts` 必须是纯逻辑（不建仓库、不启子进程）；需要真实 jj 仓库的用 `*.repo.test.ts`，需要真实 VS Code 的用 `*.integration.test.ts`。
 
 e2e 注意事项：
 
 - `src/test/e2e/vscode-fixture.ts` 的路径比较已做 Windows 归一化（VS Code 返回小写盘符 `c:\`），否则所有用例 15s 超时
-- `DEFAULT_SETTINGS` 中显式开启 `nativeScm.enabled` 与 `codeForge.enabled`，避免既有 SCM / GitHub / GitLab / Gerrit 用例因新默认值失效；容器相关用例按需覆盖为 `false`
+- `DEFAULT_SETTINGS` 不再注入已删除的 `nativeScm.enabled` / `codeForge.enabled`；依赖原生 SCM 与 GitHub/GitLab/Gerrit 的 e2e 已随之删除
 
 ---
 
@@ -251,6 +259,6 @@ e2e 注意事项：
 
 - 未清理 `.vscodeignore` / `.gitignore` / `.biomeignore` 中已删除路径的条目（无害）
 - 多选批量操作（等价 `TreeView.selection`）未实现
-- gutter quick diff 依赖原生 SCM，关闭后不可用
-- Code Forge 轮询实际是 60s 定时器 + 失败退避；本地化后默认不启动，未再调整
+- gutter quick diff 随原生 SCM 集成一并移除，不可再用
+- 冲突解决（三方合并编辑器）已移除，冲突文件只能按普通差异查看/手工编辑
 - 点击 Changes 中的 commit 定位 JJ Log 的联动（原 P3）未做

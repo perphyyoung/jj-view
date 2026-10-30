@@ -2,7 +2,6 @@
  * Copyright 2026 Google LLC
  * SPDX-License-Identifier: Apache-2.0
  */
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { type Event, EventEmitter } from '../core/host/events';
 import type {
@@ -30,7 +29,7 @@ import type {
 } from '../core/host/host-environment';
 import type { HostSystem } from '../core/host/host-system';
 import { NodeHostSystem } from '../core/host/node-host-system';
-import { createCommitDetailsUri, getFsPathFromUri, getUriParams, toFileUri, type Uri } from '../core/uri-utils';
+import { createCommitDetailsUri, type Uri } from '../core/uri-utils';
 import { formatCommitTitle } from '../utils/jj-utils';
 import type { LoggerChannel } from '../utils/output-channel';
 import { getJjViewConfig } from './config-utils';
@@ -265,43 +264,6 @@ export class VsCodeHostNavigation implements HostNavigation {
         // vscode.changes expects 3-tuples of [labelUri, leftUri, rightUri] where labelUri is the target resource URI
         const changes = resources.map((r) => [r.rightUri, r.leftUri, r.rightUri]);
         await vscode.commands.executeCommand('vscode.changes', title, changes);
-    }
-
-    async openMergeEditor(resourceUri: Uri): Promise<void> {
-        const fsPath = getFsPathFromUri(resourceUri);
-        const encodedPath = encodeURIComponent(fsPath);
-        const params = getUriParams(resourceUri);
-        const root = params.get('root') || params.get('repoRoot');
-        const rootParam = root ? `&root=${encodeURIComponent(root)}` : '';
-        const relativePath = vscode.workspace.asRelativePath(toFileUri(resourceUri));
-        const virtualPath = path.posix.join('/', relativePath);
-
-        const baseUri = resourceUri.with({
-            scheme: 'jj-merge-output',
-            authority: 'jj-merge',
-            path: virtualPath,
-            fragment: `path=${encodedPath}&part=base${rootParam}`,
-        });
-        const leftUri = resourceUri.with({
-            scheme: 'jj-merge-output',
-            authority: 'jj-merge',
-            path: virtualPath,
-            fragment: `path=${encodedPath}&part=left${rootParam}`,
-        });
-        const rightUri = resourceUri.with({
-            scheme: 'jj-merge-output',
-            authority: 'jj-merge',
-            path: virtualPath,
-            fragment: `path=${encodedPath}&part=right${rootParam}`,
-        });
-        const outputUri = toFileUri(resourceUri);
-        const args = {
-            base: baseUri,
-            input1: { uri: leftUri, title: 'Side 1' },
-            input2: { uri: rightUri, title: 'Side 2' },
-            output: outputUri,
-        };
-        await vscode.commands.executeCommand('_open.mergeEditor', args);
     }
 
     async openCommitDetails(

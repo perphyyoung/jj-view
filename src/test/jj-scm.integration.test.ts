@@ -11,7 +11,6 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { compareAllFilesWithRevisionCommand } from '../core/commands/compare-all-files-with-revision';
 import { setDescriptionCommand } from '../core/commands/describe';
-import { openMergeEditorCommand } from '../core/commands/merge-editor';
 import { squashFilesIntoParentCommand } from '../core/commands/squash-files';
 import {
     completeSquashRevisionCommand,
@@ -24,7 +23,6 @@ import type { JjResourceState } from '../core/scm-resource-state';
 import { toFileUri, Uri } from '../core/uri-utils';
 import { createCompareAllFilesWithRevisionPayload } from '../vscode/payloads/compare-all-files-with-revision.payload';
 import { createSetDescriptionPayload } from '../vscode/payloads/describe.payload';
-import { createOpenMergeEditorPayload } from '../vscode/payloads/merge-editor.payload';
 import { createSquashFilesIntoParentPayload } from '../vscode/payloads/squash-files.payload';
 import { createSquashRevisionIntoParentPayload } from '../vscode/payloads/squash-revision.payload';
 import { createSquashSelectionIntoParentPayload } from '../vscode/payloads/squash-selection.payload';
@@ -32,7 +30,6 @@ import type { VsCodeScmProvider } from '../vscode/providers/vscode-scm-provider'
 import {
     createIntegrationCommandContext,
     createTestRepositoryContext,
-    stubCommand,
     stubConfig,
     type TestRepositoryContext,
     waitUntil,
@@ -393,74 +390,6 @@ suite('JJ SCM Provider Integration Test', () => {
         assert.ok(!diff.includes('+B_mod'), 'Diff should NOT show +B_mod (change moved to parent)');
     });
 
-    test('openMergeEditor constructs correct argument format for _open.mergeEditor', async () => {
-        // Setup a conflict scenario
-
-        // 4. Create merge commit
-        await buildGraph(repo, [
-            {
-                label: 'base',
-                description: 'base',
-                files: { 'merge-test.txt': 'base\n' },
-            },
-            {
-                label: 'left',
-                parents: ['base'],
-                description: 'left',
-                files: { 'merge-test.txt': 'left\n' },
-            },
-            {
-                label: 'right',
-                parents: ['base'],
-                description: 'right',
-                files: { 'merge-test.txt': 'right\n' },
-            },
-            {
-                label: 'merge',
-                parents: ['left', 'right'],
-                description: 'merge',
-                isCurrentWorkingCopy: true,
-            },
-        ]);
-
-        await scmProvider.refresh({ forceSnapshot: true });
-        const conflictGroup = accessPrivate(scmProvider, '_conflictGroup') as vscode.SourceControlResourceGroup;
-        assert.ok(conflictGroup.resourceStates.length > 0, 'Should have conflicted file');
-
-        const executeStub = stubCommand(sandbox, '_open.mergeEditor', () => null);
-
-        // Call openMergeEditor
-        await openMergeEditorCommand(
-            createIntegrationCommandContext(scmProvider),
-            createOpenMergeEditorPayload(conflictGroup.resourceStates),
-        );
-
-        // Verify the argument format
-        const mergeEditorCall = executeStub.getCalls().find((call) => call.args[0] === '_open.mergeEditor');
-        assert.ok(mergeEditorCall, 'Should have called _open.mergeEditor');
-        const args = mergeEditorCall.args[1] as {
-            base: Uri;
-            input1: { uri: Uri };
-            input2: { uri: Uri };
-            output: Uri;
-        };
-
-        // CRITICAL: base must be a plain URI, not an object
-        assert.ok(Uri.isUri(args.base), 'base should be a plain Uri, not an object');
-
-        // input1 and input2 should be objects with uri property
-        assert.ok(typeof args.input1 === 'object', 'input1 should be an object');
-        assert.ok(Uri.isUri(args.input1.uri), 'input1.uri should be a Uri');
-        assert.ok(typeof args.input2 === 'object', 'input2 should be an object');
-        assert.ok(Uri.isUri(args.input2.uri), 'input2.uri should be a Uri');
-
-        // output should be a URI
-        assert.ok(Uri.isUri(args.output), 'output should be a Uri');
-
-        // Verify URI scheme
-        assert.strictEqual(args.base.scheme, 'jj-merge-output', 'base scheme should be jj-merge-output');
-        assert.strictEqual(args.input1.uri.scheme, 'jj-merge-output', 'input1.uri scheme should be jj-merge-output');
-    });
     test('Squash button squashes changes into parent', async () => {
         const filePath = path.join(repo.path, 'squash-test.txt');
         await buildGraph(repo, [
@@ -763,13 +692,8 @@ suite('JJ SCM Provider Integration Test', () => {
         const conflictState = conflictGroup.resourceStates.find((s) => s.resourceUri.fsPath.endsWith('conflict.txt'));
         assert.ok(conflictState, 'Conflict resource missing');
         assert.ok(
-            (conflictState.contextValue as string).includes(ScmContextValue.ResourceAllowOpenMergeEditor),
+            (conflictState.contextValue as string).includes(ScmContextValue.ResourceAllowOpen),
             'Conflict Resource State mismatch',
-        );
-        assert.strictEqual(
-            conflictState.command?.command,
-            'jj-view.openMergeEditor',
-            'Conflicted file in conflict group should default to openMergeEditor',
         );
 
         // 5. Assert Parent Resource Group

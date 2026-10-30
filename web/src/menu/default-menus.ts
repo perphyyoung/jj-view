@@ -152,12 +152,6 @@ export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
             category: 'JJ View',
         },
         {
-            command: 'jj-view.openMergeEditor',
-            title: 'Open Merge Editor',
-            category: 'JJ View',
-            icon: '$(git-merge)',
-        },
-        {
             command: 'jj-view.completeSquashRevision',
             title: 'Complete Squash Revision',
             category: 'JJ View',
@@ -501,10 +495,6 @@ export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
             },
             {
                 command: 'jj-view.completeSquashRevision',
-                when: 'false',
-            },
-            {
-                command: 'jj-view.openMergeEditor',
                 when: 'false',
             },
             {

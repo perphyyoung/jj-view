@@ -167,12 +167,6 @@ describe('IPC Schemas Unit Tests', () => {
             ).toBe(true);
             expect(
                 LogViewToHostMessageSchema.safeParse({
-                    type: 'showComments',
-                    payload: { changeId: 'kkmpptxz' },
-                }).success,
-            ).toBe(true);
-            expect(
-                LogViewToHostMessageSchema.safeParse({
                     type: 'selectionChange',
                     payload: { commitIds: ['a', 'b'], hasImmutableSelection: false },
                 }).success,

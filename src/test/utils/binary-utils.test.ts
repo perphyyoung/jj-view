@@ -9,7 +9,17 @@ import * as path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { resolveJjBinary } from '../../utils/binary-utils';
 
-describe('binary-utils real-file tests', () => {
+// These tests build a fake `jj` binary with the Go toolchain; skip when Go is unavailable.
+const hasGoToolchain = (() => {
+    try {
+        cp.execFileSync('go', ['version'], { stdio: 'ignore', windowsHide: true });
+        return true;
+    } catch {
+        return false;
+    }
+})();
+
+describe.skipIf(!hasGoToolchain)('binary-utils real-file tests', () => {
     let tempDir: string;
     let oldHome: string | undefined;
     let oldPath: string | undefined;

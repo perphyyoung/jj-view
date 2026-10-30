@@ -5,7 +5,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type * as vscode from 'vscode';
-import type { JjResourceState } from '../core/scm-resource-state';
 import { Uri } from '../core/uri-utils';
 import { createAbandonPayload } from '../vscode/payloads/abandon.payload';
 import { createAbsorbPayload } from '../vscode/payloads/absorb.payload';
@@ -19,7 +18,6 @@ import { createShowDetailsPayload } from '../vscode/payloads/details.payload';
 import { createDuplicatePayload } from '../vscode/payloads/duplicate.payload';
 import { createEditPayload } from '../vscode/payloads/edit.payload';
 import { createNewMergeChangePayload } from '../vscode/payloads/merge.payload';
-import { createOpenMergeEditorPayload } from '../vscode/payloads/merge-editor.payload';
 import { createShowMultiFileDiffPayload } from '../vscode/payloads/multi-diff.payload';
 import { createNewPayload } from '../vscode/payloads/new.payload';
 import { createNewAfterPayload } from '../vscode/payloads/new-after.payload';
@@ -158,15 +156,6 @@ describe('vscode payloads', () => {
         it('extracts revision', () => {
             const payload = createEditPayload(['rev1']);
             expect(payload.revision).toBe('rev1');
-        });
-    });
-
-    describe('merge editor payload', () => {
-        it('extracts uri from resource state', () => {
-            const uri = Uri.file('/test/file.txt');
-            const resourceState = createMock<JjResourceState>({ resourceUri: uri });
-            const payload = createOpenMergeEditorPayload([resourceState]);
-            expect(payload.resourceStates[0].resourceUri.fsPath).toBeSameFsPath(uri.fsPath);
         });
     });
 

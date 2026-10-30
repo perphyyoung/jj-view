@@ -122,7 +122,7 @@ describe('showMultiFileDiffCommand', () => {
         };
 
         const formatters = pkgContent.contributes?.resourceLabelFormatters ?? [];
-        const schemes = ['jj-view', 'jj-edit', 'jj-merge-output'];
+        const schemes = ['jj-view', 'jj-edit'];
 
         for (const scheme of schemes) {
             const formatter = formatters.find((f) => f.scheme === scheme);

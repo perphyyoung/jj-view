@@ -432,7 +432,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 hasChild: snapshot?.hasChild ?? false,
                 squashable: contextValue.includes(ScmContextValue.ResourceAllowSquashIntoParent),
                 multipleAncestors: contextValue.includes(ScmContextValue.ResourceAllowSquashIntoAncestor),
-                inConflictGroup: contextValue.includes(ScmContextValue.ResourceAllowOpenMergeEditor),
+                inConflictGroup: wire.conflicted === true,
                 workingCopyChangeId: snapshot?.currentEntry?.change_id,
             },
         );

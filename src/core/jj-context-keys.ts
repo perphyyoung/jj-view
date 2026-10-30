@@ -57,5 +57,4 @@ export enum ScmContextValue {
     ResourceAllowSquashIntoAncestor = 'jj.resource.allowSquashIntoAncestor',
     ResourceAllowSquashIntoChild = 'jj.resource.allowSquashIntoChild',
     ResourceAllowOpen = 'jj.resource.allowOpen',
-    ResourceAllowOpenMergeEditor = 'jj.resource.allowOpenMergeEditor',
 }

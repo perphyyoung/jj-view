@@ -9,7 +9,6 @@ import * as vscode from 'vscode';
 import { getSquashStorageDir, isSquashInProgress } from '../core/commands/squash-revision';
 import { JjContextKey } from '../core/jj-context-keys';
 import { JjEditFsService } from '../core/jj-edit-fs-service';
-import { JjMergeService } from '../core/jj-merge-service';
 import { JjProcessTracker } from '../core/jj-process-tracker';
 import { JjRepositoryManager } from '../core/jj-repository-manager';
 import { JjViewFsService } from '../core/jj-view-fs-service';
@@ -21,7 +20,6 @@ import { VsCodeChangesWebviewProvider } from './providers/vscode-changes-webview
 import { VsCodeCommitDetailsEditorProvider } from './providers/vscode-commit-details-editor-provider';
 import { VsCodeEditFsProvider } from './providers/vscode-edit-fs-provider';
 import { VsCodeLogWebviewProvider } from './providers/vscode-log-webview-provider';
-import { VsCodeMergeContentProvider } from './providers/vscode-merge-provider';
 import { VsCodeProcessMonitorProvider } from './providers/vscode-process-monitor-provider';
 import { VsCodeScmProvider } from './providers/vscode-scm-provider';
 import { VsCodeViewFsProvider } from './providers/vscode-view-fs-provider';
@@ -178,31 +176,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
     context.subscriptions.push(
         editFileSystemProvider,
         vscode.workspace.registerFileSystemProvider('jj-edit', editFileSystemProvider),
-    );
-
-    // Register ContentProvider for virtual merge output documents
-    const onDidChangeMergeEmitter = new vscode.EventEmitter<vscode.Uri>();
-    const mergeProviders = new Map<string, VsCodeMergeContentProvider>();
-    context.subscriptions.push(
-        onDidChangeMergeEmitter,
-        vscode.workspace.registerTextDocumentContentProvider('jj-merge-output', {
-            onDidChange: onDidChangeMergeEmitter.event,
-            provideTextDocumentContent(uri) {
-                const repo = repositoryManager.getRepositoryForUri(uri);
-                if (!repo) {
-                    throw new Error(`Repository not found for URI: ${uri.toString()}`);
-                }
-                const repoKey = repo.rootUri.fsPath;
-                let provider = mergeProviders.get(repoKey);
-                if (!provider) {
-                    const mergeService = new JjMergeService(repo.jj);
-                    provider = new VsCodeMergeContentProvider(mergeService);
-                    provider.onDidChange((e) => onDidChangeMergeEmitter.fire(e));
-                    mergeProviders.set(repoKey, provider);
-                }
-                return provider.provideTextDocumentContent(uri);
-            },
-        }),
     );
 
     // Finalize squash when the SQUASH_MSG tab is closed

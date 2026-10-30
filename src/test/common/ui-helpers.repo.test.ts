@@ -216,7 +216,6 @@ describe('ui-helpers', () => {
             const nav = {
                 openDiff: vi.fn(),
                 openMultiDiff: vi.fn(),
-                openMergeEditor: vi.fn(),
                 openCommitDetails: vi.fn(),
                 openFile: vi.fn(),
                 openFolder: vi.fn(),
@@ -259,7 +258,6 @@ describe('ui-helpers', () => {
             const nav = {
                 openDiff: vi.fn(),
                 openMultiDiff: vi.fn(),
-                openMergeEditor: vi.fn(),
                 openCommitDetails: vi.fn(),
                 openFile: vi.fn(),
                 openFolder: vi.fn(),
@@ -320,7 +318,6 @@ describe('ui-helpers', () => {
             const nav = {
                 openDiff: vi.fn(),
                 openMultiDiff: vi.fn(),
-                openMergeEditor: vi.fn(),
                 openCommitDetails: vi.fn(),
                 openFile: vi.fn(),
                 openFolder: vi.fn(),

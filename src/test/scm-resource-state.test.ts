@@ -103,21 +103,6 @@ describe('createJjResourceState', () => {
     describe('Command Routing', () => {
         const entry: JjStatusEntry = { path: 'file.txt', status: 'modified' };
 
-        it('routes to jj-view.openMergeEditor when conflicted and in conflict group', () => {
-            const conflictedEntry: JjStatusEntry = {
-                path: 'file.txt',
-                status: 'modified',
-                conflicted: true,
-            };
-            const state = createJjResourceState(conflictedEntry, 'rev123', root, {
-                inConflictGroup: true,
-            });
-
-            expect(state.command?.command).toBe('jj-view.openMergeEditor');
-            expect(state.command?.title).toBe('Open 3-Way Merge');
-            expect(state.command?.arguments).toEqual([{ resourceUri: state.resourceUri }]);
-        });
-
         it('routes to vscode.diff when openDiffOnClick is true', () => {
             const state = createJjResourceState(entry, 'rev123', root, {
                 openDiffOnClick: true,
@@ -172,24 +157,6 @@ describe('createJjResourceState', () => {
     describe('Context Capabilities (ContextValue)', () => {
         const entry: JjStatusEntry = { path: 'file.txt', status: 'modified' };
 
-        it('gives conflicted entries in conflict group restore and openMergeEditor flags, but no open or squash flags', () => {
-            const conflictedEntry: JjStatusEntry = { ...entry, conflicted: true };
-            const state = createJjResourceState(conflictedEntry, 'rev123', root, {
-                inConflictGroup: true,
-                squashable: true,
-                multipleAncestors: true,
-                hasChild: true,
-            });
-
-            const flags = state.contextValue?.split(' ') || [];
-            expect(flags).toContain('jj.resource.allowRestore');
-            expect(flags).toContain('jj.resource.allowOpenMergeEditor');
-            expect(flags).not.toContain('jj.resource.allowOpen');
-            expect(flags).not.toContain('jj.resource.allowSquashIntoParent');
-            expect(flags).not.toContain('jj.resource.allowSquashIntoAncestor');
-            expect(flags).not.toContain('jj.resource.allowSquashIntoChild');
-        });
-
         it('gives conflicted entries not in conflict group normal restore, open, and squash flags', () => {
             const conflictedEntry: JjStatusEntry = { ...entry, conflicted: true };
             const state = createJjResourceState(conflictedEntry, 'rev123', root, {
@@ -201,7 +168,6 @@ describe('createJjResourceState', () => {
 
             const flags = state.contextValue?.split(' ') || [];
             expect(flags).toContain('jj.resource.allowRestore');
-            expect(flags).not.toContain('jj.resource.allowOpenMergeEditor');
             expect(flags).toContain('jj.resource.allowOpen');
             expect(flags).toContain('jj.resource.allowSquashIntoParent');
             expect(flags).toContain('jj.resource.allowSquashIntoAncestor');
@@ -218,7 +184,6 @@ describe('createJjResourceState', () => {
 
             const flags = state.contextValue?.split(' ') || [];
             expect(flags).toContain('jj.resource.allowRestore');
-            expect(flags).not.toContain('jj.resource.allowOpenMergeEditor');
             expect(flags).toContain('jj.resource.allowOpen');
             expect(flags).toContain('jj.resource.allowSquashIntoParent');
             expect(flags).toContain('jj.resource.allowSquashIntoAncestor');
@@ -231,7 +196,6 @@ describe('createJjResourceState', () => {
 
             expect(flags).toContain('jj.resource.allowRestore');
             expect(flags).toContain('jj.resource.allowOpen');
-            expect(flags).not.toContain('jj.resource.allowOpenMergeEditor');
         });
 
         it('sets squash-into-parent only when squashable is true', () => {

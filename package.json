@@ -3,7 +3,7 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.0.2",
+    "version": "3.0.3",
     "license": "Apache-2.0",
     "author": "perphyyoung",
     "repository": {
@@ -33,14 +33,6 @@
             },
             {
                 "scheme": "jj-edit",
-                "formatting": {
-                    "label": "${path}",
-                    "separator": "/",
-                    "stripPathStartingSeparator": true
-                }
-            },
-            {
-                "scheme": "jj-merge-output",
                 "formatting": {
                     "label": "${path}",
                     "separator": "/",
@@ -388,11 +380,6 @@
                 "category": "JJ View Local"
             },
             {
-                "command": "jj-view.openMergeEditor",
-                "title": "Open Merge Editor",
-                "category": "JJ View Local"
-            },
-            {
                 "command": "jj-view.completeSquashRevision",
                 "title": "Complete Squash Revision",
                 "category": "JJ View Local",
@@ -647,10 +634,6 @@
                 },
                 {
                     "command": "jj-view.completeSquashRevision",
-                    "when": "false"
-                },
-                {
-                    "command": "jj-view.openMergeEditor",
                     "when": "false"
                 },
                 {
@@ -1069,13 +1052,16 @@
         "fix-license": "go run github.com/google/addlicense@v1.1.1 -s=only -ignore='**/node_modules/**' -ignore='node_modules/**' -ignore='web/node_modules/**' -ignore='dist/**' -ignore='web/dist/**' -ignore='out/**' -ignore='coverage/**' -ignore='.vscode-test/**' -ignore='.jj/**' -ignore='media/custom-icons/**' -ignore='pnpm-lock.yaml' -ignore='playwright-report/**' -ignore='test-results/**' **",
         "format": "biome format --write .",
         "check-format": "biome format .",
-        "test": "npm-run-all -p --print-label test:unit test:integration:all",
+        "test": "npm-run-all -p --print-label test:unit test:repo test:integration:all",
         "test:integration": "node esbuild.js && pnpm build:tests && vscode-test --config .vscode-test.mjs",
         "test:activation": "node esbuild.js && pnpm build:tests && vscode-test --config .vscode-test-activation.mjs",
         "test:integration:all": "node esbuild.js && pnpm build:tests && vscode-test --config .vscode-test.mjs && vscode-test --config .vscode-test-activation.mjs",
         "test:screenshots": "node esbuild.js && pnpm build:tests && playwright test",
         "test:e2e": "node esbuild.js && pnpm build:tests && playwright test -c playwright.e2e.config.ts",
-        "test:unit": "vitest run",
+        "test:unit": "vitest run --reporter=dot",
+        "test:repo": "vitest run --reporter=dot -c vitest.repo.config.ts",
+        "test:changed": "vitest run --changed",
+        "test:fast": "vitest run --exclude \"src/test/commands/**\" --reporter=dot",
         "test:failures": "node tooling/parse-test-failures.ts",
         "release:encode": "node .agents/scripts/encode-release-notes.ts",
         "release:open": "node tooling/open-release-url.ts"

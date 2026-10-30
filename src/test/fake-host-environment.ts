@@ -207,7 +207,6 @@ export class FakeHostNavigation implements HostNavigation {
         resources: { leftUri: Uri; rightUri: Uri; label: string }[];
         options?: HostOpenOptions;
     }[] = [];
-    public mergeEditorsOpened: Uri[] = [];
     public commitDetailsOpened: {
         repoRoot: Uri;
         changeId: string;
@@ -235,10 +234,6 @@ export class FakeHostNavigation implements HostNavigation {
         options?: HostOpenOptions,
     ): Promise<void> {
         this.multiDiffsOpened.push({ title, resources, options });
-    }
-
-    async openMergeEditor(resourceUri: Uri): Promise<void> {
-        this.mergeEditorsOpened.push(resourceUri);
     }
 
     async openCommitDetails(

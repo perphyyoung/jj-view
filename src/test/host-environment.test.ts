@@ -72,9 +72,6 @@ describe('FakeHostEnvironment', () => {
             await nav.openMultiDiff('Multi Diff', [{ leftUri, rightUri, label: 'item' }]);
             expect(nav.multiDiffsOpened).toHaveLength(1);
 
-            await nav.openMergeEditor(leftUri);
-            expect(nav.mergeEditorsOpened).toContain(leftUri);
-
             await nav.openFile(leftUri);
             expect(nav.filesOpened).toContain(leftUri);
 
