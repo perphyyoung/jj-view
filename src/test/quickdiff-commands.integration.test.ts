@@ -9,14 +9,13 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { discardChangeCommand } from '../core/commands/discard-change';
 import { squashHunkIntoParentCommand } from '../core/commands/squash-selection';
-import type { CommentsManager } from '../core/comments-manager';
 import { Uri } from '../core/uri-utils';
 import { createDiscardChangePayload } from '../vscode/payloads/discard-change.payload';
 import { createSquashHunkIntoParentPayload } from '../vscode/payloads/squash-selection.payload';
 import type { VsCodeScmProvider } from '../vscode/providers/vscode-scm-provider';
 import { createIntegrationCommandContext, createTestRepositoryContext, waitUntil } from './integration-test-utils';
 import { buildGraph, TestRepo } from './test-repo';
-import { createMock, createMockLogOutputChannel } from './test-utils';
+import { createMockLogOutputChannel } from './test-utils';
 
 suite('Quick Diff Commands Integration Test', () => {
     let repo: TestRepo;
@@ -95,7 +94,7 @@ suite('Quick Diff Commands Integration Test', () => {
         ];
 
         // Execute Discard Command
-        const cmdCtx = createIntegrationCommandContext(scmProvider, createMock<CommentsManager>({}));
+        const cmdCtx = createIntegrationCommandContext(scmProvider);
         const payload = createDiscardChangePayload([fileUri, changes, 0]);
         await discardChangeCommand(cmdCtx, payload);
 
@@ -145,7 +144,7 @@ suite('Quick Diff Commands Integration Test', () => {
         ];
 
         // Execute Discard Command
-        const cmdCtx = createIntegrationCommandContext(scmProvider, createMock<CommentsManager>({}));
+        const cmdCtx = createIntegrationCommandContext(scmProvider);
         const payload = createDiscardChangePayload([fileUri, changes, 0]);
         await discardChangeCommand(cmdCtx, payload);
 
@@ -196,7 +195,7 @@ suite('Quick Diff Commands Integration Test', () => {
         ];
 
         // Execute Discard Command
-        const cmdCtx = createIntegrationCommandContext(scmProvider, createMock<CommentsManager>({}));
+        const cmdCtx = createIntegrationCommandContext(scmProvider);
         const payload = createDiscardChangePayload([fileUri, changes, 0]);
         await discardChangeCommand(cmdCtx, payload);
 
@@ -242,7 +241,7 @@ suite('Quick Diff Commands Integration Test', () => {
         ];
 
         // Execute Squash Command
-        const cmdCtx = createIntegrationCommandContext(scmProvider, createMock<CommentsManager>({}));
+        const cmdCtx = createIntegrationCommandContext(scmProvider);
         const payload = createSquashHunkIntoParentPayload([fileUri, changes, 0]);
         await squashHunkIntoParentCommand(cmdCtx, payload);
 

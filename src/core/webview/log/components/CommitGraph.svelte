@@ -84,7 +84,7 @@ const rowOffsetsData = $derived.by(() => {
         if (isElisionRow(row)) {
             h = ROW_HEIGHT_ELISION;
         } else {
-            h = row.codeForgeChange ? ROW_HEIGHT_EXPANDED : ROW_HEIGHT_NORMAL;
+            h = ROW_HEIGHT_NORMAL;
         }
         currentOffset += h;
     }
@@ -138,7 +138,7 @@ const graphAreaWidth = $derived(computeGraphAreaWidth(layout.width, LANE_WIDTH, 
             {:else}
                 {@const isSelected = selectedCommitIds.has(row.change_id)}
                 {@const isHighlighted = row.change_id === highlightedCommitId}
-                {@const height = row.codeForgeChange ? ROW_HEIGHT_EXPANDED : ROW_HEIGHT_NORMAL}
+                {@const height = ROW_HEIGHT_NORMAL}
                 {@const paddingLeft = compactPaddingMap?.get(i) ?? graphAreaWidth}
                 <div
                     role="presentation"

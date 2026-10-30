@@ -4,8 +4,7 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { CommentsManager } from '../core/comments-manager';
-import type { CommandContext, CommandServices } from '../core/host/command-context';
+import type { CommandContext } from '../core/host/command-context';
 import { type Event, EventEmitter } from '../core/host/events';
 import type {
     HostAuth,
@@ -640,8 +639,6 @@ export class FakeHostEnvironment implements HostEnvironment {
 }
 
 export class FakeCommandContext implements CommandContext {
-    readonly services?: CommandServices;
-
     constructor(
         readonly repo: JjRepository,
         readonly host: FakeHostEnvironment = new FakeHostEnvironment(),
@@ -658,8 +655,5 @@ export class FakeCommandContext implements CommandContext {
             dispose: () => {},
             name: 'test',
         },
-        readonly comments?: CommentsManager,
-    ) {
-        this.services = { commentsManager: comments };
-    }
+    ) {}
 }

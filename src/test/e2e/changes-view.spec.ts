@@ -53,48 +53,17 @@ test.describe('JJ View Container E2E', () => {
         await expect(frame.locator('.scm-resource-item')).toHaveCount(3);
     });
 
-    test('native SCM integration can be disabled without breaking the container', async ({ vscode }) => {
+    test('container works without native SCM integration', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();
         repo.writeFile('a.txt', 'a\n');
         repo.describe('initial');
 
-        const { page } = await vscode.openWorkspace(repo, { 'jj-view.nativeScm.enabled': false });
-
-        const hasNativeSourceControl = await vscode.evaluate(async (_vscodeApi, api) => {
-            return Array.from(api.scmProviders.values()).map((provider) => {
-                try {
-                    void provider.sourceControl;
-                    return true;
-                } catch {
-                    return false;
-                }
-            });
-        });
-        expect(hasNativeSourceControl).toEqual([false]);
+        const { page } = await vscode.openWorkspace(repo);
 
         await vscode.executeCommand('jj-view.changesView.focus');
         const frame = await getWebviewFrame(page, 'jj-changes-root');
         await expect(frame.locator('.scm-resource-item')).toHaveCount(1);
-    });
-
-    test('code forge stays disabled for local-only usage', async ({ vscode }) => {
-        const repo = new TestRepo();
-        repo.init();
-        repo.writeFile('a.txt', 'a\n');
-        repo.describe('initial');
-
-        await vscode.openWorkspace(repo, { 'jj-view.codeForge.enabled': false });
-
-        const state = await vscode.evaluate(async (_vscodeApi, api) => {
-            const firstRepo = api.repositoryManager.repositories[0];
-            return {
-                enabled: firstRepo.codeForge.isEnabled,
-                provider: firstRepo.codeForge.activeProvider?.id ?? null,
-            };
-        });
-
-        expect(state).toEqual({ enabled: false, provider: null });
     });
 
     test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {

@@ -6,16 +6,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { CodeForgeAuthManager } from '../core/code-forge-auth';
-import type { CodeForgeProvider } from '../core/code-forge-provider';
-import type { CodeForgeProviderFactory } from '../core/code-forge-provider-factory';
-import { CodeForgeRegistry } from '../core/code-forge-registry';
-import type { CodeForgeService } from '../core/code-forge-service';
 import { getSquashStorageDir, isSquashInProgress } from '../core/commands/squash-revision';
-import { CommentsManager } from '../core/comments-manager';
-import { GerritProvider } from '../core/gerrit-provider';
-import { GitHubProvider } from '../core/github-provider';
-import { GitLabProvider } from '../core/gitlab-provider';
 import { JjContextKey } from '../core/jj-context-keys';
 import { JjEditFsService } from '../core/jj-edit-fs-service';
 import { JjMergeService } from '../core/jj-merge-service';
@@ -27,7 +18,6 @@ import { toError } from '../utils/error-utils';
 import { type LoggerChannel, OutputChannel } from '../utils/output-channel';
 import { checkGitColocation } from './git-colocation';
 import { VsCodeChangesWebviewProvider } from './providers/vscode-changes-webview-provider';
-import { VsCodeCommentsProvider } from './providers/vscode-comments-provider';
 import { VsCodeCommitDetailsEditorProvider } from './providers/vscode-commit-details-editor-provider';
 import { VsCodeEditFsProvider } from './providers/vscode-edit-fs-provider';
 import { VsCodeLogWebviewProvider } from './providers/vscode-log-webview-provider';
@@ -43,9 +33,6 @@ import { prewarmWebviewCssCache } from './vscode-webview-html';
 export interface Api {
     repositoryManager: JjRepositoryManager;
     scmProviders: Map<string, VsCodeScmProvider>;
-    commentsManager: CommentsManager;
-    commentsProvider: VsCodeCommentsProvider;
-    registerCodeForgeProvider(factory: CodeForgeProviderFactory): vscode.Disposable;
     resetState(): Promise<void>;
 }
 
@@ -109,30 +96,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
     };
     setOpenDiffOnClickContext();
 
-    const codeForgeRegistry = new CodeForgeRegistry();
-    context.subscriptions.push(codeForgeRegistry);
-    const authManager = new CodeForgeAuthManager(hostEnvironment, outputChannel);
-    context.subscriptions.push(authManager);
-
-    // Code forge providers read remote status (PR/MR, CI, comments). They are only
-    // registered when explicitly enabled; the extension is local-only by default.
-    if (hostEnvironment.config.get<boolean>('codeForge.enabled', false)) {
-        context.subscriptions.push(
-            codeForgeRegistry.register({
-                id: 'github',
-                create: (outputChannel) => new GitHubProvider(authManager, outputChannel),
-            }),
-            codeForgeRegistry.register({
-                id: 'gitlab',
-                create: (outputChannel, host) => new GitLabProvider(authManager, outputChannel, host),
-            }),
-            codeForgeRegistry.register({
-                id: 'gerrit',
-                create: (outputChannel, host) => new GerritProvider(outputChannel, host),
-            }),
-        );
-    }
-
     const processTracker = new JjProcessTracker();
     context.subscriptions.push(processTracker);
     const processStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -156,36 +119,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
     registerProcessMonitorCommands(context, processTracker);
 
     const repositoryManager = new JjRepositoryManager(
-        codeForgeRegistry,
         outputChannel,
         hostEnvironment,
         resolvedBinaryPath,
         processTracker,
     );
     context.subscriptions.push(repositoryManager);
-
-    // Listen to authentication successes from AuthManager and re-detect provider to trigger refresh
-    context.subscriptions.push(
-        authManager.onDidAuthenticate(() => {
-            for (const repo of repositoryManager.repositories) {
-                repo.codeForge
-                    .detectActiveProvider(true)
-                    .then((changed) => {
-                        if (!changed) {
-                            repo.codeForge.forceRefresh();
-                        }
-                    })
-                    .catch((e: unknown) => {
-                        outputChannel.error('Failed to refresh after authentication', toError(e));
-                    });
-            }
-        }),
-    );
-
-    const commentsManager = new CommentsManager(repositoryManager, hostEnvironment);
-    context.subscriptions.push(commentsManager);
-    const commentsProvider = new VsCodeCommentsProvider(commentsManager);
-    context.subscriptions.push(commentsProvider);
 
     if (hostEnvironment.config.onDidChangeConfiguration) {
         context.subscriptions.push(
@@ -222,88 +161,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
             }),
         );
     }
-
-    // Track active provider changes to update context keys
-    const updateContextKeys = (provider: CodeForgeProvider | undefined) => {
-        hostEnvironment.commands.setContextKey('jj.codeForgeActive', !!provider);
-        hostEnvironment.commands.setContextKey('jj.codeForgeProvider', provider?.id);
-        const manageable = !!provider?.isAuthManageable;
-        hostEnvironment.commands.setContextKey('jj.codeForgeAuthManageable', manageable);
-        hostEnvironment.commands.setContextKey('jj.codeForgeTerm', provider?.changeTerm?.toLowerCase() || 'change');
-    };
-    updateContextKeys(undefined);
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('jj-view.manageAuth', async () => {
-            const focused = repositoryManager.focusedRepository;
-            const activeProvider = focused?.codeForge.activeProvider;
-            if (!activeProvider) {
-                vscode.window.showErrorMessage('No active code forge provider detected.');
-                return;
-            }
-            if (!activeProvider.isAuthManageable) {
-                vscode.window.showInformationMessage(
-                    `Authentication management is not supported for ${activeProvider.displayName}.`,
-                );
-                return;
-            }
-
-            const providerId = activeProvider.id;
-            const isSkipped = await authManager.isAuthSkipped(providerId);
-            const items: (vscode.QuickPickItem & { execute(): Promise<void> })[] = [];
-
-            if (!(await activeProvider.hasAuth?.())) {
-                items.push({
-                    label: isSkipped
-                        ? '$(pass) Enable Authentication Prompts'
-                        : '$(circle-slash) Disable Authentication Prompts',
-                    description: `Currently ${isSkipped ? 'disabled (skipped)' : 'enabled'} for ${activeProvider.displayName}`,
-                    execute: async () => {
-                        await authManager.setAuthSkipped(providerId, !isSkipped);
-                        vscode.window.showInformationMessage(
-                            `Authentication prompts for ${activeProvider.displayName} have been ${!isSkipped ? 'disabled' : 'enabled'}.`,
-                        );
-                        const focused = repositoryManager.focusedRepository;
-                        if (focused) {
-                            focused.codeForge.forceRefresh();
-                        }
-                    },
-                });
-            }
-
-            for (const item of (await activeProvider.getAuthManageItems?.()) ?? []) {
-                items.push({
-                    label: item.label,
-                    description: item.description,
-                    detail: item.detail,
-                    execute: () => item.execute(),
-                });
-            }
-
-            items.push({
-                label: '$(refresh) Reset All Preferences',
-                description: 'Reset auth preferences for all code forge providers',
-                execute: async () => {
-                    await authManager.resetAllChoices();
-                    vscode.window.showInformationMessage('Authentication preferences have been reset.');
-                    const focused = repositoryManager.focusedRepository;
-                    if (focused) {
-                        focused.codeForge.forceRefresh();
-                    }
-                },
-            });
-
-            const choice = await vscode.window.showQuickPick(items, {
-                placeHolder: `Manage Authentication for ${activeProvider.displayName}`,
-            });
-
-            if (!choice) {
-                return;
-            }
-
-            await choice.execute();
-        }),
-    );
 
     const viewFsService = new JjViewFsService(repositoryManager);
     const viewFileSystemProvider = new VsCodeViewFsProvider(viewFsService);
@@ -426,24 +283,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         'repos',
         outputChannel,
     );
-    context.subscriptions.push(
-        vscode.workspace.onDidChangeConfiguration((e) => {
-            if (!e.affectsConfiguration('jj-view.nativeScm.enabled')) {
-                return;
-            }
-            void vscode.window
-                .showInformationMessage(
-                    'JJ View Local: reload the window to apply the native Source Control integration setting.',
-                    'Reload Window',
-                )
-                .then((choice) => {
-                    if (choice === 'Reload Window') {
-                        void vscode.commands.executeCommand('workbench.action.reloadWindow');
-                    }
-                });
-        }),
-    );
-
     const changesWebviewProvider = new VsCodeChangesWebviewProvider(
         context.extensionUri,
         repositoryManager,
@@ -480,10 +319,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         }),
     );
 
-    // SCM Discovery Lifecycle integration
-    const isNativeScmEnabled = (): boolean =>
-        vscode.workspace.getConfiguration('jj-view').get<boolean>('nativeScm.enabled', false);
-
     context.subscriptions.push(
         repositoryManager.onDidOpenRepository((repo) => {
             const repoPrefix = path.basename(repo.rootUri.fsPath);
@@ -497,7 +332,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
                 editFileSystemProvider,
                 () => repositoryManager.focusedRepository?.rootUri.fsPath === repo.rootUri.fsPath,
                 undefined,
-                isNativeScmEnabled(),
             );
 
             const decorationProvider = vscode.window.registerFileDecorationProvider(scmProvider.decorationProvider);
@@ -541,10 +375,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         }),
     );
 
-    let focusedRepoActiveProviderSub: vscode.Disposable | undefined;
     context.subscriptions.push(
         repositoryManager.onDidChangeFocusedRepository((repo) => {
-            focusedRepoActiveProviderSub?.dispose();
             if (repo) {
                 logWebviewProvider.updateRepository(repo).catch((err) => {
                     outputChannel.error('[Extension] Failed to update webview repository', toError(err));
@@ -557,26 +389,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
                     hostEnvironment.commands.setContextKey(JjContextKey.ParentMutable, scm.parentMutable);
                     hostEnvironment.commands.setContextKey(JjContextKey.HasChild, scm.hasChild);
                 }
-                focusedRepoActiveProviderSub = repo.codeForge.onDidActiveProviderChange((provider) => {
-                    updateContextKeys(provider);
-                });
-                // Force active provider detection for the focused repo and then update context keys immediately
-                repo.codeForge
-                    .detectActiveProvider(true)
-                    .then(() => {
-                        if (repositoryManager.focusedRepository === repo) {
-                            updateContextKeys(repo.codeForge.activeProvider);
-                        }
-                    })
-                    .catch((err: unknown) => {
-                        outputChannel.error(
-                            '[Extension] Failed to detect active provider for focused repository',
-                            toError(err),
-                        );
-                    });
             } else {
-                focusedRepoActiveProviderSub = undefined;
-                updateContextKeys(undefined);
                 hostEnvironment.commands.setContextKey(JjContextKey.ParentMutable, false);
                 hostEnvironment.commands.setContextKey(JjContextKey.HasChild, false);
             }
@@ -588,7 +401,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
                 }
                 activeScmSubscriptions.clear();
                 scmProviders.clear();
-                focusedRepoActiveProviderSub?.dispose();
             },
         },
     );
@@ -598,7 +410,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         repositoryManager,
         scmProviders,
         outputChannel,
-        commentsManager,
         logWebviewProvider,
         hostEnvironment,
     });
@@ -609,7 +420,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
             if (focused) {
                 const scm = scmProviders.get(focused.rootUri.fsPath);
                 if (scm) {
-                    handleTerminalExecution(event.execution.commandLine.value, focused.codeForge, outputChannel, scm);
+                    handleTerminalExecution(event.execution.commandLine.value, outputChannel, scm);
                 }
             }
         }),
@@ -634,15 +445,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
     return {
         repositoryManager,
         scmProviders,
-        commentsManager,
-        commentsProvider,
-        registerCodeForgeProvider: (factory: CodeForgeProviderFactory) => codeForgeRegistry.register(factory),
         resetState: async () => {
-            await authManager.resetAllChoices();
-            try {
-                await authManager.secrets.delete('gitlab_token');
-                await authManager.secrets.delete('github_token');
-            } catch {}
             for (const key of context.globalState?.keys?.() ?? []) {
                 await context.globalState.update(key, undefined);
             }
@@ -657,14 +460,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
 /** Checks if a terminal command is a jj upload or push and triggers staggered code forge refreshes. */
 export function handleTerminalExecution(
     commandLine: string,
-    codeForgeService: CodeForgeService,
     outputChannel: LoggerChannel,
     scmProvider: VsCodeScmProvider,
 ): boolean {
     const cmd = commandLine.trim();
     if (cmd.startsWith('jj') && (cmd.includes('upload') || cmd.includes('git push'))) {
         outputChannel.info(`[Extension] Detected terminal upload/push: "${cmd}"`);
-        codeForgeService.requestRefreshWithBackoffs();
         scmProvider.refresh({ reason: 'terminal upload/push' });
         return true;
     }

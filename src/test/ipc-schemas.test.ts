@@ -21,7 +21,7 @@ import {
 describe('IPC Schemas Unit Tests', () => {
     describe('LogView Schemas', () => {
         it('validates CommitAction enum', () => {
-            const validActions = ['newChild', 'edit', 'squash', 'abandon', 'openCodeForge', 'upload'];
+            const validActions = ['newChild', 'edit', 'squash', 'abandon', 'upload'];
             for (const action of validActions) {
                 expect(CommitActionSchema.safeParse(action).success).toBe(true);
             }
@@ -181,12 +181,6 @@ describe('IPC Schemas Unit Tests', () => {
                 LogViewToHostMessageSchema.safeParse({
                     type: 'setContextKey',
                     payload: { key: 'jj.testKey', value: true },
-                }).success,
-            ).toBe(true);
-            expect(
-                LogViewToHostMessageSchema.safeParse({
-                    type: 'openCodeForge',
-                    payload: { url: 'https://github.com/foo/bar' },
                 }).success,
             ).toBe(true);
             expect(

@@ -4,7 +4,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { CodeForgeRegistry } from '../core/code-forge-registry';
 import { LogViewController } from '../core/controllers/log-view-controller';
 import { JjRepositoryManager } from '../core/jj-repository-manager';
 import type { JjLogEntry } from '../core/jj-types';
@@ -19,7 +18,6 @@ describe('QuickPick Commit Highlight', () => {
     let testRepo: TestRepo;
     let repositoryManager: JjRepositoryManager;
     let fakeHost: FakeHostEnvironment;
-    let registry: CodeForgeRegistry;
     let controller: LogViewController;
     let postedMessages: { type: string; [key: string]: unknown }[];
 
@@ -29,7 +27,6 @@ describe('QuickPick Commit Highlight', () => {
         testRepo = new TestRepo();
         testRepo.init();
 
-        registry = new CodeForgeRegistry();
         const outputChannel = createMockLogOutputChannel({
             appendLine: () => {},
         });
@@ -37,7 +34,7 @@ describe('QuickPick Commit Highlight', () => {
         fakeHost = new FakeHostEnvironment();
         fakeHost.workspace.addFolder(Uri.file(testRepo.path));
 
-        repositoryManager = new JjRepositoryManager(registry, outputChannel, fakeHost);
+        repositoryManager = new JjRepositoryManager(outputChannel, fakeHost);
         const repo = await repositoryManager.maybeRegisterRepositoryContainingUri(Uri.file(testRepo.path));
         if (!repo) {
             throw new Error('Failed to register repo in test');

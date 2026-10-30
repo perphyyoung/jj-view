@@ -6,7 +6,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CodeForgeRegistry } from '../../core/code-forge-registry';
 import { RevisionQuery } from '../../core/commands/command-utils';
 import {
     promptForRevision,
@@ -491,10 +490,9 @@ describe('ui-helpers', () => {
             host = new FakeHostEnvironment();
             host.workspace.addFolder(Uri.file(repo.path));
 
-            const codeForgeRegistry = new CodeForgeRegistry();
             const outputChannel = createMockLogOutputChannel();
 
-            repoManager = new JjRepositoryManager(codeForgeRegistry, outputChannel, host);
+            repoManager = new JjRepositoryManager(outputChannel, host);
             await repoManager.maybeRegisterRepositoryContainingUri(Uri.file(repo.path));
         });
 

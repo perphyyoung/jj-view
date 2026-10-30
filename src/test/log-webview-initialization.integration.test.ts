@@ -5,9 +5,7 @@
 
 import * as assert from 'node:assert';
 import * as vscode from 'vscode';
-import type { CodeForgeService } from '../core/code-forge-service';
 import { LogViewHostToWebviewMessageSchema, LogViewToHostMessageSchema } from '../core/host/ipc/log-view-schemas';
-import type { JjRepository } from '../core/jj-repository';
 import { Uri } from '../core/uri-utils';
 import { VsCodeLogWebviewProvider } from '../vscode/providers/vscode-log-webview-provider';
 import { createTestRepositoryContext } from './integration-test-utils';
@@ -104,94 +102,6 @@ suite('Log Webview Initialization Integration Test', () => {
             unattachedProvider.repository,
             testContext.repository,
             'repository should be updated after updateRepository call',
-        );
-    });
-
-    test('updateRepository does not block on pending CodeForge detection', async () => {
-        let resolveDetection!: (value: boolean) => void;
-        const pendingDetection = new Promise<boolean>((resolve) => {
-            resolveDetection = resolve;
-        });
-
-        const mockRepo = createMock<JjRepository>({
-            rootUri: Uri.file('/tmp/slow-repo'),
-            isValid: async () => true,
-            jj: testContext.repository.jj,
-            codeForge: createMock<CodeForgeService>({
-                onDidUpdate: () => ({ dispose: () => {} }),
-                onRequestRefresh: () => ({ dispose: () => {} }),
-                detectActiveProvider: () => pendingDetection,
-            }),
-        });
-
-        const unattachedProvider = new VsCodeLogWebviewProvider(
-            extensionUri,
-            /* repo */ undefined,
-            /* onSelectionChange */ () => {},
-            createMock<vscode.ExtensionContext>({
-                globalState: createMock<vscode.ExtensionContext['globalState']>({
-                    get: () => [],
-                    update: () => Promise.resolve(),
-                    setKeysForSync: () => {},
-                }),
-            }),
-            outputChannel,
-        );
-
-        let completed = false;
-        const updatePromise = unattachedProvider.updateRepository(mockRepo).then(() => {
-            completed = true;
-        });
-
-        await updatePromise;
-        assert.strictEqual(completed, true, 'updateRepository should complete without awaiting detectActiveProvider');
-        assert.strictEqual(unattachedProvider.repository, mockRepo);
-
-        resolveDetection(false);
-    });
-
-    test('updateRepository logs and ignores detectActiveProvider errors', async () => {
-        const rejectingDetectionError = new Error('cf failed');
-        let loggedError: unknown;
-        const mockOutputChannel = createMockLogOutputChannel({
-            error: (msg: string) => {
-                loggedError = msg;
-            },
-        });
-
-        const mockRepo = createMock<JjRepository>({
-            rootUri: Uri.file('/tmp/reject-repo'),
-            isValid: async () => true,
-            jj: testContext.repository.jj,
-            codeForge: createMock<CodeForgeService>({
-                onDidUpdate: () => ({ dispose: () => {} }),
-                onRequestRefresh: () => ({ dispose: () => {} }),
-                detectActiveProvider: () => Promise.reject(rejectingDetectionError),
-            }),
-        });
-
-        const unattachedProvider = new VsCodeLogWebviewProvider(
-            extensionUri,
-            /* repo */ undefined,
-            /* onSelectionChange */ () => {},
-            createMock<vscode.ExtensionContext>({
-                globalState: createMock<vscode.ExtensionContext['globalState']>({
-                    get: () => [],
-                    update: () => Promise.resolve(),
-                    setKeysForSync: () => {},
-                }),
-            }),
-            mockOutputChannel,
-        );
-
-        await unattachedProvider.updateRepository(mockRepo);
-        // Allow microtasks to execute the background catch handler
-        await new Promise((resolve) => setTimeout(resolve, 10));
-
-        assert.strictEqual(unattachedProvider.repository, mockRepo);
-        assert.ok(
-            typeof loggedError === 'string' && loggedError.includes('Code forge detection failed'),
-            'outputChannel.error should be called when detectActiveProvider rejects',
         );
     });
 });

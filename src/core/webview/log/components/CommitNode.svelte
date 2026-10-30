@@ -45,59 +45,6 @@ const isImmutable = $derived(commit.is_immutable || false);
 const isCurrentWorkingCopy = $derived(commit.is_current_working_copy);
 const isConflict = $derived(commit.conflict);
 const isEmpty = $derived(commit.is_empty);
-const codeForgeChange = $derived(commit.codeForgeChange);
-
-const commentButtonState = $derived.by(() => {
-    if (!codeForgeChange) {
-        return undefined;
-    }
-    const unresolved = Math.max(0, codeForgeChange.unresolvedComments || 0);
-    const drafts = Math.max(0, codeForgeChange.draftComments || 0);
-    const responses = Math.max(0, codeForgeChange.draftResponses || 0);
-    const addressed = Math.max(0, codeForgeChange.addressedThreads ?? responses);
-
-    if (unresolved === 0 && drafts === 0 && responses === 0) {
-        return undefined;
-    }
-
-    if (unresolved === 0) {
-        const totalDrafts = drafts + responses;
-        return {
-            icon: 'codicon-edit',
-            badge: `${totalDrafts}`,
-            title: `${totalDrafts} Draft Comment${totalDrafts === 1 ? '' : 's'} (Click to view)`,
-            allDrafted: true,
-        };
-    }
-
-    if (addressed >= unresolved) {
-        const addressedText = unresolved === 1 ? 'Addressed in draft' : 'All addressed in draft';
-        return {
-            icon: 'codicon-comment-discussion',
-            badge: `${unresolved} ✎`,
-            title: `${unresolved} Unresolved Comment${unresolved === 1 ? '' : 's'} (${addressedText}) (Click to view)`,
-            allDrafted: true,
-        };
-    }
-
-    if (addressed > 0) {
-        return {
-            icon: 'codicon-comment-discussion',
-            badge: `${unresolved} (${addressed}✎)`,
-            title: `${unresolved} Unresolved Comment${unresolved === 1 ? '' : 's'} (${addressed} addressed in draft) (Click to view)`,
-            allDrafted: false,
-        };
-    }
-
-    const draftNoteText = drafts > 0 ? ` (${drafts} draft note${drafts === 1 ? '' : 's'})` : '';
-    return {
-        icon: 'codicon-comment-discussion',
-        badge: `${unresolved}`,
-        title: `${unresolved} Unresolved Comment${unresolved === 1 ? '' : 's'}${draftNoteText} (Click to view)`,
-        allDrafted: false,
-    };
-});
-
 const actionsInfo = $derived(
     computeCommitActions(commit, hiddenActions, isSelected, selectionCount, hasImmutableSelection),
 );
@@ -367,16 +314,14 @@ const hasActiveBookmarkAlready = $derived(
 
             <!-- Right-aligned Bookmarks & Pills -->
             <span class="pills-group">
-                {#if !codeForgeChange}
-                    {#each commit.bookmarks || [] as bookmark (`${bookmark.name}-${bookmark.remote || 'local'}`)}
-                        <DraggableBookmark {bookmark} {dragManager} />
-                    {/each}
-                    {#if isOver && isDraggingBookmark && activeBookmark && !hasActiveBookmarkAlready}
-                        <BookmarkPill
-                            bookmark={{ name: activeBookmark.name, remote: activeBookmark.remote }}
-                            style="opacity: 0.7; background-color: transparent; border: 1px dashed var(--vscode-charts-blue); box-shadow: inset 0 0 8px var(--vscode-charts-blue);"
-                        />
-                    {/if}
+                {#each commit.bookmarks || [] as bookmark (`${bookmark.name}-${bookmark.remote || 'local'}`)}
+                    <DraggableBookmark {bookmark} {dragManager} />
+                {/each}
+                {#if isOver && isDraggingBookmark && activeBookmark && !hasActiveBookmarkAlready}
+                    <BookmarkPill
+                        bookmark={{ name: activeBookmark.name, remote: activeBookmark.remote }}
+                        style="opacity: 0.7; background-color: transparent; border: 1px dashed var(--vscode-charts-blue); box-shadow: inset 0 0 8px var(--vscode-charts-blue);"
+                    />
                 {/if}
                 {#each commit.working_copies || [] as workspace (workspace)}
                     <WorkspacePill {workspace} />
@@ -396,119 +341,6 @@ const hasActiveBookmarkAlready = $derived(
             </span>
         </div>
 
-        <!-- Code Forge Info -->
-        {#if codeForgeChange}
-            <div class="code-forge-row">
-                {#if codeForgeChange.status === 'MERGED' || codeForgeChange.status === 'ABANDONED'}
-                    <span
-                        class="forge-status-badge"
-                        style:border-color={codeForgeChange.status === 'MERGED'
-                            ? 'var(--vscode-descriptionForeground)'
-                            : 'var(--vscode-gitDecoration-ignoredResourceForeground)'}
-                        style:color={codeForgeChange.status === 'MERGED'
-                            ? 'var(--vscode-descriptionForeground)'
-                            : 'var(--vscode-gitDecoration-ignoredResourceForeground)'}
-                    >
-                        {codeForgeChange.status}
-                    </span>
-                {/if}
-
-                <!-- CL Link -->
-                <a
-                    href={codeForgeChange.url}
-                    class="cl-link"
-                    title={codeForgeChange.url}
-                    onclick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onAction('openCodeForge', {
-                            changeId: commit.change_id,
-                            url: codeForgeChange.url,
-                        });
-                    }}
-                >
-                    <span>{codeForgeChange.displayLabel}</span>
-                    <span class="codicon codicon-link-external cl-link-icon"></span>
-                </a>
-
-                <!-- Sync Status -->
-                {#if codeForgeChange.status === 'NEW'}
-                    {#if !commit.codeForgeNeedsUpload}
-                        <div
-                            title={codeForgeChange.parentSynced === false
-                                ? 'Parent mismatch (Local parent differs from remote)'
-                                : codeForgeChange.synced
-                                  ? 'Synced (content matches remote)'
-                                  : 'Up to date with remote'}
-                            class="sync-icon-container"
-                        >
-                            <span class="codicon codicon-cloud"></span>
-                        </div>
-                    {:else}
-                        <button
-                            type="button"
-                            onclick={(e) => {
-                                e.stopPropagation();
-                                onAction('upload', { changeId: commit.change_id });
-                            }}
-                            title={codeForgeChange.parentSynced === false
-                                ? 'Parent mismatch (Click to push update)'
-                                : 'Local changes need upload (Click to push)'}
-                            aria-label={`Upload changes to ${codeForgeChange.providerName}`}
-                            class="upload-button"
-                        >
-                            <span class="codicon codicon-cloud-upload"></span>
-                        </button>
-                    {/if}
-                {/if}
-
-                <!-- Comments -->
-                {#if commentButtonState}
-                    <button
-                        type="button"
-                        title={commentButtonState.title}
-                        aria-label={commentButtonState.title}
-                        onclick={(e) => {
-                            e.stopPropagation();
-                            onAction('showComments', { changeId: commit.change_id });
-                        }}
-                        onkeydown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-                                e.stopPropagation();
-                                if (e.key === ' ' || e.key === 'Spacebar') {
-                                    e.preventDefault();
-                                }
-                            }
-                        }}
-                        class="comments-button"
-                        class:all-drafted={commentButtonState.allDrafted}
-                    >
-                        <span class="codicon {commentButtonState.icon} comments-icon" aria-hidden="true"></span>
-                        <span>{commentButtonState.badge}</span>
-                    </button>
-                {/if}
-
-                <!-- Submittable -->
-                {#if codeForgeChange.submittable && codeForgeChange.status === 'NEW'}
-                    <span title="Ready to Submit" class="submittable-icon">
-                        <span class="codicon codicon-check"></span>
-                    </span>
-                {/if}
-
-                <!-- Right-aligned Bookmarks on second row -->
-                <span class="pills-group" style:margin-left="auto">
-                    {#each commit.bookmarks || [] as bookmark (`${bookmark.name}-${bookmark.remote || 'local'}`)}
-                        <DraggableBookmark {bookmark} {dragManager} />
-                    {/each}
-                    {#if isOver && isDraggingBookmark && activeBookmark && !hasActiveBookmarkAlready}
-                        <BookmarkPill
-                            bookmark={{ name: activeBookmark.name, remote: activeBookmark.remote }}
-                            style="opacity: 0.7; background-color: transparent; border: 1px dashed var(--vscode-charts-blue); box-shadow: inset 0 0 8px var(--vscode-charts-blue);"
-                        />
-                    {/if}
-                </span>
-            </div>
-        {/if}
     </div>
 </div>
 

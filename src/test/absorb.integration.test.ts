@@ -6,7 +6,6 @@
 import * as assert from 'node:assert';
 import * as vscode from 'vscode';
 import { absorbCommand } from '../core/commands/absorb';
-import type { CommentsManager } from '../core/comments-manager';
 import { createAbsorbPayload } from '../vscode/payloads/absorb.payload';
 import type { VsCodeScmProvider } from '../vscode/providers/vscode-scm-provider';
 import type { VSCodeCommandContext } from '../vscode/vscode-command-context';
@@ -16,7 +15,6 @@ import {
     type TestRepositoryContext,
 } from './integration-test-utils';
 import { buildGraph, TestRepo } from './test-repo';
-import { createMock } from './test-utils';
 
 suite('Absorb Integration Test', function () {
     this.timeout(60000);
@@ -33,7 +31,7 @@ suite('Absorb Integration Test', function () {
         outputChannel = vscode.window.createOutputChannel('JJ Test', { log: true });
         contextHelper = await createTestRepositoryContext(repo.path, outputChannel);
         scmProvider = contextHelper.scmProvider;
-        cmdCtx = createIntegrationCommandContext(scmProvider, createMock<CommentsManager>({}));
+        cmdCtx = createIntegrationCommandContext(scmProvider);
     });
 
     teardown(async () => {

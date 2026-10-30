@@ -7,7 +7,6 @@ import { CoalescingQueue } from '../../utils/coalescing-queue';
 import { toError } from '../../utils/error-utils';
 import { canAbsorbCommit } from '../../utils/jj-utils';
 import type { LoggerChannel } from '../../utils/output-channel';
-import type { CodeForgeService } from '../code-forge-service';
 import { type Disposable, type Event, EventEmitter } from '../host/events';
 import type { HostEnvironment } from '../host/host-environment';
 import {
@@ -28,7 +27,6 @@ import { JjContextKey } from '../jj-context-keys';
 import type { JjRepository } from '../jj-repository';
 import type { JjService, RebaseOptions } from '../jj-service';
 import type { JjLogEntry } from '../jj-types';
-import { Uri } from '../uri-utils';
 
 export interface LogViewControllerOptions {
     messenger?: WebviewPostMessageLike;
@@ -40,8 +38,6 @@ export class LogViewController implements Disposable {
     private static readonly HIDDEN_ACTIONS_STORAGE_KEY = 'jj-view.hiddenCommitActions';
     private _disposed = false;
     private readonly _disposables: Disposable[] = [];
-    private _codeForgeDisposable: Disposable | undefined;
-    private _codeForgeRefreshPromise: Promise<void> | undefined;
     private readonly _logger?: LoggerChannel;
     private readonly _receiver: WebviewRpcReceiver<LogViewToHostMessage, LogViewHostToWebviewMessage>;
     private readonly _refreshQueue: CoalescingQueue;
@@ -80,8 +76,6 @@ export class LogViewController implements Disposable {
         }
 
         void this._loadStoredHiddenActions();
-
-        this.bindRepo(this._repo);
 
         if (this._host.config.onDidChangeConfiguration) {
             this._disposables.push(
@@ -156,7 +150,6 @@ export class LogViewController implements Disposable {
         this._selectedCommitIds = [];
         this._highlightedCommitId = undefined;
         this._updateSelectionContextKeys(this._selectedCommitIds);
-        this.bindRepo(repo);
         this.refresh('repoChanged');
     }
 
@@ -166,37 +159,6 @@ export class LogViewController implements Disposable {
 
     public setMessenger(messenger: WebviewPostMessageLike | undefined): void {
         this._receiver.setMessenger(messenger);
-    }
-
-    private bindRepo(repo: JjRepository | undefined): void {
-        this._codeForgeDisposable?.dispose();
-        this._codeForgeDisposable = undefined;
-
-        if (!repo) {
-            return;
-        }
-
-        const cf = repo.codeForge;
-        const updateDisposable = cf.onDidUpdate(() => {
-            if (this._commits.length > 0) {
-                this.setCommits(this._commits);
-            }
-        });
-        const refreshDisposable = cf.onRequestRefresh(() => {
-            this.refreshCodeForge().catch((e) => {
-                this._logger?.error('[LogViewController] CodeForge refresh failed', toError(e));
-            });
-        });
-        this._codeForgeDisposable = {
-            dispose: () => {
-                updateDisposable.dispose();
-                refreshDisposable.dispose();
-            },
-        };
-
-        cf.detectActiveProvider(true).catch((e) => {
-            this._logger?.error('Code forge detection failed', toError(e));
-        });
     }
 
     public async handleMessage(rawMessage: unknown): Promise<boolean> {
@@ -255,22 +217,10 @@ export class LogViewController implements Disposable {
             this._logger?.error('[LogViewController] Failed to fetch log', toError(e));
             return;
         }
-
-        this.refreshCodeForge().catch((e) => {
-            this._logger?.error('[LogViewController] Background refreshCodeForge failed', toError(e));
-        });
     }
 
     public setCommits(commits: readonly JjLogEntry[]): void {
-        if (commits !== this._commits) {
-            this._codeForgeFetchVersion++;
-        }
         const enrichedCommits = [...commits];
-        const cf = this._repo?.codeForge;
-        if (cf?.isEnabled) {
-            cf.populateCodeForgeInfo(enrichedCommits);
-        }
-
         this._commits = enrichedCommits;
         this._updateSelectionContextKeys(this._selectedCommitIds);
 
@@ -453,65 +403,6 @@ export class LogViewController implements Disposable {
         this._receiver.sender.update(this.getState());
     }
 
-    private _codeForgeFetchVersion = 0;
-
-    public async refreshCodeForge(): Promise<void> {
-        if (this._disposed || this._commits.length === 0) {
-            return;
-        }
-        if (this._codeForgeRefreshPromise) {
-            return this._codeForgeRefreshPromise;
-        }
-        const cf = this._repo?.codeForge;
-        if (!cf) {
-            return;
-        }
-
-        this._codeForgeRefreshPromise = (async () => {
-            let lastRunVersion = -1;
-            let iterations = 0;
-            const maxIterations = 3;
-            while (!this._disposed && iterations < maxIterations && lastRunVersion !== this._codeForgeFetchVersion) {
-                iterations++;
-                lastRunVersion = this._codeForgeFetchVersion;
-                await this._executeCodeForgeRefresh(cf);
-            }
-        })().finally(() => {
-            this._codeForgeRefreshPromise = undefined;
-        });
-        return this._codeForgeRefreshPromise;
-    }
-
-    private async _executeCodeForgeRefresh(cf: CodeForgeService): Promise<void> {
-        if (!cf.isEnabled) {
-            await cf.detectActiveProvider(true);
-            if (!cf.isEnabled || this._disposed) {
-                return;
-            }
-        }
-
-        try {
-            cf.startPolling();
-            const start = performance.now();
-            await cf.ensureFreshStatuses(
-                this._commits.map((c) => ({
-                    commitId: c.commit_id ?? '',
-                    changeId: c.change_id,
-                    description: c.description,
-                    bookmarks: c.bookmarks.filter((b) => !b.remote).map((b) => b.name),
-                    changes: c.changes,
-                })),
-            );
-
-            const duration = performance.now() - start;
-            this._logger?.info?.(
-                `[timing] [CodeForge] refresh took ${duration.toFixed(0)}ms (${this._commits.length} commits)`,
-            );
-        } catch (e) {
-            this._logger?.error('[LogViewController] CodeForge refresh failed', toError(e));
-        }
-    }
-
     public handlePanelClosed(changeId: string): void {
         this._receiver.sender.panelClosed({ changeId });
     }
@@ -551,21 +442,6 @@ export class LogViewController implements Disposable {
             {
                 webviewLoaded: async () => {
                     await this.refresh('webviewLoaded');
-                },
-                openCodeForge: async (msg) => {
-                    if (!msg.url) {
-                        return;
-                    }
-                    try {
-                        const parsed = new URL(msg.url);
-                        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-                            await this._host.nav.openExternal(Uri.parse(msg.url));
-                        } else {
-                            this._logger?.error(`[LogViewController] Blocked insecure scheme: ${parsed.protocol}`);
-                        }
-                    } catch (e) {
-                        this._logger?.error(`[LogViewController] Invalid URL: ${msg.url}`, toError(e));
-                    }
                 },
                 newChild: async (msg) => {
                     await this._host.commands.executeCommand('jj-view.new', msg);
@@ -671,9 +547,6 @@ export class LogViewController implements Disposable {
                 upload: async (msg) => {
                     await this._host.commands.executeCommand('jj-view.upload', { ...msg, mode: 'auto' });
                 },
-                showComments: async (msg) => {
-                    await this._host.commands.executeCommand('jj-view.showComments', msg.changeId);
-                },
                 setContextKey: async (msg) => {
                     await this._host.commands.setContextKey(msg.key, msg.value);
                 },
@@ -695,8 +568,6 @@ export class LogViewController implements Disposable {
 
     public dispose(): void {
         this._disposed = true;
-        this._codeForgeRefreshPromise = undefined;
-        this._codeForgeDisposable?.dispose();
         for (const d of this._disposables) {
             d.dispose();
         }

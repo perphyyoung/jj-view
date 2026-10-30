@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import { JjLogEntrySchema } from '../../jj-schemas';
 
-export const CommitActionSchema = z.enum(['newChild', 'edit', 'squash', 'abandon', 'openCodeForge', 'upload']);
+export const CommitActionSchema = z.enum(['newChild', 'edit', 'squash', 'abandon', 'upload']);
 export type CommitAction = z.infer<typeof CommitActionSchema>;
 
 export const TOGGLEABLE_COMMIT_ACTIONS = ['newChild', 'edit', 'squash', 'abandon'] as const;
@@ -104,10 +104,6 @@ export const LogViewToHostMessageSchema = z.discriminatedUnion('type', [
         payload: ActionPayloadSchema,
     }),
     z.object({
-        type: z.literal('showComments'),
-        payload: z.object({ changeId: z.string() }),
-    }),
-    z.object({
         type: z.literal('selectionChange'),
         payload: z.object({
             commitIds: z.array(z.string()),
@@ -117,10 +113,6 @@ export const LogViewToHostMessageSchema = z.discriminatedUnion('type', [
     z.object({
         type: z.literal('setContextKey'),
         payload: z.object({ key: z.string(), value: z.unknown() }),
-    }),
-    z.object({
-        type: z.literal('openCodeForge'),
-        payload: z.object({ url: z.string() }),
     }),
     z.object({
         type: z.literal('contextMenu'),

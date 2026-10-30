@@ -232,11 +232,6 @@ function handleGraphAction(action: string, payload: ActionPayload) {
         return;
     }
 
-    if (action === 'showComments') {
-        void sender.showComments({ changeId: payload.changeId });
-        return;
-    }
-
     if (action === 'contextMenu') {
         void sender.contextMenu({
             ...payload,
@@ -276,9 +271,6 @@ function handleGraphAction(action: string, payload: ActionPayload) {
     if (action === 'upload') {
         void sender.upload(payload);
         return;
-    }
-    if (action === 'openCodeForge' && payload.url) {
-        void sender.openCodeForge({ url: payload.url });
     }
 }
 </script>

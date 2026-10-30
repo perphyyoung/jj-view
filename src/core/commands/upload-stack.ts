@@ -2,13 +2,19 @@
  * Copyright 2026 Google LLC
  * SPDX-License-Identifier: Apache-2.0
  */
-import type { StackCommitNode } from '../code-forge-provider';
 import type { CommandContext } from '../host/command-context';
 import { showJjError } from '../host/ui-helpers';
 import type { JjRepository } from '../jj-repository';
 import type { JjService } from '../jj-service';
 import type { JjLogEntry } from '../jj-types';
 import type { UploadPayload } from './upload';
+
+export interface StackCommitNode {
+    commitId: string;
+    changeId: string;
+    description: string;
+    bookmark: string;
+}
 
 export interface ResolvedStackedUploadCommand {
     subcommand: string;
@@ -98,10 +104,6 @@ export async function resolveStackedUploadCommand(
     customCommand?: string,
     preResolvedStackCommits?: JjLogEntry[],
 ): Promise<ResolvedStackedUploadCommand> {
-    if (repo.codeForge.activeProvider?.id === 'gerrit') {
-        throw new Error('Stacked uploads are not supported for Gerrit repositories. Use standard upload instead.');
-    }
-
     const matchesTarget = preResolvedStackCommits?.some(
         (c) =>
             c.commit_id === targetRevision ||
@@ -147,10 +149,6 @@ export async function uploadStackCommand(ctx: CommandContext, payload?: UploadPa
         repo,
         host: { ui, nav, config },
     } = ctx;
-    if (repo.codeForge.activeProvider?.id === 'gerrit') {
-        await ui.showWarning('Stacked uploads are not supported for Gerrit repositories. Use standard upload instead.');
-        return;
-    }
 
     const revision = payload?.revision ?? '@';
     const customCommand = config.get<string>('uploadCommand');
@@ -161,23 +159,6 @@ export async function uploadStackCommand(ctx: CommandContext, payload?: UploadPa
         resolved = await resolveStackedUploadCommand(repo, revision, customCommand, payload?.stackCommits);
         if (!resolved.subcommand) {
             throw new Error('Invalid upload command configuration.');
-        }
-
-        const prepareStackedChanges = repo.codeForge.activeProvider?.prepareStackedChanges?.bind(
-            repo.codeForge.activeProvider,
-        );
-        if (prepareStackedChanges) {
-            const initialStackNodes = toStackCommitNodes(resolved.stackCommits);
-            if (initialStackNodes.length > 1) {
-                try {
-                    await ui.withProgress('Preparing stack on remote...', () =>
-                        prepareStackedChanges(initialStackNodes),
-                    );
-                } catch (prepErr: unknown) {
-                    const msg = prepErr instanceof Error ? prepErr.message : String(prepErr);
-                    ctx.log?.warn(`[uploadStack] Pre-push stack preparation encountered an issue: ${msg}`);
-                }
-            }
         }
 
         const title = `Uploading stack (${resolved.stackCommits.length} commits)...`;
@@ -194,44 +175,6 @@ export async function uploadStackCommand(ctx: CommandContext, payload?: UploadPa
     }
 
     await repo.refresh();
-    repo.codeForge.requestRefreshWithBackoffs();
-
-    const syncStackedChanges = repo.codeForge.activeProvider?.syncStackedChanges?.bind(repo.codeForge.activeProvider);
-    if (!syncStackedChanges) {
-        await ui.showInformation('Upload successful');
-        return;
-    }
-
-    try {
-        const updatedCommits = await resolveStackCommits(repo.jj, revision);
-        const stackNodes = toStackCommitNodes(updatedCommits);
-
-        if (stackNodes.length > 0) {
-            const syncResult = await ui.withProgress('Synchronizing pull requests...', () =>
-                syncStackedChanges(stackNodes),
-            );
-
-            const parts: string[] = [];
-            if (syncResult.created.length > 0) {
-                const createdDetails = syncResult.created.map((p) => `#${p.prNumber}`).join(', ');
-                parts.push(`Created: ${createdDetails}`);
-            }
-            if (syncResult.retargeted.length > 0) {
-                const retargetedDetails = syncResult.retargeted.map((p) => `#${p.prNumber}`).join(', ');
-                parts.push(`Retargeted: ${retargetedDetails}`);
-            }
-
-            if (parts.length > 0) {
-                await ui.showInformation(`Upload successful. ${parts.join('; ')}`);
-                return;
-            }
-        }
-    } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        ctx.log?.error(`[uploadStack] Pull request synchronization failed: ${msg}`);
-        await ui.showWarning(`Upload succeeded, but pull request synchronization failed: ${msg}`);
-        return;
-    }
 
     await ui.showInformation('Upload successful');
 }

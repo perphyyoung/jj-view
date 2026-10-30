@@ -6,7 +6,6 @@
 import type { ActionPayload, CommitAction, ToggleableCommitAction } from './host/ipc/log-view-schemas';
 import { TOGGLEABLE_COMMIT_ACTIONS } from './host/ipc/log-view-schemas';
 import type {
-    CodeForgeChangeInfo,
     CommitParent,
     JjBookmark,
     JjFileChange,
@@ -18,7 +17,6 @@ import type {
 
 export type {
     ActionPayload,
-    CodeForgeChangeInfo,
     CommitAction,
     CommitParent,
     JjBookmark,

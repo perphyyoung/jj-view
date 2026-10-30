@@ -4,7 +4,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import type { CodeForgeService } from '../../core/code-forge-service';
 import { advanceBookmarkAndUploadCommand } from '../../core/commands/bookmark-advance-upload';
 import type { JjRepository } from '../../core/jj-repository';
 import { JjService, NO_OP_LOGGER } from '../../core/jj-service';
@@ -31,14 +30,8 @@ describe('advanceBookmarkAndUploadCommand', () => {
 
         jj = new JjService(repo.path, NO_OP_LOGGER);
 
-        const codeForgeService = createMock<CodeForgeService>({
-            isEnabled: false,
-            requestRefreshWithBackoffs: vi.fn(),
-        });
-
         mockJjRepo = createMock<JjRepository>({
             jj,
-            codeForge: codeForgeService,
             refresh: vi.fn().mockResolvedValue(undefined),
         });
 

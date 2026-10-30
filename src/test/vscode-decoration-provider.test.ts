@@ -9,7 +9,6 @@ import { createVscodeMock } from './vscode-mock';
 vi.mock('vscode', () => createVscodeMock());
 
 import type * as vscode from 'vscode';
-import { CodeForgeRegistry } from '../core/code-forge-registry';
 import { JjDecorationModel } from '../core/jj-decoration-model';
 import { JjRepositoryManager } from '../core/jj-repository-manager';
 import { Uri } from '../core/uri-utils';
@@ -28,14 +27,13 @@ describe('VsCodeDecorationProvider Unit Tests', () => {
         testRepo = new TestRepo();
         testRepo.init();
 
-        const registry = new CodeForgeRegistry();
         const outputChannel = createMockLogOutputChannel({
             appendLine: () => {},
         });
         const host = new FakeHostEnvironment();
         host.workspace.addFolder(Uri.file(testRepo.path));
 
-        repositoryManager = new JjRepositoryManager(registry, outputChannel, host);
+        repositoryManager = new JjRepositoryManager(outputChannel, host);
 
         const repo = await repositoryManager.maybeRegisterRepositoryContainingUri(Uri.file(testRepo.path));
         if (!repo) {

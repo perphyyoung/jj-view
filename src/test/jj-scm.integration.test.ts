@@ -19,7 +19,6 @@ import {
     squashRevisionIntoParentCommand,
 } from '../core/commands/squash-revision';
 import { squashSelectionIntoParentCommand } from '../core/commands/squash-selection';
-import type { CommentsManager } from '../core/comments-manager';
 import { ScmContextValue } from '../core/jj-context-keys';
 import type { JjResourceState } from '../core/scm-resource-state';
 import { toFileUri, Uri } from '../core/uri-utils';
@@ -39,7 +38,7 @@ import {
     waitUntil,
 } from './integration-test-utils';
 import { buildGraph, TestRepo } from './test-repo';
-import { accessPrivate, createMock, createMockLogOutputChannel } from './test-utils';
+import { accessPrivate, createMockLogOutputChannel } from './test-utils';
 
 suite('JJ SCM Provider Integration Test', () => {
     let scmProvider: VsCodeScmProvider;
@@ -371,7 +370,7 @@ suite('JJ SCM Provider Integration Test', () => {
         const range = new vscode.Range(1, 0, 1, 5);
         editor.selection = new vscode.Selection(range.start, range.end);
 
-        const cmdCtx = createIntegrationCommandContext(scmProvider, createMock<CommentsManager>({}));
+        const cmdCtx = createIntegrationCommandContext(scmProvider);
         await squashSelectionIntoParentCommand(cmdCtx, createSquashSelectionIntoParentPayload(editor));
 
         // Parent should be: A\nB_mod\nC (B_mod moved, C_mod stays in WC so Parent has original C)
@@ -489,7 +488,7 @@ suite('JJ SCM Provider Integration Test', () => {
             throw new Error('Should find resource state for modified file');
         }
 
-        const cmdCtx = createIntegrationCommandContext(scmProvider, createMock<CommentsManager>({}));
+        const cmdCtx = createIntegrationCommandContext(scmProvider);
         await squashRevisionIntoParentCommand(cmdCtx, createSquashRevisionIntoParentPayload([resourceState]));
 
         const parentContent = repo.getFileContent('@-', 'squash-test.txt');
@@ -518,7 +517,7 @@ suite('JJ SCM Provider Integration Test', () => {
         assert.strictEqual(group.resourceStates.length, 2);
 
         // Call command directly
-        const headerCtx = createIntegrationCommandContext(scmProvider, createMock<CommentsManager>({}));
+        const headerCtx = createIntegrationCommandContext(scmProvider);
         await squashRevisionIntoParentCommand(headerCtx, createSquashRevisionIntoParentPayload([group]));
 
         await scmProvider.refresh({ forceSnapshot: true });
@@ -537,15 +536,15 @@ suite('JJ SCM Provider Integration Test', () => {
         // Refresh triggers description fetch
         await scmProvider.refresh({ forceSnapshot: true });
 
-        assert.strictEqual(scmProvider.sourceControl.inputBox.value, 'initial description');
+        assert.strictEqual(scmProvider.inputBoxValue, 'initial description');
 
         // Verify changing description via command
         // We need to simulate the user typing in the box and running command
-        scmProvider.sourceControl.inputBox.value = 'updated description';
+        scmProvider.setInputBoxValue('updated description');
 
         await setDescriptionCommand(
             createIntegrationCommandContext(scmProvider),
-            createSetDescriptionPayload([scmProvider.sourceControl.inputBox.value]),
+            createSetDescriptionPayload([scmProvider.inputBoxValue]),
         );
 
         const desc = repo.getDescription('@');
@@ -553,14 +552,14 @@ suite('JJ SCM Provider Integration Test', () => {
 
         // (refresh calls are implied by command execution but doing explicit one)
         // await scmProvider.refresh(); // Implicit in setDescription
-        assert.strictEqual(scmProvider.sourceControl.inputBox.value, 'updated description');
+        assert.strictEqual(scmProvider.inputBoxValue, 'updated description');
     });
 
     test('Input box updates when switching commits', async () => {
         // 1. Start on commit A with desc A
         repo.describe('desc A');
         await scmProvider.refresh({ forceSnapshot: true });
-        assert.strictEqual(scmProvider.sourceControl.inputBox.value, 'desc A');
+        assert.strictEqual(scmProvider.inputBoxValue, 'desc A');
 
         // 2. Create new commit B
         repo.new();
@@ -568,12 +567,12 @@ suite('JJ SCM Provider Integration Test', () => {
         await scmProvider.refresh({ forceSnapshot: true });
 
         // Input box should now be empty (desc of new commit)
-        assert.strictEqual(scmProvider.sourceControl.inputBox.value, '');
+        assert.strictEqual(scmProvider.inputBoxValue, '');
 
         // 3. Go back to commit A
         repo.edit('@-');
         await scmProvider.refresh({ forceSnapshot: true });
-        assert.strictEqual(scmProvider.sourceControl.inputBox.value, 'desc A');
+        assert.strictEqual(scmProvider.inputBoxValue, 'desc A');
     });
 
     test('Squash opens editor only when conditions are met', async () => {
@@ -591,7 +590,7 @@ suite('JJ SCM Provider Integration Test', () => {
         ]);
         await scmProvider.refresh({ forceSnapshot: true });
 
-        const cmdCtx = createIntegrationCommandContext(scmProvider, createMock<CommentsManager>({}));
+        const cmdCtx = createIntegrationCommandContext(scmProvider);
         await squashRevisionIntoParentCommand(cmdCtx, createSquashRevisionIntoParentPayload([{ id: 'working-copy' }]));
 
         const squashMsgPath = path.join(getSquashStorageDir(repo.path), 'SQUASH_MSG');
@@ -599,7 +598,7 @@ suite('JJ SCM Provider Integration Test', () => {
         // Verify creation
         assert.ok(require('node:fs').existsSync(squashMsgPath), 'SQUASH_MSG should be created (Cond 1)');
 
-        const completeCtx = createIntegrationCommandContext(scmProvider, createMock<CommentsManager>({}));
+        const completeCtx = createIntegrationCommandContext(scmProvider);
         await completeSquashRevisionCommand(completeCtx, { message: 'Parent Desc\n\nChild Desc' });
         assert.ok(!require('node:fs').existsSync(squashMsgPath), 'Cleanup success');
 
@@ -665,41 +664,13 @@ suite('JJ SCM Provider Integration Test', () => {
 
         // Call squash with just the revision string
         try {
-            const cmdCtx = createIntegrationCommandContext(scmProvider, createMock<CommentsManager>({}));
+            const cmdCtx = createIntegrationCommandContext(scmProvider);
             await squashRevisionIntoParentCommand(cmdCtx, createSquashRevisionIntoParentPayload([revision]));
         } catch (e) {
             assert.fail(`Squash should not throw when passed a string revision. Error: ${e}`);
         }
 
         // It should proceed without error for single parent case
-    });
-
-    test('SCM count includes only Working Copy changes', async () => {
-        await buildGraph(repo, [
-            {
-                label: 'parent',
-                description: 'parent',
-                files: { 'parent.txt': 'parent' },
-            },
-            {
-                parents: ['parent'],
-                isCurrentWorkingCopy: true,
-            },
-        ]);
-
-        repo.writeFile('wc1.txt', 'wc1');
-        repo.writeFile('wc2.txt', 'wc2');
-
-        await scmProvider.refresh({ forceSnapshot: true });
-
-        const wcGroup = accessPrivate(scmProvider, '_workingCopyGroup') as vscode.SourceControlResourceGroup;
-        const parentGroups = accessPrivate(scmProvider, '_parentGroups') as vscode.SourceControlResourceGroup[];
-
-        assert.strictEqual(wcGroup.resourceStates.length, 2, 'Should have 2 working copy changes');
-        assert.ok(parentGroups.length > 0, 'Should have parent group');
-        assert.ok(parentGroups[0].resourceStates.length > 0, 'Parent group should have resources');
-
-        assert.strictEqual(scmProvider.sourceControl.count, 2, 'SCM Count should match Working Copy count (2)');
     });
 
     test('Parent group context value updates when switching between immutable and mutable parents', async () => {
@@ -820,7 +791,7 @@ suite('JJ SCM Provider Integration Test', () => {
         repo.writeFile('file1.txt', 'wc\n');
 
         try {
-            const ctx = createIntegrationCommandContext(scmProvider, createMock<CommentsManager>({}));
+            const ctx = createIntegrationCommandContext(scmProvider);
             const payload = createCompareAllFilesWithRevisionPayload([ids.v1.changeId]);
             await compareAllFilesWithRevisionCommand(ctx, payload);
             // Wait for the comparison editor to be open before finishing the test

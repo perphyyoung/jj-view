@@ -4,7 +4,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CodeForgeRegistry } from '../core/code-forge-registry';
 import { JjEditFsService } from '../core/jj-edit-fs-service';
 import { JjRepositoryManager } from '../core/jj-repository-manager';
 import { Uri } from '../core/uri-utils';
@@ -21,14 +20,13 @@ describe('JjEditFsService Unit Tests', () => {
         repo = new TestRepo();
         repo.init();
 
-        const codeForgeRegistry = new CodeForgeRegistry();
         const outputChannel = createMockLogOutputChannel({
             appendLine: () => {},
         });
         const host = new FakeHostEnvironment();
         host.workspace.addFolder(Uri.file(repo.path));
 
-        repoManager = new JjRepositoryManager(codeForgeRegistry, outputChannel, host);
+        repoManager = new JjRepositoryManager(outputChannel, host);
 
         await repoManager.maybeRegisterRepositoryContainingUri(Uri.file(repo.path));
 

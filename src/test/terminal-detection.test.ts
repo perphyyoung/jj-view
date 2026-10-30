@@ -13,70 +13,57 @@ vi.mock('vscode', async () => {
 });
 
 // Import after mock
-import type { CodeForgeService } from '../core/code-forge-service';
 import type { VsCodeScmProvider } from '../vscode/providers/vscode-scm-provider';
 import { createMock, createMockLogOutputChannel } from './test-utils';
 
 describe('handleTerminalExecution', () => {
-    let codeForgeService: CodeForgeService;
     let outputChannel: vscode.LogOutputChannel;
     let scmProvider: VsCodeScmProvider;
 
     beforeEach(() => {
-        codeForgeService = createMock<CodeForgeService>({
-            requestRefreshWithBackoffs: vi.fn(),
-        });
         outputChannel = createMockLogOutputChannel({ appendLine: vi.fn() });
         scmProvider = createMock<VsCodeScmProvider>({
             refresh: vi.fn().mockResolvedValue(undefined),
         });
     });
 
-    it('detects "jj upload" and schedules staggered refreshes', () => {
-        const result = handleTerminalExecution('jj upload', codeForgeService, outputChannel, scmProvider);
+    it('detects "jj upload" and schedules a refresh', () => {
+        const result = handleTerminalExecution('jj upload', outputChannel, scmProvider);
 
         expect(result).toBe(true);
-        expect(codeForgeService.requestRefreshWithBackoffs).toHaveBeenCalled();
         expect(scmProvider.refresh).toHaveBeenCalled();
     });
 
     it('detects "jj gerrit upload" with arguments', () => {
-        const result = handleTerminalExecution(
-            'jj gerrit upload --change abc123',
-            codeForgeService,
-            outputChannel,
-            scmProvider,
-        );
+        const result = handleTerminalExecution('jj gerrit upload --change abc123', outputChannel, scmProvider);
 
         expect(result).toBe(true);
-        expect(codeForgeService.requestRefreshWithBackoffs).toHaveBeenCalled();
         expect(scmProvider.refresh).toHaveBeenCalled();
     });
 
     it('ignores non-jj commands', () => {
-        const result = handleTerminalExecution('git push origin main', codeForgeService, outputChannel, scmProvider);
+        const result = handleTerminalExecution('git push origin main', outputChannel, scmProvider);
 
         expect(result).toBe(false);
-        expect(codeForgeService.requestRefreshWithBackoffs).not.toHaveBeenCalled();
+        expect(scmProvider.refresh).not.toHaveBeenCalled();
     });
 
     it('ignores jj commands without upload', () => {
-        const result = handleTerminalExecution('jj log --revisions @', codeForgeService, outputChannel, scmProvider);
+        const result = handleTerminalExecution('jj log --revisions @', outputChannel, scmProvider);
 
         expect(result).toBe(false);
-        expect(codeForgeService.requestRefreshWithBackoffs).not.toHaveBeenCalled();
+        expect(scmProvider.refresh).not.toHaveBeenCalled();
     });
 
     it('handles leading whitespace in command', () => {
-        const result = handleTerminalExecution('  jj upload  ', codeForgeService, outputChannel, scmProvider);
+        const result = handleTerminalExecution('  jj upload  ', outputChannel, scmProvider);
 
         expect(result).toBe(true);
-        expect(codeForgeService.requestRefreshWithBackoffs).toHaveBeenCalled();
         expect(scmProvider.refresh).toHaveBeenCalled();
     });
 
     it('logs detected upload command', () => {
-        handleTerminalExecution('jj upload', codeForgeService, outputChannel, scmProvider);
+        handleTerminalExecution('jj upload', outputChannel, scmProvider);
 
         expect(outputChannel.info).toHaveBeenCalledWith('[Extension] Detected terminal upload/push: "jj upload"');
     });

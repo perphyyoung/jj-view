@@ -3,10 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import * as path from 'node:path';
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 import { DiffTabCleaner } from '../../core/diff-tab-cleaner';
-import { JjContextKey, ScmContextValue } from '../../core/jj-context-keys';
+import { JjContextKey } from '../../core/jj-context-keys';
 import { JjDecorationModel } from '../../core/jj-decoration-model';
 import type { JjRepository } from '../../core/jj-repository';
 import type { JjRepositoryManager } from '../../core/jj-repository-manager';
@@ -23,10 +22,6 @@ import type { VsCodeViewFsProvider } from './vscode-view-fs-provider';
 export class VsCodeScmProvider implements vscode.Disposable {
     private _disposed = false;
     private readonly disposables: vscode.Disposable[] = [];
-    private readonly _sourceControl?: vscode.SourceControl;
-    private readonly _workingCopyGroup?: vscode.SourceControlResourceGroup;
-    private readonly _parentGroups: vscode.SourceControlResourceGroup[] = [];
-    private readonly _conflictGroup?: vscode.SourceControlResourceGroup;
     private _inputBoxFallback = '';
     private _lastKnownDescription = '';
     private _lastKnownCommitId = '';
@@ -47,10 +42,6 @@ export class VsCodeScmProvider implements vscode.Disposable {
         return this.repo.jj;
     }
 
-    public ownsGroup(group: vscode.SourceControlResourceGroup): boolean {
-        return group === this._workingCopyGroup || group === this._conflictGroup || this._parentGroups.includes(group);
-    }
-
     get onDidChangeStatus(): vscode.Event<void> {
         return (listener, thisArgs, disposables) => {
             const disposable = this.scmModel.onDidChangeStatus(() => listener.call(thisArgs));
@@ -59,13 +50,6 @@ export class VsCodeScmProvider implements vscode.Disposable {
             }
             return disposable;
         };
-    }
-
-    get sourceControl(): vscode.SourceControl {
-        if (!this._sourceControl) {
-            throw new Error('Native Source Control integration is disabled (jj-view.nativeScm.enabled = false).');
-        }
-        return this._sourceControl;
     }
 
     constructor(
@@ -77,20 +61,11 @@ export class VsCodeScmProvider implements vscode.Disposable {
         public readonly editProvider?: VsCodeEditFsProvider,
         public readonly isFocused: () => boolean = () => true,
         scmModel?: ScmModel,
-        private readonly _enableNativeScm = true,
     ) {
         this.scmModel = scmModel ?? new ScmModel(repo, outputChannel);
         this.disposables.push(this.scmModel);
 
         const workspaceRoot = repo.rootUri.fsPath;
-        const folderName = path.basename(workspaceRoot);
-        if (this._enableNativeScm) {
-            this._sourceControl = vscode.scm.createSourceControl(
-                `jj-${workspaceRoot}`,
-                `Jujutsu (${folderName})`,
-                repo.rootUri,
-            );
-        }
         const decorationModel = new JjDecorationModel(this.jj, workspaceRoot);
         this.decorationProvider = new VsCodeDecorationProvider(decorationModel);
 
@@ -104,24 +79,6 @@ export class VsCodeScmProvider implements vscode.Disposable {
             this.outputChannel,
         );
 
-        if (this._sourceControl) {
-            this._conflictGroup = this._sourceControl.createResourceGroup(
-                ScmContextValue.ConflictGroup,
-                'Merge Conflicts',
-            );
-            this._conflictGroup.hideWhenEmpty = true;
-            this._workingCopyGroup = this._sourceControl.createResourceGroup(
-                ScmContextValue.WorkingCopyGroup,
-                'Working Copy',
-            );
-            this._workingCopyGroup.hideWhenEmpty = false;
-
-            this._sourceControl.quickDiffProvider = this;
-            this._sourceControl.inputBox.placeholder = 'Describe your changes...';
-            this._sourceControl.acceptInputCommand = { command: 'jj-view.commit', title: 'Commit (Ctrl+Enter)' };
-
-            this.disposables.push(this._sourceControl, this._conflictGroup, this._workingCopyGroup);
-        }
         this.disposables.push(this.decorationProvider);
 
         this.disposables.push(
@@ -153,18 +110,15 @@ export class VsCodeScmProvider implements vscode.Disposable {
     }
 
     public get inputBoxValue(): string {
-        return this._sourceControl?.inputBox.value ?? this._inputBoxFallback;
+        return this._inputBoxFallback;
     }
 
     /**
      * Updates the working copy description used by `jj-view.commit` / `jj-view.setDescription`.
-     * With native SCM disabled there is no input box, so the value is cached locally instead.
+     * The value is kept in memory because this build has no native Source Control input box.
      */
     public setInputBoxValue(value: string): void {
         this._inputBoxFallback = value;
-        if (this._sourceControl) {
-            this._sourceControl.inputBox.value = value;
-        }
     }
 
     private async renderSnapshot(snapshot: ScmSnapshot): Promise<void> {
@@ -178,7 +132,7 @@ export class VsCodeScmProvider implements vscode.Disposable {
         if (currentEntry) {
             const desc = snapshot.description;
             const commitId = currentEntry.commit_id;
-            const currentValue = this._sourceControl?.inputBox.value ?? this._inputBoxFallback;
+            const currentValue = this._inputBoxFallback;
 
             if (
                 currentValue === '' ||
@@ -198,7 +152,7 @@ export class VsCodeScmProvider implements vscode.Disposable {
 
         const decorationMap = new Map<string, JjStatusEntry>();
 
-        const workingCopyStates = snapshot.workingCopyChanges.map((c) => {
+        for (const c of snapshot.workingCopyChanges) {
             const state = this.toResourceState(c, currentEntry?.change_id || '@', {
                 squashable: snapshot.parentMutable,
                 multipleAncestors: snapshot.ancestors.length > 1,
@@ -207,16 +161,9 @@ export class VsCodeScmProvider implements vscode.Disposable {
             });
             decorationMap.set(state.resourceUri.toString(), c);
             decorationMap.set(getRepoRelativePath(state.resourceUri, this.jj.workspaceRoot), c);
-            return state;
-        });
-
-        if (this._workingCopyGroup) {
-            this._workingCopyGroup.label = snapshot.workingCopyLabel;
-            this._workingCopyGroup.contextValue = snapshot.workingCopyContextValue;
-            this._workingCopyGroup.resourceStates = workingCopyStates;
         }
 
-        const conflictStates = snapshot.conflictedPaths.map((cPath) => {
+        for (const cPath of snapshot.conflictedPaths) {
             const entry: JjStatusEntry = { path: cPath, status: 'modified', conflicted: true };
             const state = this.toResourceState(entry, currentEntry?.change_id || '@', {
                 openDiffOnClick,
@@ -224,50 +171,19 @@ export class VsCodeScmProvider implements vscode.Disposable {
             });
             decorationMap.set(state.resourceUri.toString(), entry);
             decorationMap.set(getRepoRelativePath(state.resourceUri, this.jj.workspaceRoot), entry);
-            return state;
-        });
-
-        if (this._conflictGroup) {
-            this._conflictGroup.resourceStates = conflictStates;
         }
 
-        if (this._sourceControl) {
-            while (this._parentGroups.length > snapshot.ancestors.length) {
-                const group = this._parentGroups.pop();
-                group?.dispose();
-            }
-
-            for (let i = 0; i < snapshot.ancestors.length; i++) {
-                const ancestor = snapshot.ancestors[i];
-                let group: vscode.SourceControlResourceGroup;
-
-                if (i < this._parentGroups.length) {
-                    group = this._parentGroups[i];
-                    group.label = ancestor.label;
-                    group.contextValue = ancestor.contextValue;
-                } else {
-                    const groupId = `ancestor-${i}`;
-                    group = this._sourceControl.createResourceGroup(groupId, ancestor.label);
-                    group.hideWhenEmpty = false;
-                    group.contextValue = ancestor.contextValue;
-                    this._parentGroups.push(group);
-                }
-
-                const remainingAncestors = snapshot.ancestors.length - 1 - i;
-                group.resourceStates = ancestor.changes.map((c: JjStatusEntry) => {
-                    const state = this.toResourceState(c, ancestor.entry.change_id, {
-                        editable: ancestor.isMutable,
-                        squashable: ancestor.canSquash,
-                        multipleAncestors: remainingAncestors > 0,
-                        openDiffOnClick,
-                    });
-                    decorationMap.set(state.resourceUri.toString(), c);
-                    return state;
+        for (const ancestor of snapshot.ancestors) {
+            const remainingAncestors = snapshot.ancestors.length - 1 - snapshot.ancestors.indexOf(ancestor);
+            for (const c of ancestor.changes) {
+                const state = this.toResourceState(c, ancestor.entry.change_id, {
+                    editable: ancestor.isMutable,
+                    squashable: ancestor.canSquash,
+                    multipleAncestors: remainingAncestors > 0,
+                    openDiffOnClick,
                 });
+                decorationMap.set(state.resourceUri.toString(), c);
             }
-
-            this._sourceControl.count = snapshot.workingCopyCount;
-            this._sourceControl.quickDiffProvider = this;
         }
 
         this.decorationProvider.updateScmAndTrackedStatus(decorationMap);
@@ -283,19 +199,10 @@ export class VsCodeScmProvider implements vscode.Disposable {
         revision = '@',
         options: Parameters<typeof createJjResourceState>[3] = {},
     ): JjResourceState {
-        return createJjResourceState(
-            entry,
-            revision,
-            this._sourceControl?.rootUri?.fsPath || this.repo.rootUri.fsPath,
-            {
-                ...options,
-                workingCopyChangeId: this.scmModel.currentEntry?.change_id,
-            },
-        );
-    }
-
-    provideOriginalResource(uri: Uri): vscode.ProviderResult<Uri> {
-        return this.scmModel.getOriginalResourceUri(uri);
+        return createJjResourceState(entry, revision, this.repo.rootUri.fsPath, {
+            ...options,
+            workingCopyChangeId: this.scmModel.currentEntry?.change_id,
+        });
     }
 
     dispose(): void {

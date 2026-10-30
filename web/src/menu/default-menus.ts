@@ -433,7 +433,7 @@ export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
         commandPalette: [
             {
                 command: 'jj-view.uploadStack',
-                when: "!config.jj-view.alwaysUploadStack && jj.codeForgeProvider != 'gerrit'",
+                when: '!config.jj-view.alwaysUploadStack',
             },
             {
                 command: 'jj-view.killProcess',
@@ -587,11 +587,6 @@ export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
                 group: 'navigation@10',
                 when: 'view == jj-view.logView',
             },
-            {
-                command: 'jj-view.copyUnresolvedComments',
-                group: 'navigation',
-                when: 'view == workbench.panel.comments && jj.codeForgeActive',
-            },
         ],
         'scm/title': [
             {
@@ -614,11 +609,6 @@ export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
             {
                 command: 'jj-view.refresh',
                 group: 'navigation@10',
-            },
-            {
-                command: 'jj-view.manageAuth',
-                group: 'navigation@0',
-                when: 'jj.codeForgeAuthManageable',
             },
         ],
         'scm/resourceGroup/context': [
@@ -763,7 +753,7 @@ export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
             },
             {
                 command: 'jj-view.uploadStack',
-                when: "webviewSection == 'commit' && jj.canUpload && !config.jj-view.alwaysUploadStack && jj.codeForgeProvider != 'gerrit'",
+                when: "webviewSection == 'commit' && jj.canUpload && !config.jj-view.alwaysUploadStack",
                 group: '3_bookmark@3',
             },
             {

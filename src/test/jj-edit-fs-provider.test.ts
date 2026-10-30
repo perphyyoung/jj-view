@@ -12,7 +12,6 @@ vi.mock('vscode', () => createVscodeMock());
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { CodeForgeRegistry } from '../core/code-forge-registry';
 import { JjEditFsService } from '../core/jj-edit-fs-service';
 import { JjRepositoryManager } from '../core/jj-repository-manager';
 import { VsCodeEditFsProvider } from '../vscode/providers/vscode-edit-fs-provider';
@@ -44,14 +43,13 @@ describe('VsCodeEditFsProvider', () => {
         repo = new TestRepo();
         repo.init();
 
-        const codeForgeRegistry = new CodeForgeRegistry();
         const outputChannel = createMockLogOutputChannel({
             appendLine: () => {},
         });
         const host = new FakeHostEnvironment();
         host.workspace.addFolder(Uri.file(repo.path));
 
-        repoManager = new JjRepositoryManager(codeForgeRegistry, outputChannel, host);
+        repoManager = new JjRepositoryManager(outputChannel, host);
 
         // Register the real repository
         await repoManager.maybeRegisterRepositoryContainingUri(Uri.file(repo.path));

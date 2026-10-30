@@ -5,7 +5,6 @@
 
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CodeForgeRegistry } from '../core/code-forge-registry';
 import { resolveRepository } from '../core/host/ui-helpers';
 import type { JjRepository } from '../core/jj-repository';
 import { JjRepositoryManager } from '../core/jj-repository-manager';
@@ -28,12 +27,11 @@ describe('resolveRepository', () => {
         host = new FakeHostEnvironment();
         host.workspace.addFolder(Uri.file(repo.path));
 
-        const codeForgeRegistry = new CodeForgeRegistry();
         const outputChannel = createMockLogOutputChannel({
             appendLine: () => {},
         });
 
-        repoManager = new JjRepositoryManager(codeForgeRegistry, outputChannel, host);
+        repoManager = new JjRepositoryManager(outputChannel, host);
         const registered = await repoManager.maybeRegisterRepositoryContainingUri(Uri.file(repo.path));
         if (!registered) {
             throw new Error('Failed to register repository');

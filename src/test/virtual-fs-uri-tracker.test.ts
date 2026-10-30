@@ -4,7 +4,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CodeForgeRegistry } from '../core/code-forge-registry';
 import { JjRepositoryManager } from '../core/jj-repository-manager';
 import { Uri } from '../core/uri-utils';
 import { VirtualFsUriTracker } from '../core/virtual-fs-uri-tracker';
@@ -24,11 +23,10 @@ describe('VirtualFsUriTracker Unit Tests', () => {
 
         host = new FakeHostEnvironment();
         host.workspace.addFolder(Uri.file(repo.path));
-        const codeForgeRegistry = new CodeForgeRegistry();
         const outputChannel = createMockLogOutputChannel({
             appendLine: () => {},
         });
-        repoManager = new JjRepositoryManager(codeForgeRegistry, outputChannel, host);
+        repoManager = new JjRepositoryManager(outputChannel, host);
         await repoManager.maybeRegisterRepositoryContainingUri(Uri.file(repo.path));
 
         tracker = new VirtualFsUriTracker(repoManager);

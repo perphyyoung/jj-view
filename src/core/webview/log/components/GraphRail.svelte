@@ -108,10 +108,7 @@ function computeEdgePath(edge: GraphEdge): string | null {
         if (isLastRowElision) {
             trailingY = (rowOffsets[lastRowIndex] || 0) + ELISION_ROW_HEIGHT / 2;
         } else {
-            const lastRow = rows[lastRowIndex];
-            const lastRowHeight =
-                lastRow && !isElisionRow(lastRow) && lastRow.codeForgeChange ? ROW_HEIGHT_EXPANDED : ROW_HEIGHT_NORMAL;
-            const baseOffset = lastRowHeight === ROW_HEIGHT_EXPANDED ? ROW_HEIGHT_EXPANDED - 2 : CY_OFFSET + 12;
+            const baseOffset = CY_OFFSET + 12;
             trailingY = (rowOffsets[lastRowIndex] || 0) + baseOffset + (edge.isElided ? 12 : 0);
         }
     }
@@ -199,11 +196,7 @@ const svgHeight = $derived(height + BOTTOM_PADDING);
     <!-- Terminations -->
     {#each terminations as term (`term-${term.x}-${term.y}`)}
         {@const mx = getPixelX(term.x)}
-        {@const lastRow = rows[rows.length - 1]}
-        {@const lastRowOffset =
-            lastRow && !isElisionRow(lastRow) && lastRow.codeForgeChange
-                ? ROW_HEIGHT_EXPANDED + 10
-                : CY_OFFSET + 24}
+        {@const lastRowOffset = CY_OFFSET + 24}
         {@const my =
             term.y >= rows.length
                 ? (rowOffsets[rows.length - 1] || 0) + lastRowOffset

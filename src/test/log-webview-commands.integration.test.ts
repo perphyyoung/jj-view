@@ -12,7 +12,6 @@ import { newCommand } from '../core/commands/new';
 import { redoCommand } from '../core/commands/redo';
 import { squashRevisionIntoParentCommand } from '../core/commands/squash-revision';
 import { undoCommand } from '../core/commands/undo';
-import type { CommentsManager } from '../core/comments-manager';
 import {
     type LogViewHostToWebviewMessage,
     LogViewHostToWebviewMessageSchema,
@@ -89,31 +88,31 @@ suite('Log Webview Commands End-to-End Integration Test', () => {
         executeCommandStub = sinon.stub(vscode.commands, 'executeCommand');
         executeCommandStub.callsFake(async (command: string, ...args: unknown[]) => {
             if (command === 'jj-view.abandon') {
-                const ctx = createIntegrationCommandContext(scm, createMock<CommentsManager>({}));
+                const ctx = createIntegrationCommandContext(scm);
                 const payload = createAbandonPayload(args, scm);
                 return abandonCommand(ctx, payload);
             }
             if (command === 'jj-view.squashRevisionIntoParent') {
-                const ctx = createIntegrationCommandContext(scm, createMock<CommentsManager>({}));
+                const ctx = createIntegrationCommandContext(scm);
                 const payload = createSquashRevisionIntoParentPayload(args);
                 return squashRevisionIntoParentCommand(ctx, payload);
             }
             if (command === 'jj-view.new') {
-                const ctx = createIntegrationCommandContext(scm, createMock<CommentsManager>({}));
+                const ctx = createIntegrationCommandContext(scm);
                 const payload = createNewPayload(args);
                 return newCommand(ctx, payload);
             }
             if (command === 'jj-view.edit') {
-                const ctx = createIntegrationCommandContext(scm, createMock<CommentsManager>({}));
+                const ctx = createIntegrationCommandContext(scm);
                 const payload = createEditPayload(args);
                 return editCommand(ctx, payload);
             }
             if (command === 'jj-view.undo') {
-                const ctx = createIntegrationCommandContext(scm, createMock<CommentsManager>({}));
+                const ctx = createIntegrationCommandContext(scm);
                 return undoCommand(ctx);
             }
             if (command === 'jj-view.redo') {
-                const ctx = createIntegrationCommandContext(scm, createMock<CommentsManager>({}));
+                const ctx = createIntegrationCommandContext(scm);
                 return redoCommand(ctx);
             }
             if (command === 'jj-view.refresh') {

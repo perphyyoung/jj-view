@@ -5,7 +5,6 @@
 import type { CommandContext } from '../host/command-context';
 import { showJjError } from '../host/ui-helpers';
 import type { JjRepository } from '../jj-repository';
-import type { JjService } from '../jj-service';
 import type { JjLogEntry } from '../jj-types';
 import {
     buildStackPushArgs,
@@ -39,43 +38,10 @@ interface ResolvedUploadCommand {
     uploadRevision?: string;
 }
 
-async function checkHasLocalBookmark(jj: JjService, revision: string, stackCommits?: JjLogEntry[]): Promise<boolean> {
-    if (stackCommits && stackCommits.length > 0) {
-        let commit = stackCommits.find(
-            (c) =>
-                c.commit_id === revision ||
-                c.change_id === revision ||
-                c.commit_id.startsWith(revision) ||
-                c.change_id.startsWith(revision) ||
-                (revision === '@' && c.is_current_working_copy),
-        );
-        if (!commit && revision === '@-') {
-            const wc = stackCommits.find((c) => c.is_current_working_copy);
-            if (wc && wc.parents.length > 0) {
-                const parent = wc.parents[0];
-                commit = stackCommits.find((c) => c.commit_id === parent.commit_id || c.change_id === parent.change_id);
-            }
-            if (!commit) {
-                commit = stackCommits[stackCommits.length - 1];
-            }
-        }
-        if (commit?.bookmarks) {
-            return commit.bookmarks.some((b) => !b.remote);
-        }
-    }
-    try {
-        const bookmarks = await jj.getBookmarks({ revision });
-        return bookmarks.some((b) => !b.remote);
-    } catch {
-        return false;
-    }
-}
-
 async function resolveUploadCommand(
     repo: JjRepository,
     revision?: string,
     customCommand?: string,
-    stackCommits?: JjLogEntry[],
 ): Promise<ResolvedUploadCommand> {
     let rev = revision || '@';
     if (rev === '@') {
@@ -91,23 +57,7 @@ async function resolveUploadCommand(
         return { subcommand, commandArgs, uploadRevision: rev };
     }
 
-    const { activeProvider } = repo.codeForge;
-    if (!activeProvider?.getUploadCommand) {
-        return { subcommand: 'git', commandArgs: ['push'], uploadRevision: rev };
-    }
-
-    const hasBookmark = await checkHasLocalBookmark(repo.jj, rev, stackCommits);
-    const provCommand = activeProvider.getUploadCommand(rev, hasBookmark);
-    if (!provCommand) {
-        return { subcommand: 'git', commandArgs: ['push'], uploadRevision: rev };
-    }
-
-    return {
-        subcommand: provCommand.subcommand,
-        commandArgs: provCommand.args,
-        // The forge provider embeds the revision in its arguments, so upload() should not append -r again.
-        uploadRevision: undefined,
-    };
+    return { subcommand: 'git', commandArgs: ['push'], uploadRevision: rev };
 }
 
 export async function uploadCommand(ctx: CommandContext, payload?: UploadPayload): Promise<void> {
@@ -116,9 +66,8 @@ export async function uploadCommand(ctx: CommandContext, payload?: UploadPayload
         host: { ui, nav, config },
     } = ctx;
     const revision = payload?.revision;
-    const isGerrit = repo.codeForge.activeProvider?.id === 'gerrit';
-    const alwaysUploadStack = !isGerrit && config.get<boolean>('alwaysUploadStack', false);
-    const mode = isGerrit ? 'single' : alwaysUploadStack ? 'stack' : (payload?.mode ?? 'auto');
+    const alwaysUploadStack = config.get<boolean>('alwaysUploadStack', false);
+    const mode = alwaysUploadStack ? 'stack' : (payload?.mode ?? 'auto');
 
     let stackCommits = payload?.stackCommits;
 
@@ -138,12 +87,7 @@ export async function uploadCommand(ctx: CommandContext, payload?: UploadPayload
     const customCommand = config.get<string>('uploadCommand');
     const hasCustomCommand = !!(customCommand && customCommand.trim().length > 0);
     try {
-        const { subcommand, commandArgs, uploadRevision } = await resolveUploadCommand(
-            repo,
-            revision,
-            customCommand,
-            stackCommits,
-        );
+        const { subcommand, commandArgs, uploadRevision } = await resolveUploadCommand(repo, revision, customCommand);
 
         if (!subcommand) {
             throw new Error('Invalid upload command configuration.');
@@ -155,7 +99,6 @@ export async function uploadCommand(ctx: CommandContext, payload?: UploadPayload
         await ui.withProgress(title, () => repo.jj.upload(uploadRevision, subcommand, ...commandArgs));
 
         await repo.refresh();
-        repo.codeForge.requestRefreshWithBackoffs();
 
         await ui.showInformation('Upload successful');
     } catch (e: unknown) {

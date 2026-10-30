@@ -4,7 +4,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { CodeForgeRegistry } from '../core/code-forge-registry';
 import { CommitDetailsController } from '../core/controllers/commit-details-controller';
 import {
     type CommitDetailsHostToWebviewMessage,
@@ -34,12 +33,11 @@ describe('CommitDetailsController Domain Unit Tests', () => {
         fakeHost = new FakeHostEnvironment();
         fakeHost.workspace.addFolder(Uri.file(testRepo.path));
 
-        const registry = new CodeForgeRegistry();
         const outputChannel = createMockLogOutputChannel({
             appendLine: () => {},
         });
 
-        repositoryManager = new JjRepositoryManager(registry, outputChannel, fakeHost);
+        repositoryManager = new JjRepositoryManager(outputChannel, fakeHost);
 
         const repo = await repositoryManager.maybeRegisterRepositoryContainingUri(Uri.file(testRepo.path));
         if (!repo) {

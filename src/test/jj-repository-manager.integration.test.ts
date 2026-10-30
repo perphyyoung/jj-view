@@ -9,7 +9,6 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import { CodeForgeRegistry } from '../core/code-forge-registry';
 import { JjRepositoryManager } from '../core/jj-repository-manager';
 import { Uri } from '../core/uri-utils';
 import type { Api } from '../vscode/extension';
@@ -19,7 +18,6 @@ import { TestRepo } from './test-repo';
 import { createMock, createMockLogOutputChannel, exposePrivate } from './test-utils';
 
 suite('JjRepositoryManager Integration Test', () => {
-    let registry: CodeForgeRegistry;
     let outputChannel: vscode.LogOutputChannel;
     let workspaceState: vscode.Memento;
     const store = new Map<string, unknown>();
@@ -86,7 +84,6 @@ suite('JjRepositoryManager Integration Test', () => {
 
     setup(async () => {
         sandbox = sinon.createSandbox();
-        registry = new CodeForgeRegistry();
         outputChannel = createMockLogOutputChannel({
             appendLine: () => {},
         });
@@ -128,7 +125,7 @@ suite('JjRepositoryManager Integration Test', () => {
         const host = new VsCodeHostEnvironment({
             context: createMock<vscode.ExtensionContext>({ workspaceState, globalState }),
         });
-        manager = new JjRepositoryManager(registry, outputChannel, host);
+        manager = new JjRepositoryManager(outputChannel, host);
     });
 
     teardown(async () => {
@@ -139,7 +136,6 @@ suite('JjRepositoryManager Integration Test', () => {
         }
 
         await manager.dispose();
-        registry.dispose();
 
         if (mainRepo.path !== resolvedWorkspaceRoot) {
         } else {
@@ -181,7 +177,7 @@ suite('JjRepositoryManager Integration Test', () => {
         const host = new VsCodeHostEnvironment({
             context: createMock<vscode.ExtensionContext>({ workspaceState, globalState }),
         });
-        await using restartManager = autoCleanup(new JjRepositoryManager(registry, outputChannel, host));
+        await using restartManager = autoCleanup(new JjRepositoryManager(outputChannel, host));
         // 3. Initialize from cache - should restore immediately
         await restartManager.restoreCachedRepositories();
         assert.strictEqual(restartManager.repositories.length, 1, 'Should load repo from cache');
@@ -215,7 +211,7 @@ suite('JjRepositoryManager Integration Test', () => {
         const host = new VsCodeHostEnvironment({
             context: createMock<vscode.ExtensionContext>({ workspaceState, globalState }),
         });
-        await using restartManager = autoCleanup(new JjRepositoryManager(registry, outputChannel, host));
+        await using restartManager = autoCleanup(new JjRepositoryManager(outputChannel, host));
         // 3. Initialize from cache
         await restartManager.restoreCachedRepositories();
         assert.strictEqual(restartManager.repositories.length, 1);

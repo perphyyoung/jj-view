@@ -4,8 +4,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import type { CodeForgeProvider, StackCommitNode } from '../../core/code-forge-provider';
-import type { CodeForgeService } from '../../core/code-forge-service';
 import {
     buildStackPushArgs,
     isEligibleForAutoStackedUpload,
@@ -26,7 +24,6 @@ describe('uploadCommand', () => {
     let jjService: JjService;
     let repo: TestRepo;
     let remoteRepos: TestRepo[] = [];
-    let codeForgeService: CodeForgeService;
     let mockJjRepo: JjRepository;
     let ctx: FakeCommandContext;
 
@@ -36,14 +33,8 @@ describe('uploadCommand', () => {
         repo.init();
         jjService = new JjService(repo.path, NO_OP_LOGGER);
 
-        codeForgeService = createMock<CodeForgeService>({
-            isEnabled: true,
-            activeProvider: undefined,
-            requestRefreshWithBackoffs: vi.fn(),
-        });
         mockJjRepo = createMock<JjRepository>({
             jj: jjService,
-            codeForge: codeForgeService,
             refresh: vi.fn().mockResolvedValue(undefined),
         });
         ctx = new FakeCommandContext(mockJjRepo);
@@ -89,7 +80,6 @@ describe('uploadCommand', () => {
         // Verify that the push succeeded and remote repository now has the ref
         expect(remoteRepo.hasGitRef('refs/heads/feature-x')).toBe(true);
         expect(mockJjRepo.refresh).toHaveBeenCalled();
-        expect(codeForgeService.requestRefreshWithBackoffs).toHaveBeenCalled();
     });
 
     test('falls back to default when custom command is empty', async () => {
@@ -115,7 +105,6 @@ describe('uploadCommand', () => {
         // Verify that the default push succeeded
         expect(remoteRepo.hasGitRef('refs/heads/feature-x')).toBe(true);
         expect(mockJjRepo.refresh).toHaveBeenCalled();
-        expect(codeForgeService.requestRefreshWithBackoffs).toHaveBeenCalled();
     });
 
     test('extracts revision from object payload (repro for r.substring error)', async () => {
@@ -152,24 +141,6 @@ describe('uploadCommand', () => {
             },
         ]);
 
-        const badProvider = createMock<CodeForgeProvider>({
-            getUploadCommand: () => ({
-                subcommand: 'git',
-                args: ['push-nonexistent'],
-            }),
-        });
-        const badCodeForgeService = createMock<CodeForgeService>({
-            isEnabled: true,
-            requestRefreshWithBackoffs: vi.fn(),
-            activeProvider: badProvider,
-        });
-        mockJjRepo = createMock<JjRepository>({
-            jj: jjService,
-            codeForge: badCodeForgeService,
-            refresh: vi.fn().mockResolvedValue(undefined),
-        });
-        ctx = new FakeCommandContext(mockJjRepo);
-
         ctx.host.ui.setNextErrorResponse('Configure Upload...');
 
         await uploadCommand(ctx, { revision: 'feature-x' });
@@ -198,91 +169,6 @@ describe('uploadCommand', () => {
 
         expect(ctx.host.ui.errorMessages[0]).toContain('Upload failed');
         expect(ctx.host.nav.settingsOpened).toHaveLength(0);
-    });
-
-    test('GitHub provider: uses -c if revision has no local bookmark', async () => {
-        repo.describe('root commit');
-        const ids = await buildGraph(repo, [
-            { label: 'commitA', description: 'test github push without bookmark', isCurrentWorkingCopy: true },
-        ]);
-
-        const remoteRepo = await setupRemote();
-
-        const mockProvider = createMock<CodeForgeProvider>({
-            getUploadCommand: (rev: string, hasBookmark?: boolean) => {
-                const args = ['push'];
-                if (!hasBookmark) {
-                    args.push('-c', rev);
-                } else {
-                    args.push('-r', rev);
-                }
-                return { subcommand: 'git', args };
-            },
-        });
-        const githubCodeForgeService = createMock<CodeForgeService>({
-            isEnabled: true,
-            requestRefreshWithBackoffs: vi.fn(),
-            activeProvider: mockProvider,
-        });
-        mockJjRepo = createMock<JjRepository>({
-            jj: jjService,
-            codeForge: githubCodeForgeService,
-            refresh: vi.fn().mockResolvedValue(undefined),
-        });
-        ctx = new FakeCommandContext(mockJjRepo);
-
-        await uploadCommand(ctx, { revision: ids.commitA.changeId });
-
-        // Since there was no local bookmark on commitA, the github provider's getUploadCommand should have returned git push -c <revision>
-        // This should create a new bookmark starting with "push-" in the repo and push it to remote.
-        const pushRefs = remoteRepo.listGitRefs('refs/heads/push-');
-        expect(pushRefs.length).toBe(1);
-    });
-
-    test('GitHub provider: uses -r if revision has local bookmark', async () => {
-        const remoteRepo = await setupRemote();
-
-        repo.describe('root commit');
-        await buildGraph(repo, [
-            {
-                label: 'commitA',
-                description: 'test github push with bookmark',
-                bookmarks: ['my-feature-branch'],
-                isCurrentWorkingCopy: true,
-            },
-        ]);
-
-        const mockProvider = createMock<CodeForgeProvider>({
-            getUploadCommand: (rev: string, hasBookmark?: boolean) => {
-                const args = ['push'];
-                if (!hasBookmark) {
-                    args.push('-c', rev);
-                } else {
-                    args.push('-r', rev);
-                }
-                return { subcommand: 'git', args };
-            },
-        });
-        const githubCodeForgeService = createMock<CodeForgeService>({
-            isEnabled: true,
-            requestRefreshWithBackoffs: vi.fn(),
-            activeProvider: mockProvider,
-        });
-        mockJjRepo = createMock<JjRepository>({
-            jj: jjService,
-            codeForge: githubCodeForgeService,
-            refresh: vi.fn().mockResolvedValue(undefined),
-        });
-        ctx = new FakeCommandContext(mockJjRepo);
-
-        await uploadCommand(ctx, { revision: 'my-feature-branch' });
-
-        // Since there was a local bookmark, it should use -r, pushing my-feature-branch.
-        expect(remoteRepo.hasGitRef('refs/heads/my-feature-branch')).toBe(true);
-
-        // Also check that no "push-" bookmark was created
-        const pushRefs = remoteRepo.listGitRefs('refs/heads/push-');
-        expect(pushRefs.length).toBe(0);
     });
 
     describe('stacked upload support', () => {
@@ -516,25 +402,6 @@ describe('uploadCommand', () => {
                 },
             ]);
 
-            let syncedStack: StackCommitNode[] | undefined;
-            const mockProvider = createMock<CodeForgeProvider>({
-                syncStackedChanges: vi.fn().mockImplementation(async (stack: StackCommitNode[]) => {
-                    syncedStack = stack;
-                    return { created: [], retargeted: [], unchanged: [] };
-                }),
-            });
-            const forgeService = createMock<CodeForgeService>({
-                isEnabled: true,
-                requestRefreshWithBackoffs: vi.fn(),
-                activeProvider: mockProvider,
-            });
-            mockJjRepo = createMock<JjRepository>({
-                jj: jjService,
-                codeForge: forgeService,
-                refresh: vi.fn().mockResolvedValue(undefined),
-            });
-            ctx = new FakeCommandContext(mockJjRepo);
-
             // Upload stack targeting the middle commit (commitB)
             await uploadStackCommand(ctx, { revision: ids.commitB.changeId });
 
@@ -544,10 +411,6 @@ describe('uploadCommand', () => {
 
             // Child/descendant (commitC) must NOT be pushed
             expect(remoteRepo.hasGitRef('refs/heads/stack-c')).toBe(false);
-
-            // Provider sync must only receive commits up to commitB
-            expect(syncedStack).toBeDefined();
-            expect(syncedStack?.map((n) => n.bookmark)).toEqual(['stack-a', 'stack-b']);
         });
 
         test('auto-detect upload on middle commit pushes ancestors and target commit, excluding children', async () => {
@@ -738,136 +601,6 @@ describe('uploadCommand', () => {
             expect(remoteRepo.hasGitRef('refs/heads/stack-c')).toBe(false);
         });
 
-        test('notifies user of created and retargeted PRs when provider syncs stacked changes', async () => {
-            await setupRemoteWithBase();
-            const ids = await buildGraph(repo, [
-                { label: 'commitA', parents: ['base'], description: 'commit A', bookmarks: ['stack-a'] },
-                {
-                    label: 'commitB',
-                    parents: ['commitA'],
-                    description: 'commit B',
-                    bookmarks: ['stack-b'],
-                    isCurrentWorkingCopy: true,
-                },
-            ]);
-
-            const mockProvider = createMock<CodeForgeProvider>({
-                syncStackedChanges: vi.fn().mockResolvedValue({
-                    created: [
-                        {
-                            changeId: ids.commitA.changeId,
-                            prNumber: 101,
-                            url: 'https://github.com/test/repo/pull/101',
-                            base: 'base',
-                            head: 'stack-a',
-                        },
-                    ],
-                    retargeted: [
-                        {
-                            changeId: ids.commitB.changeId,
-                            prNumber: 102,
-                            url: 'https://github.com/test/repo/pull/102',
-                            oldBase: 'base',
-                            newBase: 'stack-a',
-                        },
-                    ],
-                    unchanged: [],
-                }),
-            });
-            vi.spyOn(codeForgeService, 'activeProvider', 'get').mockReturnValue(mockProvider);
-
-            await uploadStackCommand(ctx, { revision: ids.commitB.changeId });
-
-            expect(mockProvider.syncStackedChanges).toHaveBeenCalled();
-            expect(ctx.host.ui.infoMessages).toContain('Upload successful. Created: #101; Retargeted: #102');
-        });
-
-        test('stacked upload with unbookmarked middle commit includes generated bookmark in syncStackedChanges', async () => {
-            await setupRemoteWithBase();
-            const ids = await buildGraph(repo, [
-                { label: 'commitA', parents: ['base'], description: 'commit A', bookmarks: ['stack-a'] },
-                { label: 'commitB', parents: ['commitA'], description: 'middle unbookmarked commit' },
-                {
-                    label: 'commitC',
-                    parents: ['commitB'],
-                    description: 'commit C',
-                    bookmarks: ['stack-c'],
-                    isCurrentWorkingCopy: true,
-                },
-            ]);
-
-            let passedNodes: StackCommitNode[] = [];
-            const mockProvider = createMock<CodeForgeProvider>({
-                syncStackedChanges: vi.fn().mockImplementation(async (nodes: StackCommitNode[]) => {
-                    passedNodes = nodes;
-                    return { created: [], retargeted: [], unchanged: [] };
-                }),
-            });
-            vi.spyOn(codeForgeService, 'activeProvider', 'get').mockReturnValue(mockProvider);
-
-            await uploadStackCommand(ctx, { revision: ids.commitC.changeId });
-
-            expect(mockProvider.syncStackedChanges).toHaveBeenCalled();
-            expect(passedNodes.map((n) => n.changeId)).toEqual([
-                ids.commitA.changeId,
-                ids.commitB.changeId,
-                ids.commitC.changeId,
-            ]);
-            expect(passedNodes[1]?.bookmark).toMatch(/^push-/);
-        });
-
-        test('isolated PR sync error warns user without suggesting Configure Upload', async () => {
-            await setupRemoteWithBase();
-            const ids = await buildGraph(repo, [
-                { label: 'commitA', parents: ['base'], description: 'commit A', bookmarks: ['stack-a'] },
-            ]);
-
-            const mockProvider = createMock<CodeForgeProvider>({
-                syncStackedChanges: vi.fn().mockRejectedValue(new Error('Network error on GitHub GraphQL')),
-            });
-            vi.spyOn(codeForgeService, 'activeProvider', 'get').mockReturnValue(mockProvider);
-
-            await uploadStackCommand(ctx, { revision: ids.commitA.changeId });
-
-            expect(ctx.host.ui.warningMessages).toContain(
-                'Upload succeeded, but pull request synchronization failed: Network error on GitHub GraphQL',
-            );
-            expect(ctx.host.nav.settingsOpened).not.toContain('jj-view.uploadCommand');
-        });
-
-        test('invokes prepareStackedChanges with bookmarked stack nodes prior to upload', async () => {
-            await setupRemoteWithBase();
-            const ids = await buildGraph(repo, [
-                { label: 'commitA', parents: ['base'], description: 'commit A', bookmarks: ['stack-a'] },
-                {
-                    label: 'commitB',
-                    parents: ['commitA'],
-                    description: 'commit B',
-                    bookmarks: ['stack-b'],
-                    isCurrentWorkingCopy: true,
-                },
-            ]);
-
-            const callOrder: string[] = [];
-            const mockProvider = createMock<CodeForgeProvider>({
-                prepareStackedChanges: vi.fn().mockImplementation(async (nodes: StackCommitNode[]) => {
-                    callOrder.push(`prepare:${nodes.map((n) => n.bookmark).join(',')}`);
-                }),
-                syncStackedChanges: vi.fn().mockImplementation(async (nodes: StackCommitNode[]) => {
-                    callOrder.push(`sync:${nodes.map((n) => n.bookmark).join(',')}`);
-                    return { created: [], retargeted: [], unchanged: [] };
-                }),
-            });
-            vi.spyOn(codeForgeService, 'activeProvider', 'get').mockReturnValue(mockProvider);
-
-            await uploadStackCommand(ctx, { revision: ids.commitB.changeId });
-
-            expect(mockProvider.prepareStackedChanges).toHaveBeenCalled();
-            expect(mockProvider.syncStackedChanges).toHaveBeenCalled();
-            expect(callOrder[0]).toBe('prepare:stack-a,stack-b');
-            expect(callOrder[1]).toBe('sync:stack-a,stack-b');
-        });
-
         test('empty working copy @ falls back to @- when target is specified by change ID', async () => {
             await setupRemoteWithBase();
             const ids = await buildGraph(repo, [
@@ -926,32 +659,6 @@ describe('uploadCommand', () => {
             expect(resolved.commandArgs).toEqual(['push', '--force-with-lease', '-r', 'bm-a', '-r', 'bm-b']);
         });
 
-        test('uploadStackCommand proceeds with upload when prepareStackedChanges fails', async () => {
-            const remoteRepo = await setupRemoteWithBase();
-            const ids = await buildGraph(repo, [
-                { label: 'commitA', parents: ['base'], description: 'commit A', bookmarks: ['stack-a'] },
-                {
-                    label: 'commitB',
-                    parents: ['commitA'],
-                    description: 'commit B',
-                    bookmarks: ['stack-b'],
-                    isCurrentWorkingCopy: true,
-                },
-            ]);
-
-            const mockProvider = createMock<CodeForgeProvider>({
-                prepareStackedChanges: vi.fn().mockRejectedValue(new Error('Pre-push preparation failed')),
-                syncStackedChanges: vi.fn().mockResolvedValue({ created: [], retargeted: [], unchanged: [] }),
-            });
-            vi.spyOn(codeForgeService, 'activeProvider', 'get').mockReturnValue(mockProvider);
-
-            await uploadStackCommand(ctx, { revision: ids.commitB.changeId });
-
-            expect(mockProvider.prepareStackedChanges).toHaveBeenCalled();
-            expect(remoteRepo.hasGitRef('refs/heads/stack-a')).toBe(true);
-            expect(remoteRepo.hasGitRef('refs/heads/stack-b')).toBe(true);
-        });
-
         test('custom uploadCommand uploads working copy when revision argument is undefined', async () => {
             repo.describe('root commit');
             const ids = await buildGraph(repo, [
@@ -975,73 +682,6 @@ describe('uploadCommand', () => {
 
             expect(remoteRepo.hasGitRef('refs/heads/feature-def')).toBe(true);
             expect(mockJjRepo.refresh).toHaveBeenCalled();
-            expect(codeForgeService.requestRefreshWithBackoffs).toHaveBeenCalled();
-        });
-
-        test('uploadCommand does not perform stacked upload on Gerrit repository even when alwaysUploadStack is true', async () => {
-            const remoteRepo = await setupRemoteWithBase();
-            const ids = await buildGraph(repo, [
-                { label: 'commitA', parents: ['base'], description: 'commit A', bookmarks: ['stack-a'] },
-                {
-                    label: 'commitB',
-                    parents: ['commitA'],
-                    description: 'commit B',
-                    bookmarks: ['stack-b'],
-                    isCurrentWorkingCopy: true,
-                },
-            ]);
-
-            const mockGerritProvider = createMock<CodeForgeProvider>({
-                id: 'gerrit',
-                prepareStackedChanges: vi.fn(),
-                syncStackedChanges: vi.fn(),
-                getUploadCommand: vi
-                    .fn()
-                    .mockImplementation((rev: string) => ({ subcommand: 'git', args: ['push', '-r', rev] })),
-            });
-            codeForgeService = createMock<CodeForgeService>({
-                isEnabled: true,
-                activeProvider: mockGerritProvider,
-                requestRefreshWithBackoffs: vi.fn(),
-            });
-            mockJjRepo = createMock<JjRepository>({
-                jj: jjService,
-                codeForge: codeForgeService,
-                refresh: vi.fn().mockResolvedValue(undefined),
-            });
-            ctx = new FakeCommandContext(mockJjRepo);
-            ctx.host.config.set('alwaysUploadStack', true);
-
-            await uploadCommand(ctx, { revision: ids.commitB.changeId });
-
-            expect(mockGerritProvider.prepareStackedChanges).not.toHaveBeenCalled();
-            expect(mockGerritProvider.syncStackedChanges).not.toHaveBeenCalled();
-            // Should have pushed single commitB (stack-b), not stacked (stack-a should not be pushed)
-            expect(remoteRepo.hasGitRef('refs/heads/stack-b')).toBe(true);
-            expect(remoteRepo.hasGitRef('refs/heads/stack-a')).toBe(false);
-        });
-
-        test('uploadStackCommand shows warning and exits early on Gerrit repositories', async () => {
-            const mockGerritProvider = createMock<CodeForgeProvider>({
-                id: 'gerrit',
-            });
-            codeForgeService = createMock<CodeForgeService>({
-                isEnabled: true,
-                activeProvider: mockGerritProvider,
-                requestRefreshWithBackoffs: vi.fn(),
-            });
-            mockJjRepo = createMock<JjRepository>({
-                jj: jjService,
-                codeForge: codeForgeService,
-                refresh: vi.fn().mockResolvedValue(undefined),
-            });
-            ctx = new FakeCommandContext(mockJjRepo);
-
-            await uploadStackCommand(ctx, { revision: '@' });
-
-            expect(ctx.host.ui.warningMessages).toContain(
-                'Stacked uploads are not supported for Gerrit repositories. Use standard upload instead.',
-            );
         });
 
         test('resolveStackedUploadCommand reuses pre-resolved stack commits', async () => {

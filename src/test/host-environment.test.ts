@@ -227,7 +227,7 @@ describe('FakeHostEnvironment', () => {
     });
 
     describe('FakeCommandContext', () => {
-        it('bundles repo, host environment, log, and services', () => {
+        it('bundles repo, host environment and log', () => {
             const fakeRepo = { rootUri: Uri.file('/repo') } as JjRepository;
             const host = new FakeHostEnvironment();
             const ctx = new FakeCommandContext(fakeRepo, host);
@@ -235,7 +235,6 @@ describe('FakeHostEnvironment', () => {
             expect(ctx.repo).toBe(fakeRepo);
             expect(ctx.host).toBe(host);
             expect(ctx.log).toBeDefined();
-            expect(ctx.services).toBeDefined();
         });
     });
 });

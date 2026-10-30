@@ -637,7 +637,7 @@ export async function setScmDescription(page: Page, description: string, vscode?
                     if (!scmProvider) {
                         return false;
                     }
-                    return scmProvider.sourceControl.inputBox.value.trim() === (expectedVal as string).trim();
+                    return scmProvider.inputBoxValue.trim() === (expectedVal as string).trim();
                 }, description);
                 expect(match).toBe(true);
             }).toPass({ timeout: 2000, intervals: [20, 50, 100] });
@@ -1553,49 +1553,6 @@ export async function resolveCommentThread(reviewWidget: Locator) {
  */
 export async function unresolveCommentThread(reviewWidget: Locator) {
     await clickCommentButton(reviewWidget, 'Unresolve Thread', 'unresolveCommentThread');
-}
-
-/**
- * Polls the comments manager until the count of loaded comment threads is at least minCount.
- */
-export async function waitForCommentThreadsCount(vscode: VSCodeFixture, minCount = 1) {
-    await expect
-        .poll(async () => {
-            return await vscode.evaluate((_, api) => {
-                return api.commentsProvider
-                    ? api.commentsProvider.getThreads().size
-                    : api.commentsManager.getThreads().length;
-            });
-        })
-        .toBeGreaterThanOrEqual(minCount);
-}
-
-/**
- * Polls the first comment thread until its resolution status and collapsible state match the expected values.
- */
-export async function waitForThreadState(
-    vscode: VSCodeFixture,
-    expectedContextValue: 'resolved' | 'unresolved',
-    expectedCollapsibleState: 0 | 1,
-) {
-    await expect
-        .poll(async () => {
-            return await vscode.evaluate((_, api) => {
-                const thread = api.commentsProvider
-                    ? Array.from(api.commentsProvider.getThreads().values())[0]
-                    : undefined;
-                return {
-                    contextValue: thread?.contextValue
-                        ? (thread.contextValue.split(':')[0] as 'resolved' | 'unresolved')
-                        : undefined,
-                    collapsibleState: thread?.collapsibleState,
-                };
-            });
-        })
-        .toEqual({
-            contextValue: expectedContextValue,
-            collapsibleState: expectedCollapsibleState,
-        });
 }
 
 /**

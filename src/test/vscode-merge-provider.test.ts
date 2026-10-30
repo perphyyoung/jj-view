@@ -4,7 +4,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { CodeForgeRegistry } from '../core/code-forge-registry';
 import { JjMergeService } from '../core/jj-merge-service';
 import { JjRepositoryManager } from '../core/jj-repository-manager';
 import { Uri } from '../core/uri-utils';
@@ -23,14 +22,13 @@ describe('VsCodeMergeContentProvider', () => {
         repo = new TestRepo();
         repo.init();
 
-        const registry = new CodeForgeRegistry();
         const outputChannel = createMockLogOutputChannel({
             appendLine: () => {},
         });
         const host = new FakeHostEnvironment();
         host.workspace.addFolder(Uri.file(repo.path));
 
-        repositoryManager = new JjRepositoryManager(registry, outputChannel, host);
+        repositoryManager = new JjRepositoryManager(outputChannel, host);
 
         const registeredRepo = await repositoryManager.maybeRegisterRepositoryContainingUri(Uri.file(repo.path));
         if (!registeredRepo) {

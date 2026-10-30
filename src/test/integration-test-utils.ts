@@ -7,8 +7,6 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import type { CodeForgeRegistry } from '../core/code-forge-registry';
-import type { CommentsManager } from '../core/comments-manager';
 import type { HostStorage } from '../core/host/host-environment';
 import type { JjRepository } from '../core/jj-repository';
 import type { JjRepositoryManager } from '../core/jj-repository-manager';
@@ -20,7 +18,6 @@ import { VsCodeHostEnvironment } from '../vscode/vscode-host-environment';
 import { createMock } from './test-utils';
 
 export interface TestRepositoryContext {
-    codeForgeRegistry: CodeForgeRegistry;
     repository: JjRepository;
     repositoryManager: JjRepositoryManager;
     workspaceState: HostStorage;
@@ -126,7 +123,6 @@ export async function createTestRepositoryContext(
     repositoryManager.setFocusedRepository(finalRepo);
 
     const testContext: TestRepositoryContext = {
-        codeForgeRegistry: repositoryManager.codeForgeRegistry,
         repository: finalRepo,
         repositoryManager,
         workspaceState: repositoryManager.workspaceState,
@@ -256,10 +252,7 @@ export function stubCommand(
 /**
  * Creates a valid VSCodeCommandContext with a VsCodeHostEnvironment for integration tests.
  */
-export function createIntegrationCommandContext(
-    scmProvider: VsCodeScmProvider,
-    comments?: CommentsManager,
-): VSCodeCommandContext {
+export function createIntegrationCommandContext(scmProvider: VsCodeScmProvider): VSCodeCommandContext {
     const context = createMock<vscode.ExtensionContext>({
         globalState: createMock<vscode.ExtensionContext['globalState']>({
             get: () => undefined,
@@ -275,5 +268,5 @@ export function createIntegrationCommandContext(
     const host = new VsCodeHostEnvironment({
         context,
     });
-    return new VSCodeCommandContext(scmProvider.repo, host, scmProvider.outputChannel, comments);
+    return new VSCodeCommandContext(scmProvider.repo, host, scmProvider.outputChannel);
 }

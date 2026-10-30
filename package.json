@@ -114,32 +114,6 @@
                     ],
                     "description": "Controls how the extension detects external file changes. Defaults to the event-driven watcher; polling is a fallback for environments where the watcher cannot start."
                 },
-                "jj-view.codeForge.enabled": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Read pull/merge request status, CI checks and review comments from GitHub, GitLab or Gerrit. Disabled by default so the extension stays fully local: no remote status is queried and no authentication is requested. Manual upload (push) remains available."
-                },
-                "jj-view.codeForge.provider": {
-                    "type": "string",
-                    "enum": [
-                        "github",
-                        "gitlab",
-                        "gerrit"
-                    ],
-                    "description": "Force the active Code Forge provider to a specific service. If not set, it is auto-detected from git remotes."
-                },
-                "jj-view.gerrit.host": {
-                    "type": "string",
-                    "description": "Gerrit host URL (e.g., https://gerrit-review.googlesource.com). If not set, extension attempts to detect it from .gitreview or git remotes."
-                },
-                "jj-view.gerrit.project": {
-                    "type": "string",
-                    "description": "Gerrit project name. If not set, extension attempts to detect it from git remotes."
-                },
-                "jj-view.gitlab.host": {
-                    "type": "string",
-                    "description": "GitLab host URL (e.g., https://gitlab.com). If not set, extension attempts to detect it from git remotes."
-                },
                 "jj-view.alwaysUploadStack": {
                     "type": "boolean",
                     "default": false,
@@ -213,11 +187,6 @@
                     "default": false,
                     "description": "Suppress the warning to disable the built-in Git extension in colocated repositories."
                 },
-                "jj-view.nativeScm.enabled": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Register JJ View as a provider in the built-in Source Control view. Disabled by default so that JJ only appears in the JJ View activity bar container; enabling it restores gutter quick diff and the SCM input box. Requires a window reload."
-                },
                 "jj-view.binaryPath": {
                     "type": "string",
                     "default": "",
@@ -286,12 +255,6 @@
                 "icon": "$(layers)"
             },
             {
-                "command": "jj-view.focusRepository",
-                "title": "Show Repository in JJ Log",
-                "category": "JJ View Local",
-                "icon": "$(eye)"
-            },
-            {
                 "command": "jj-view.newMergeChange",
                 "title": "New Merge Change",
                 "category": "JJ View Local",
@@ -314,11 +277,6 @@
                 "title": "Set Description (Prompt)",
                 "category": "JJ View Local",
                 "icon": "$(save)"
-            },
-            {
-                "command": "jj-view.focusDescriptionInput",
-                "title": "Focus SCM Description Input",
-                "category": "JJ View Local"
             },
             {
                 "command": "jj-view.commit",
@@ -629,55 +587,6 @@
                 "category": "JJ View Local"
             },
             {
-                "command": "jj-view.manageAuth",
-                "title": "Manage Code Forge Authentication",
-                "category": "JJ View Local",
-                "icon": "$(key)"
-            },
-            {
-                "command": "jj-view.showComments",
-                "title": "Show Comments",
-                "category": "JJ View Local"
-            },
-            {
-                "command": "jj-view.ackComment",
-                "title": "Ack",
-                "category": "JJ View Local"
-            },
-            {
-                "command": "jj-view.doneComment",
-                "title": "Done",
-                "category": "JJ View Local"
-            },
-            {
-                "command": "jj-view.replyAndResolveComment",
-                "title": "Reply & Resolve",
-                "category": "JJ View Local"
-            },
-            {
-                "command": "jj-view.replyComment",
-                "title": "Reply",
-                "category": "JJ View Local"
-            },
-            {
-                "command": "jj-view.resolveCommentThread",
-                "title": "Resolve Thread",
-                "category": "JJ View Local",
-                "icon": "$(check)"
-            },
-            {
-                "command": "jj-view.unresolveCommentThread",
-                "title": "Unresolve Thread",
-                "category": "JJ View Local",
-                "icon": "$(reply)"
-            },
-            {
-                "command": "jj-view.copyUnresolvedComments",
-                "title": "Copy Unresolved Comments",
-                "category": "JJ View Local",
-                "icon": "$(copy)"
-            },
-            {
                 "command": "jj-view.changesAsTree",
                 "title": "View as Tree",
                 "category": "JJ View Local",
@@ -690,31 +599,11 @@
                 "icon": "$(list-flat)"
             }
         ],
-        "keybindings": [
-            {
-                "command": "jj-view.setDescription",
-                "key": "ctrl+s",
-                "mac": "cmd+s",
-                "when": "scmProvider =~ /^jj/ && editorLangId == 'scminput'"
-            },
-            {
-                "command": "jj-view.commit",
-                "key": "ctrl+enter",
-                "mac": "cmd+enter",
-                "when": "scmProvider =~ /^jj/ && editorLangId == 'scminput'"
-            },
-            {
-                "command": "jj-view.focusDescriptionInput",
-                "key": "ctrl+shift+g",
-                "mac": "cmd+shift+g",
-                "when": "scmProvider =~ /^jj/"
-            }
-        ],
         "menus": {
             "commandPalette": [
                 {
                     "command": "jj-view.uploadStack",
-                    "when": "!config.jj-view.alwaysUploadStack && jj.codeForgeProvider != 'gerrit'"
+                    "when": "!config.jj-view.alwaysUploadStack"
                 },
                 {
                     "command": "jj-view.changesAsTree",
@@ -734,38 +623,6 @@
                 },
                 {
                     "command": "jj-view.clearProcessHistory",
-                    "when": "false"
-                },
-                {
-                    "command": "jj-view.showComments",
-                    "when": "false"
-                },
-                {
-                    "command": "jj-view.ackComment",
-                    "when": "false"
-                },
-                {
-                    "command": "jj-view.doneComment",
-                    "when": "false"
-                },
-                {
-                    "command": "jj-view.replyAndResolveComment",
-                    "when": "false"
-                },
-                {
-                    "command": "jj-view.replyComment",
-                    "when": "false"
-                },
-                {
-                    "command": "jj-view.resolveCommentThread",
-                    "when": "false"
-                },
-                {
-                    "command": "jj-view.unresolveCommentThread",
-                    "when": "false"
-                },
-                {
-                    "command": "jj-view.copyUnresolvedComments",
                     "when": "false"
                 },
                 {
@@ -915,11 +772,6 @@
                     "command": "jj-view.workspaceAdd",
                     "group": "navigation@10",
                     "when": "view == jj-view.logView"
-                },
-                {
-                    "command": "jj-view.copyUnresolvedComments",
-                    "group": "navigation",
-                    "when": "view == workbench.panel.comments && jj.codeForgeActive"
                 }
             ],
             "webview/context": [
@@ -995,7 +847,7 @@
                 },
                 {
                     "command": "jj-view.uploadStack",
-                    "when": "webviewSection == 'commit' && jj.canUpload && !config.jj-view.alwaysUploadStack && jj.codeForgeProvider != 'gerrit'",
+                    "when": "webviewSection == 'commit' && jj.canUpload && !config.jj-view.alwaysUploadStack",
                     "group": "3_bookmark@3"
                 },
                 {
@@ -1089,115 +941,6 @@
                     "group": "9_visibility_2_toggle@4"
                 }
             ],
-            "scm/title": [
-                {
-                    "command": "jj-view.focusRepository",
-                    "group": "navigation@0",
-                    "when": "scmProvider =~ /^jj/ && scm.providerCount > 1"
-                },
-                {
-                    "command": "jj-view.new",
-                    "group": "navigation@1"
-                },
-                {
-                    "command": "jj-view.setDescription",
-                    "group": "navigation@2"
-                },
-                {
-                    "command": "jj-view.commit",
-                    "group": "navigation@3"
-                },
-                {
-                    "command": "jj-view.refresh",
-                    "group": "navigation@10"
-                },
-                {
-                    "command": "jj-view.manageAuth",
-                    "group": "navigation@0",
-                    "when": "jj.codeForgeAuthManageable"
-                }
-            ],
-            "scm/resourceGroup/context": [
-                {
-                    "command": "jj-view.absorb",
-                    "group": "inline",
-                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowAbsorb\\b/"
-                },
-                {
-                    "command": "jj-view.showMultiFileDiff",
-                    "group": "inline@1",
-                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowShowMultiFileDiff\\b/"
-                },
-                {
-                    "command": "jj-view.abandon",
-                    "group": "inline@2",
-                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowAbandon\\b/"
-                },
-                {
-                    "command": "jj-view.squashRevisionIntoAncestor",
-                    "group": "inline@3",
-                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowSquash\\b/"
-                },
-                {
-                    "command": "jj-view.squashRevisionIntoParent",
-                    "group": "inline@4",
-                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowSquash\\b/"
-                },
-                {
-                    "command": "jj-view.showDetails",
-                    "group": "inline@5",
-                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowShowDetails\\b/"
-                },
-                {
-                    "command": "jj-view.edit",
-                    "group": "inline@6",
-                    "when": "scmResourceGroupState =~ /\\bjj\\.group\\.allowEdit\\b/"
-                }
-            ],
-            "scm/resourceState/context": [
-                {
-                    "command": "jj-view.openFile",
-                    "group": "inline@1",
-                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowOpen\\b/ && jj.openDiffOnClick || scmResourceState =~ /\\bjj\\.resource\\.allowOpenMergeEditor\\b/"
-                },
-                {
-                    "command": "jj-view.openChanges",
-                    "group": "inline@1",
-                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowOpen\\b/ && !jj.openDiffOnClick || scmResourceState =~ /\\bjj\\.resource\\.allowOpenMergeEditor\\b/"
-                },
-                {
-                    "command": "jj-view.restore",
-                    "group": "inline@2",
-                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowRestore\\b/"
-                },
-                {
-                    "command": "jj-view.squashFilesIntoAncestor",
-                    "group": "inline@3",
-                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowSquashIntoAncestor\\b/"
-                },
-                {
-                    "command": "jj-view.squashFilesIntoParent",
-                    "group": "inline@4",
-                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowSquashIntoParent\\b/"
-                },
-                {
-                    "command": "jj-view.squashFilesIntoChild",
-                    "group": "inline@5",
-                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowSquashIntoChild\\b/"
-                }
-            ],
-            "scm/change/title": [
-                {
-                    "command": "jj-view.discardChange",
-                    "group": "navigation",
-                    "when": "originalResourceScheme == 'jj-view'"
-                },
-                {
-                    "command": "jj-view.squashHunkIntoParent",
-                    "group": "navigation",
-                    "when": "originalResourceScheme == 'jj-view' && jj.parentMutable"
-                }
-            ],
             "editor/title": [
                 {
                     "command": "jj-view.completeSquashRevision",
@@ -1254,38 +997,6 @@
                     "command": "jj-view.viewFileAtRevision",
                     "group": "jj-view",
                     "when": "resourceScheme == 'file'"
-                }
-            ],
-            "comments/commentThread/context": [
-                {
-                    "command": "jj-view.replyAndResolveComment",
-                    "group": "inline@1",
-                    "when": "commentController =~ /jj-view/"
-                },
-                {
-                    "command": "jj-view.doneComment",
-                    "group": "inline@2",
-                    "when": "commentController =~ /jj-view/"
-                },
-                {
-                    "command": "jj-view.ackComment",
-                    "group": "inline@3",
-                    "when": "commentController =~ /jj-view/"
-                },
-                {
-                    "command": "jj-view.replyComment",
-                    "group": "inline@4",
-                    "when": "commentController =~ /jj-view/"
-                },
-                {
-                    "command": "jj-view.resolveCommentThread",
-                    "group": "inline@5",
-                    "when": "commentController =~ /jj-view/ && commentThread =~ /^unresolved/"
-                },
-                {
-                    "command": "jj-view.unresolveCommentThread",
-                    "group": "inline@5",
-                    "when": "commentController =~ /jj-view/ && commentThread =~ /^resolved/"
                 }
             ]
         },

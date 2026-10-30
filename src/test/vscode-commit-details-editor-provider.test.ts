@@ -11,7 +11,6 @@ vi.mock('vscode', async () => {
     return createVscodeMock();
 });
 
-import { CodeForgeRegistry } from '../core/code-forge-registry';
 import {
     type CommitDetailsHostToWebviewMessage,
     CommitDetailsHostToWebviewMessageSchema,
@@ -68,12 +67,11 @@ describe('VsCodeCommitDetailsEditorProvider Unit & Concurrency Tests', () => {
         fakeHost = new FakeHostEnvironment();
         fakeHost.workspace.addFolder(Uri.file(testRepo.path));
 
-        const registry = new CodeForgeRegistry();
         const outputChannel = createMockLogOutputChannel({
             appendLine: () => {},
         });
 
-        repositoryManager = new JjRepositoryManager(registry, outputChannel, fakeHost);
+        repositoryManager = new JjRepositoryManager(outputChannel, fakeHost);
         await repositoryManager.maybeRegisterRepositoryContainingUri(Uri.file(testRepo.path));
 
         extensionContext = createMock<vscode.ExtensionContext>({

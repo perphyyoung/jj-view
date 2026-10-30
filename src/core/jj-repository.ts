@@ -7,8 +7,6 @@ import path from 'pathe';
 import { DebouncingQueue } from '../utils/debouncing-queue';
 import type { LoggerChannel } from '../utils/output-channel';
 import { ChangeDetectionManager } from './change-detection-manager';
-import type { CodeForgeRegistry } from './code-forge-registry';
-import { CodeForgeService } from './code-forge-service';
 import { AsyncEventEmitter, type Disposable } from './host/events';
 import type { HostEnvironment } from './host/host-environment';
 import type { JjProcessTracker } from './jj-process-tracker';
@@ -23,7 +21,6 @@ interface RefreshPayload {
 export class JjRepository implements Disposable {
     private readonly _jj: JjService;
     private readonly _watcher: ChangeDetectionManager;
-    private readonly _codeForge: CodeForgeService;
     private readonly _onDidStatusChange = new AsyncEventEmitter<{ reason: string }>();
     private readonly _refreshQueue: DebouncingQueue<RefreshPayload>;
 
@@ -32,7 +29,6 @@ export class JjRepository implements Disposable {
     constructor(
         public readonly rootUri: Uri,
         public readonly storePath: string,
-        registry: CodeForgeRegistry,
         outputChannel: LoggerChannel,
         public readonly host: HostEnvironment,
         binaryPath?: string,
@@ -44,15 +40,6 @@ export class JjRepository implements Disposable {
             processTracker,
             system: host.system,
         });
-        this._codeForge = new CodeForgeService(
-            rootUri.fsPath,
-            this._jj,
-            registry,
-            host,
-            outputChannel,
-            host.config.get<boolean>('codeForge.enabled', false) ?? false,
-        );
-
         this._refreshQueue = new DebouncingQueue<RefreshPayload>(
             async (options) => {
                 const reasonsSet = options?.reasons ?? new Set<string>();
@@ -137,10 +124,6 @@ export class JjRepository implements Disposable {
         return this._jj;
     }
 
-    get codeForge(): CodeForgeService {
-        return this._codeForge;
-    }
-
     get watcher(): ChangeDetectionManager {
         return this._watcher;
     }
@@ -182,7 +165,6 @@ export class JjRepository implements Disposable {
         }
         this._disposed = true;
         this._refreshQueue.dispose();
-        this._codeForge.dispose();
         await this._watcher.dispose();
         this._onDidStatusChange.dispose();
 

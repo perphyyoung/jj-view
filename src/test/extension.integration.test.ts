@@ -34,9 +34,4 @@ suite('Extension Test Suite', () => {
         // Verify repositoryManager is exported
         assert.ok(api.repositoryManager, 'repositoryManager not exported');
     });
-
-    test('Command jj-view.focusDescriptionInput should be registered', async () => {
-        const commands = await vscode.commands.getCommands(true);
-        assert.ok(commands.includes('jj-view.focusDescriptionInput'), 'jj-view.focusDescriptionInput not registered');
-    });
 });

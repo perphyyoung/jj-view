@@ -9,16 +9,6 @@ import { setBookmarkCommand } from '../core/commands/bookmark';
 import { advanceBookmarkCommand } from '../core/commands/bookmark-advance';
 import { advanceBookmarkAndUploadCommand } from '../core/commands/bookmark-advance-upload';
 import { deleteBookmarkCommand } from '../core/commands/bookmark-delete';
-import {
-    ackCommentCommand,
-    copyUnresolvedCommentsCommand,
-    doneCommentCommand,
-    replyAndResolveCommentCommand,
-    replyCommentCommand,
-    resolveCommentThreadCommand,
-    showCommentsCommand,
-    unresolveCommentThreadCommand,
-} from '../core/commands/comments';
 import { commitCommand } from '../core/commands/commit';
 import { commitPromptCommand } from '../core/commands/commit-prompt';
 import { compareAllFilesWithRevisionCommand } from '../core/commands/compare-all-files-with-revision';
@@ -59,7 +49,6 @@ import { workspaceAddCommand } from '../core/commands/workspace-add';
 import { workspaceDeleteCommand } from '../core/commands/workspace-delete';
 import { workspaceForgetCommand } from '../core/commands/workspace-forget';
 import { workspaceOpenInCurrentWindowCommand, workspaceOpenInNewWindowCommand } from '../core/commands/workspace-open';
-import type { CommentsManager } from '../core/comments-manager';
 import type { CommandContext } from '../core/host/command-context';
 import { TOGGLEABLE_COMMIT_ACTIONS } from '../core/host/ipc/log-view-schemas';
 import { resolveRepository } from '../core/host/ui-helpers';
@@ -72,15 +61,6 @@ import { createSetBookmarkPayload } from './payloads/bookmark.payload';
 import { createAdvanceBookmarkPayload } from './payloads/bookmark-advance.payload';
 import { createAdvanceBookmarkAndUploadPayload } from './payloads/bookmark-advance-upload.payload';
 import { createDeleteBookmarkPayload } from './payloads/bookmark-delete.payload';
-import {
-    createAckCommentPayload,
-    createDoneCommentPayload,
-    createReplyAndResolveCommentPayload,
-    createReplyCommentPayload,
-    createResolveCommentThreadPayload,
-    createShowCommentsPayload,
-    createUnresolveCommentThreadPayload,
-} from './payloads/comments.payload';
 import { createCommitPayload, createCommitPromptPayload } from './payloads/commit.payload';
 import { createCompareAllFilesWithRevisionPayload } from './payloads/compare-all-files-with-revision.payload';
 import { createCompareFileWithRevisionPayload } from './payloads/compare-file-with-revision.payload';
@@ -131,28 +111,18 @@ export interface RegisterCommandsOptions {
     repositoryManager: JjRepositoryManager;
     scmProviders: Map<string, VsCodeScmProvider>;
     outputChannel: LoggerChannel;
-    commentsManager: CommentsManager;
     logWebviewProvider: VsCodeLogWebviewProvider;
     hostEnvironment?: VsCodeHostEnvironment;
 }
 
 export function registerCommands(options: RegisterCommandsOptions): void {
-    const { context, repositoryManager, scmProviders, outputChannel, commentsManager, logWebviewProvider } = options;
+    const { context, repositoryManager, scmProviders, outputChannel, logWebviewProvider } = options;
     const host = options.hostEnvironment ?? new VsCodeHostEnvironment({ context });
 
     function resolveRepositoryLocal(
         args: unknown[],
         hostEnv: VsCodeHostEnvironment,
     ): { repo: JjRepository; scm?: VsCodeScmProvider } | undefined {
-        const firstArg = args[0];
-        if (firstArg && typeof firstArg === 'object' && 'id' in firstArg && 'resourceStates' in firstArg) {
-            for (const scmProvider of scmProviders.values()) {
-                if (scmProvider.ownsGroup(firstArg as vscode.SourceControlResourceGroup)) {
-                    return { repo: scmProvider.repo, scm: scmProvider };
-                }
-            }
-        }
-
         const repo = resolveRepository(repositoryManager, { args, host: hostEnv });
         if (!repo) {
             return undefined;
@@ -170,7 +140,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
             const resolved = resolveRepositoryLocal(args, host);
             if (resolved?.repo) {
                 repositoryManager.setFocusedRepository(resolved.repo);
-                const cmdCtx = new VSCodeCommandContext(resolved.repo, host, outputChannel, commentsManager);
+                const cmdCtx = new VSCodeCommandContext(resolved.repo, host, outputChannel);
                 const payload = payloadCreator(args, resolved.scm);
                 return await handler(cmdCtx, payload);
             } else {
@@ -190,7 +160,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
             const resolved = resolveRepositoryLocal(args, host);
             if (resolved?.repo) {
                 repositoryManager.setFocusedRepository(resolved.repo);
-                const cmdCtx = new VSCodeCommandContext(resolved.repo, host, outputChannel, commentsManager);
+                const cmdCtx = new VSCodeCommandContext(resolved.repo, host, outputChannel);
                 return await handler(cmdCtx, ...args);
             } else {
                 const message = `[Command Error] Failed to resolve repository for command: ${commandId}`;
@@ -202,44 +172,11 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     }
 
     context.subscriptions.push(
-        registerCommand('jj-view.focusRepository', async () => {
-            // No-op: registerCommand automatically resolves the clicked repository's rootUri and sets it as the focused repository.
-        }),
         registerCommandWithPayload('jj-view.new', createNewPayload, newCommand),
         registerCommandWithPayload('jj-view.newMergeChange', createNewMergeChangePayload, newMergeChangeCommand),
         registerCommandWithPayload('jj-view.commit', createCommitPayload, commitCommand),
         registerCommandWithPayload('jj-view.commitPrompt', createCommitPromptPayload, commitPromptCommand),
         registerCommandWithPayload('jj-view.describePrompt', createDescribePromptPayload, describePromptCommand),
-    );
-
-    // focusDescriptionInput doesn't need repo context — it just focuses the SCM view
-    context.subscriptions.push(
-        vscode.commands.registerCommand('jj-view.focusDescriptionInput', async () => {
-            await host.nav.focusScmInput?.();
-        }),
-    );
-
-    context.subscriptions.push(
-        registerCommandWithPayload('jj-view.showComments', createShowCommentsPayload, showCommentsCommand),
-        registerCommandWithPayload('jj-view.ackComment', createAckCommentPayload, ackCommentCommand),
-        registerCommandWithPayload('jj-view.doneComment', createDoneCommentPayload, doneCommentCommand),
-        registerCommandWithPayload(
-            'jj-view.replyAndResolveComment',
-            createReplyAndResolveCommentPayload,
-            replyAndResolveCommentCommand,
-        ),
-        registerCommandWithPayload('jj-view.replyComment', createReplyCommentPayload, replyCommentCommand),
-        registerCommandWithPayload(
-            'jj-view.resolveCommentThread',
-            createResolveCommentThreadPayload,
-            resolveCommentThreadCommand,
-        ),
-        registerCommandWithPayload(
-            'jj-view.unresolveCommentThread',
-            createUnresolveCommentThreadPayload,
-            unresolveCommentThreadCommand,
-        ),
-        registerCommand('jj-view.copyUnresolvedComments', copyUnresolvedCommentsCommand),
     );
 
     context.subscriptions.push(

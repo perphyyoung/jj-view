@@ -9,7 +9,6 @@ import { CoalescingQueue } from '../utils/coalescing-queue';
 import { toError } from '../utils/error-utils';
 import { LruCache } from '../utils/lru-cache';
 import { type LoggerChannel, OutputChannel } from '../utils/output-channel';
-import type { CodeForgeRegistry } from './code-forge-registry';
 import { type Event, EventEmitter } from './host/events';
 import type { HostDisposable, HostEnvironment, HostStorage } from './host/host-environment';
 import type { HostFs } from './host/host-system';
@@ -58,7 +57,6 @@ export class JjRepositoryManager implements HostDisposable {
     private static readonly DISCOVERED_REPOS_KEY = 'jj-view.discoveredRepoPaths';
 
     constructor(
-        private readonly _codeForgeRegistry: CodeForgeRegistry,
         private readonly _outputChannel: LoggerChannel,
         private readonly _host: HostEnvironment,
         initialBinaryPath?: string,
@@ -133,10 +131,6 @@ export class JjRepositoryManager implements HostDisposable {
 
     get focusedRepository(): JjRepository | undefined {
         return this._focusedRepository;
-    }
-
-    get codeForgeRegistry(): CodeForgeRegistry {
-        return this._codeForgeRegistry;
     }
 
     get workspaceState(): HostStorage {
@@ -774,7 +768,6 @@ export class JjRepositoryManager implements HostDisposable {
         return new JjRepository(
             Uri.file(rootPath),
             resolvedStorePath,
-            this._codeForgeRegistry,
             repoOutputChannel,
             this._host,
             this._binaryPath,
