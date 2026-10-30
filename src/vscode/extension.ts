@@ -359,6 +359,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
      */
     const forceRefreshAllRepositories = async (): Promise<void> => {
         const start = performance.now();
+        const previousFocusedRoot = repositoryManager.focusedRepository?.rootUri.fsPath;
         outputChannel.info('[Extension] Force refresh all repositories: clearing and rescanning...');
         await repositoryManager.clear();
         await repositoryManager.scanForRepositories();
@@ -376,6 +377,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
                 }
             }),
         );
+
+        // `clear()` drops the focused repository; restore it so the views keep showing
+        // the same project after a full rescan.
+        if (previousFocusedRoot) {
+            const restored = repos.find((repo) => repo.rootUri.fsPath === previousFocusedRoot);
+            if (restored) {
+                repositoryManager.setFocusedRepository(restored);
+            }
+        }
 
         const elapsed = (performance.now() - start).toFixed(0);
         outputChannel.info(`[Extension] Force refresh all done in ${elapsed}ms (${repos.length} repositories)`);

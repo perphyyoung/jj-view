@@ -113,6 +113,31 @@ export interface RegisterCommandsOptions {
     hostEnvironment?: VsCodeHostEnvironment;
 }
 
+interface ResolvedCommandRepository {
+    repo: JjRepository;
+    scm?: VsCodeScmProvider;
+}
+
+/**
+ * Picks the repository a command targets. View-level commands (`preserveFocus`) act on the
+ * focused repository and never move the focus; everything else resolves from the invocation
+ * context (payload / active text editor) and then switches the focus.
+ */
+export function selectCommandRepository(options: {
+    preserveFocus: boolean;
+    focusedRepository: JjRepository | undefined;
+    lookupScmProvider: (rootPath: string) => VsCodeScmProvider | undefined;
+    resolveFromContext: () => ResolvedCommandRepository | undefined;
+}): ResolvedCommandRepository | undefined {
+    if (options.preserveFocus && options.focusedRepository) {
+        return {
+            repo: options.focusedRepository,
+            scm: options.lookupScmProvider(options.focusedRepository.rootUri.fsPath),
+        };
+    }
+    return options.resolveFromContext();
+}
+
 export function registerCommands(options: RegisterCommandsOptions): void {
     const { context, repositoryManager, scmProviders, outputChannel, logWebviewProvider } = options;
     const host = options.hostEnvironment ?? new VsCodeHostEnvironment({ context });
@@ -153,11 +178,24 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     function registerCommand<TReturn = unknown>(
         commandId: string,
         handler: (ctx: CommandContext, ...args: unknown[]) => Promise<TReturn>,
+        /**
+         * View-level commands (e.g. the Changes title button) must act on the repository
+         * the view currently shows. Resolving through the active text editor would both
+         * target the wrong repository and move the focus elsewhere.
+         */
+        options?: { preserveFocus?: boolean },
     ): vscode.Disposable {
         return vscode.commands.registerCommand(commandId, async (...args: unknown[]) => {
-            const resolved = resolveRepositoryLocal(args, host);
+            const resolved = selectCommandRepository({
+                preserveFocus: !!options?.preserveFocus,
+                focusedRepository: repositoryManager.focusedRepository,
+                lookupScmProvider: (rootPath) => scmProviders.get(rootPath),
+                resolveFromContext: () => resolveRepositoryLocal(args, host),
+            });
             if (resolved?.repo) {
-                repositoryManager.setFocusedRepository(resolved.repo);
+                if (!options?.preserveFocus) {
+                    repositoryManager.setFocusedRepository(resolved.repo);
+                }
                 const cmdCtx = new VSCodeCommandContext(resolved.repo, host, outputChannel);
                 return await handler(cmdCtx, ...args);
             } else {
@@ -201,7 +239,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
             () => createSquashSelectionIntoParentPayload(vscode.window.activeTextEditor),
             squashSelectionIntoParentCommand,
         ),
-        registerCommand('jj-view.refresh', refreshCommand),
+        registerCommand('jj-view.refresh', refreshCommand, { preserveFocus: true }),
         registerCommandWithPayload('jj-view.openFile', createOpenFilePayload, openFileCommand),
         registerCommandWithPayload('jj-view.openChanges', createOpenChangesPayload, openChangesCommand),
         registerCommand('jj-view.undo', undoCommand),

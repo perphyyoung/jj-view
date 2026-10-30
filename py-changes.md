@@ -141,6 +141,7 @@ git config core.autocrlf false   # 仅本仓库
 | Repos 标题栏 refresh 改为 `jj-view.refreshAll`：`repositoryManager.clear()` + 重新扫描 + 逐仓库 `forceSnapshot` 并补建缺失的 `VsCodeScmProvider` | 重装后 provider 未创建或快照为空时，单仓库 refresh 修不回来 |
 | Changes 标题栏 refresh 仍只刷新选定仓库，但补上 `forceSnapshot`；`ready` 时若快照为空则主动强制刷新一次 | 面板重建后可能先拿到空快照，等文件事件才恢复 |
 | 父仓库 watcher 忽略嵌套仓库的 `.jj` / `.git`（相对 glob + 事件兜底判定） | 子仓库每条 jj 命令都会写这些目录；父仓库无法跟踪它们，却会因此误刷新（如 `d:\py-code` 监听 `jj-view/.jj`） |
+| `jj-view.refresh` 改为 `preserveFocus`：只刷新聚焦仓库，不再用活动编辑器解析 | 命令包装器原本无条件 `setFocusedRepository`，点 Changes 刷新会把聚焦切到「当前打开文件」所属的仓库 |
 
 ### 2.7 webview 自定义图标
 
