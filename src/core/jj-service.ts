@@ -7,6 +7,7 @@ import type { z } from 'zod';
 import { AsyncCache } from '../utils/async-cache';
 import { getErrorMessage } from '../utils/error-utils';
 import { type LoggerChannel, NO_OP_LOGGER } from '../utils/output-channel';
+import { type LineAnnotation, parseAnnotationOutput } from './blame/line-blame';
 import { type HostSystem, type ProcessExecOptions, ProcessExitError, type TrackableProcess } from './host/host-system';
 import { NodeHostSystem } from './host/node-host-system';
 import type { IJjTrackedProcess, JjProcessTracker } from './jj-process-tracker';
@@ -1224,6 +1225,26 @@ export class JjService {
 
     async status(): Promise<string> {
         return this.run('status', [], { isMutation: true, useCachedSnapshot: false, label: 'status' });
+    }
+
+    /**
+     * Annotates every line of `filePath` with the commit that last touched it.
+     * Returns `undefined` for untracked/binary files, or when the installed jj
+     * release is too old to support `jj file annotate`.
+     */
+    async annotateFile(filePath: string, revision = '@'): Promise<LineAnnotation[] | undefined> {
+        const template =
+            'line_number ++ "\\t" ++ commit.commit_id() ++ "\\t" ++ commit.commit_id().short() ++ "\\t" ++ commit.author().name() ++ "\\t" ++ commit.author().timestamp().ago() ++ "\\t" ++ commit.description().first_line() ++ "\\n"';
+        try {
+            const output = await this.run('file', ['annotate', '-r', revision, '-T', template, '--', filePath], {
+                useCachedSnapshot: true,
+                label: 'annotateFile',
+            });
+            const annotations = parseAnnotationOutput(output);
+            return annotations.length > 0 ? annotations : undefined;
+        } catch {
+            return undefined;
+        }
     }
 
     async getChanges(revision: string): Promise<JjFileChangeWithStats[]> {

@@ -20,6 +20,7 @@ import { checkGitColocation } from './git-colocation';
 import { VsCodeChangesWebviewProvider } from './providers/vscode-changes-webview-provider';
 import { VsCodeCommitDetailsEditorProvider } from './providers/vscode-commit-details-editor-provider';
 import { VsCodeEditFsProvider } from './providers/vscode-edit-fs-provider';
+import { VsCodeLineBlameProvider } from './providers/vscode-line-blame-provider';
 import { VsCodeLogWebviewProvider } from './providers/vscode-log-webview-provider';
 import { VsCodeProcessMonitorProvider } from './providers/vscode-process-monitor-provider';
 import { VsCodeScmProvider } from './providers/vscode-scm-provider';
@@ -405,6 +406,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
             scmProviders.delete(repo.rootUri.fsPath);
         }),
     );
+
+    // GitLens-style current-line blame rendered at the end of the active line.
+    context.subscriptions.push(new VsCodeLineBlameProvider(repositoryManager, outputChannel));
 
     context.subscriptions.push(
         repositoryManager.onDidChangeFocusedRepository((repo) => {

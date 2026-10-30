@@ -3,7 +3,7 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.0.3",
+    "version": "3.0.4",
     "license": "Apache-2.0",
     "author": "perphyyoung",
     "repository": {
@@ -71,6 +71,26 @@
         "configuration": {
             "title": "JJ View",
             "properties": {
+                "jj-view.lineBlame.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show the commit that last touched the current line at the end of that line (GitLens-style current line blame)."
+                },
+                "jj-view.lineBlame.delay": {
+                    "type": "number",
+                    "default": 150,
+                    "description": "Delay (ms) after the cursor moves before the line blame is shown."
+                },
+                "jj-view.lineBlame.maxFileLines": {
+                    "type": "number",
+                    "default": 5000,
+                    "description": "Files with more lines than this are not annotated."
+                },
+                "jj-view.lineBlame.showHover": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show a multi-line tooltip with the full commit message when hovering the annotated line."
+                },
                 "jj-view.refreshDebounceMillis": {
                     "type": "number",
                     "default": 100,

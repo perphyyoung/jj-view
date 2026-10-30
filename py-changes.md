@@ -171,6 +171,18 @@ git config core.autocrlf false   # 仅本仓库
 | Manage Auth           | 仅 `codeForge.enabled=true` 时出现 |
 | 帮助/文档链接         | 用户点击                           |
 
+### 2.8 行级 blame（current line blame）
+
+点击/移动光标到某一行时，在该行末尾用灰色斜体显示「最后一次改动该行的提交」：`作者 · 相对时间 · 提交摘要`（如 `py · 1 day ago · feat: …`，超长截断），行为对齐 GitLens 的 current line blame。悬停该行时用 Markdown 气泡显示多行详情：第一行 `作者 · 相对时间`，空行后为完整提交描述（不显示邮箱与 commit id）。
+
+- 数据来源：`jj file annotate -r @ -T '…'`，模板使用 `commit.commit_id()` / `commit.author().name()` / `commit.description().first_line()`（注意 annotate 模板的关键字是 `commit`，不是 `commit_id`）
+- 触发：`onDidChangeTextEditorSelection`，仅单光标空选区；默认 150ms 防抖，换行即更新，不做 toggle
+- 缓存：按 `仓库根|文件路径|文档版本` 缓存整文件注解，最多 64 个文件；文本变更时失效
+- 未提交行：该行属于工作副本提交（`@`）时，行末显示 `Uncommitted`；悬停显示 `**Uncommitted changes**` + 该行在 `@-` 的 `作者 · 相对时间` 与完整提交信息（新增行没有该段）
+- 限制：仅 `file` scheme、仓库内文件；超过 `maxFileLines`（默认 5000）不注解；未跟踪/二进制文件静默不显示
+- 配置：`jj-view.lineBlame.enabled`（默认 `true`）、`jj-view.lineBlame.delay`（150）、`jj-view.lineBlame.maxFileLines`（5000）
+- 结构：纯逻辑在 `src/core/blame/line-blame.ts`（解析/格式化/缓存键，可单测），渲染在 `src/vscode/providers/vscode-line-blame-provider.ts`
+
 ## 3. 配置项
 
 | 设置                                   | 默认    | 说明                                                    |
