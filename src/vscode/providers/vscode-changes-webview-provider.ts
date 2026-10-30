@@ -137,11 +137,19 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
             enableScripts: true,
             localResourceRoots: [this._extensionUri as unknown as vscode.Uri],
         };
+        // Send the initial state immediately as well as on `ready` / visibility change: the
+        // handshake can lose the `ready` message when it arrives before this listener exists.
+        this._postInit();
+
         webviewView.webview.html = getWebviewHtml({
             webview: webviewView.webview,
             extensionUri: this._extensionUri,
             scriptPath: ['dist', 'webview', 'changes.js'],
             title: this._mode === 'repos' ? 'JJ Repositories' : 'JJ Changes',
+            // The view mode is baked into the HTML so the webview renders the right tree even
+            // if the `ready`/`init` handshake loses a message (the webview used to default to
+            // the changes layout, which made the Repositories view render ScmPane).
+            initialData: { mode: this._mode },
         });
 
         this._viewDisposables.push(

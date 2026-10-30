@@ -57,7 +57,22 @@ const bridge = useBridge();
 const menuRegistry = new MenuRegistry({});
 const rootContext = new ContextKeyService();
 
-let mode = $state<ViewMode>('changes');
+// The view mode is baked into the HTML as `__INITIAL_STATE__` so the correct tree is rendered
+// even before (or without) the `ready`/`init` handshake; `undefined` renders a loading state
+// instead of guessing `changes`, which previously made the Repositories view render ScmPane.
+const initialMode = (() => {
+    const el = document.getElementById('__INITIAL_STATE__');
+    if (!el?.textContent) {
+        return undefined;
+    }
+    try {
+        const parsed = JSON.parse(el.textContent) as { mode?: string };
+        return parsed.mode === 'repos' || parsed.mode === 'changes' ? parsed.mode : undefined;
+    } catch {
+        return undefined;
+    }
+})();
+let mode = $state<ViewMode | undefined>(initialMode);
 let repos = $state<RepoSummary[]>([]);
 let focusedRoot = $state<string | undefined>(undefined);
 let snapshot = $state<ScmSnapshot | undefined>(undefined);
@@ -90,7 +105,7 @@ useMessageListener<Record<string, unknown>>((raw) => {
 
     if (type === 'init') {
         const init = payload as unknown as InitPayload;
-        mode = init.mode ?? 'changes';
+        mode = init.mode ?? mode;
         openDiffOnClick = init.openDiffOnClick ?? true;
         if (!contributionsLoaded && init.contributions) {
             menuRegistry.registerContributes(init.contributions);
@@ -218,7 +233,11 @@ $effect(() => {
 
 <svelte:window oncontextmenu={handleWindowContextMenu} />
 
-{#if mode === 'repos'}
+{#if mode === undefined}
+    <div class="empty-state" data-testid="jj-webview-loading">
+        <p>Loading…</p>
+    </div>
+{:else if mode === 'repos'}
     <div class="repos-root" data-testid="jj-repos-root">
         {#if repos.length === 0}
             <div class="empty-state" data-testid="jj-repos-empty">
