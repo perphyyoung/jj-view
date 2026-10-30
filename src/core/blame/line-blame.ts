@@ -84,10 +84,16 @@ export function formatLineBlameText(
  * Builds the multi-line Markdown tooltip shown when hovering the annotated line:
  * a single "author · relative time" header followed by the complete commit message.
  */
-export function formatHoverMarkdown(annotation: LineAnnotation, details?: CommitDetails): string {
-    const header = annotation.ago ? `**${annotation.author}** · ${annotation.ago}` : `**${annotation.author}**`;
+export function formatHoverMarkdown(annotation: LineAnnotation, details?: CommitDetails, diff?: LineChange): string {
+    const sections: string[][] = [[annotationHeader(annotation.author, annotation.ago)]];
+    if (diff) {
+        sections.push(formatDiffBlock(diff));
+    }
     const description = (details?.description ?? annotation.summary ?? '').trim();
-    return description.length > 0 ? `${header}\n\n${description}` : header;
+    if (description.length > 0) {
+        sections.push([description]);
+    }
+    return joinSections(sections);
 }
 
 /**
@@ -99,17 +105,96 @@ export function isUncommittedLine(annotation: LineAnnotation, workingCopyCommitI
 }
 
 /**
- * Tooltip for an uncommitted line: states that the line is uncommitted, then shows the last
- * committed annotation of the same line and its full message (omitted for newly added lines).
+ * Tooltip for an uncommitted line: states that the line is uncommitted, shows the working-copy
+ * diff of that line, then the last committed annotation and message (omitted for added lines).
  */
-export function formatUncommittedHoverMarkdown(parent: LineAnnotation | undefined, details?: CommitDetails): string {
-    const header = '**Uncommitted changes**';
-    if (!parent) {
-        return header;
+export function formatUncommittedHoverMarkdown(
+    parent: LineAnnotation | undefined,
+    details?: CommitDetails,
+    diff?: LineChange,
+): string {
+    const sections: string[][] = [['**Uncommitted changes**']];
+    if (diff) {
+        sections.push(formatDiffBlock(diff));
     }
-    const parentHeader = parent.ago ? `**${parent.author}** · ${parent.ago}` : `**${parent.author}**`;
-    const description = (details?.description ?? parent.summary ?? '').trim();
-    return description.length > 0 ? `${header}\n\n${parentHeader}\n\n${description}` : `${header}\n\n${parentHeader}`;
+    if (parent) {
+        sections.push([annotationHeader(parent.author, parent.ago)]);
+        const description = (details?.description ?? parent.summary ?? '').trim();
+        if (description.length > 0) {
+            sections.push([description]);
+        }
+    }
+    return joinSections(sections);
+}
+
+/** Minimal shape of a parsed unified-diff chunk (structurally compatible with parse-diff). */
+export interface DiffChunkLike {
+    oldStart: number;
+    newStart: number;
+    changes: readonly { type: string; content: string }[];
+}
+
+/** Single-line change shown in the hover tooltip. */
+export interface LineChange {
+    /** Previous content of the line (undefined for a newly added line). */
+    before?: string;
+    /** Current content of the line. */
+    after: string;
+}
+
+/**
+ * Picks the change for a 1-based line of the new file out of parsed diff chunks.
+ * Returns undefined when the line is unchanged (context line) or outside every hunk.
+ */
+export function pickLineChange(chunks: readonly DiffChunkLike[], newLine: number): LineChange | undefined {
+    for (const chunk of chunks) {
+        let newLineNo = chunk.newStart;
+        const pendingBefore: string[] = [];
+        for (const change of chunk.changes) {
+            const content = change.content.slice(1);
+            if (change.type === 'del') {
+                pendingBefore.push(content);
+                continue;
+            }
+            if (change.type === 'add') {
+                const before = pendingBefore.shift();
+                if (newLineNo === newLine) {
+                    return { before, after: content };
+                }
+                newLineNo++;
+                continue;
+            }
+            if (newLineNo === newLine) {
+                return undefined;
+            }
+            newLineNo++;
+        }
+    }
+    return undefined;
+}
+
+const MAX_DIFF_LINE_LENGTH = 200;
+
+function annotationHeader(author: string, ago: string): string {
+    return ago ? `**${author}** · ${ago}` : `**${author}**`;
+}
+
+function formatDiffBlock(diff: LineChange): string[] {
+    const lines = ['```diff'];
+    if (diff.before !== undefined) {
+        lines.push(`- ${clipDiffLine(diff.before)}`);
+    }
+    lines.push(`+ ${clipDiffLine(diff.after)}`);
+    lines.push('```');
+    return lines;
+}
+
+function clipDiffLine(text: string): string {
+    return text.length > MAX_DIFF_LINE_LENGTH ? `${text.slice(0, MAX_DIFF_LINE_LENGTH - 1)}…` : text;
+}
+
+function joinSections(sections: readonly string[][]): string {
+    return sections.map((section) => section.join('\n')).join('\n\n');
 }
 
 /** Finds the annotation for a 0-based editor line. */

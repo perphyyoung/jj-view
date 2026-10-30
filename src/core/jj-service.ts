@@ -594,6 +594,19 @@ export class JjService {
         }
     }
 
+    /** Unified diff of `filePath` introduced by `revision` (i.e. relative to its parent). */
+    async getFileDiff(revision: string, filePath: string): Promise<string | undefined> {
+        try {
+            const output = await this.run('diff', ['--git', '-r', revision, '--', filePath], {
+                useCachedSnapshot: true,
+                label: 'fileDiff',
+            });
+            return output.trim() ? output : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
     private async _resolveNearestVisibleAncestors(
         entries: JjLogEntry[],
         visibleIds: Set<string>,

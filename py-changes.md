@@ -180,6 +180,7 @@ git config core.autocrlf false   # 仅本仓库
 - 缓存：按 `仓库根|文件路径|文档版本` 缓存整文件注解，最多 64 个文件；文本变更时失效
 - 未提交行：该行属于工作副本提交（`@`）时，行末显示 `Uncommitted`；悬停显示 `**Uncommitted changes**` + 该行在 `@-` 的 `作者 · 相对时间` 与完整提交信息（新增行没有该段）
 - 悬停的完整描述优先用 `jj log --no-graph -r <commit> -T description`（`JjService.getCommitDescription`），失败回退日志 JSON 解析，最后回退行末摘要；解析失败会写 Output 通道
+- 悬停包含该行的行级 diff：`jj diff --git -r <commit> -- <path>` + `patch-helper.parseDiff`，再由 `pickLineChange()` 按新文件行号取 `-/+`，放在作者行与提交信息之间；`lineBlame.showLineDiff` 可关闭
 - 限制：仅 `file` scheme、仓库内文件；超过 `maxFileLines`（默认 5000）不注解；未跟踪/二进制文件静默不显示
 - 配置：`jj-view.lineBlame.enabled`（默认 `true`）、`jj-view.lineBlame.delay`（150）、`jj-view.lineBlame.maxFileLines`（5000）
 - 结构：纯逻辑在 `src/core/blame/line-blame.ts`（解析/格式化/缓存键，可单测），渲染在 `src/vscode/providers/vscode-line-blame-provider.ts`

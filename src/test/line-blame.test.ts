@@ -11,6 +11,7 @@ import {
     isUncommittedLine,
     lineBlameCacheKey,
     parseAnnotationOutput,
+    pickLineChange,
 } from '../core/blame/line-blame';
 
 describe('parseAnnotationOutput', () => {
@@ -178,6 +179,87 @@ describe('formatUncommittedHoverMarkdown', () => {
 
     it('omits the committed section for newly added lines', () => {
         expect(formatUncommittedHoverMarkdown(undefined)).toBe('**Uncommitted changes**');
+    });
+});
+
+describe('pickLineChange', () => {
+    const replacementChunk = {
+        oldStart: 5,
+        newStart: 5,
+        changes: [
+            { type: 'normal', content: ' line5' },
+            { type: 'del', content: '-    "version": "3.0.4",' },
+            { type: 'add', content: '+    "version": "3.0.5",' },
+            { type: 'normal', content: ' line7' },
+        ],
+    };
+
+    it('returns before/after for a replaced line', () => {
+        expect(pickLineChange([replacementChunk], 6)).toEqual({
+            before: '    "version": "3.0.4",',
+            after: '    "version": "3.0.5",',
+        });
+    });
+
+    it('returns only the added side for a new line', () => {
+        const addedChunk = {
+            oldStart: 1,
+            newStart: 1,
+            changes: [
+                { type: 'normal', content: ' a' },
+                { type: 'add', content: '+b' },
+            ],
+        };
+
+        expect(pickLineChange([addedChunk], 2)).toEqual({ before: undefined, after: 'b' });
+    });
+
+    it('returns undefined for an unchanged (context) line', () => {
+        expect(pickLineChange([replacementChunk], 5)).toBeUndefined();
+        expect(pickLineChange([replacementChunk], 7)).toBeUndefined();
+    });
+
+    it('returns undefined outside every hunk', () => {
+        expect(pickLineChange([replacementChunk], 100)).toBeUndefined();
+        expect(pickLineChange([], 1)).toBeUndefined();
+    });
+});
+
+describe('hover markdown with line diff', () => {
+    const annotation = {
+        line: 1,
+        commitId: 'abc',
+        shortCommitId: 'abc',
+        author: 'py',
+        ago: '1 day ago',
+        summary: 'version bump',
+    };
+
+    it('places the diff between the header and the message', () => {
+        const markdown = formatHoverMarkdown(
+            annotation,
+            { description: 'version bump' },
+            { before: 'old', after: 'new' },
+        );
+
+        expect(markdown).toContain('```diff');
+        expect(markdown).toContain('- old');
+        expect(markdown).toContain('+ new');
+        expect(markdown.indexOf('**py**')).toBeLessThan(markdown.indexOf('```diff'));
+        expect(markdown.indexOf('```diff')).toBeLessThan(markdown.indexOf('version bump'));
+    });
+
+    it('includes the working-copy diff for uncommitted lines', () => {
+        const parent = { ...annotation, author: 'alice', ago: '2 days ago', summary: 'previous' };
+        const markdown = formatUncommittedHoverMarkdown(
+            parent,
+            { description: 'previous' },
+            { before: 'x', after: 'y' },
+        );
+
+        expect(markdown.startsWith('**Uncommitted changes**')).toBe(true);
+        expect(markdown).toContain('- x');
+        expect(markdown).toContain('+ y');
     });
 });
 

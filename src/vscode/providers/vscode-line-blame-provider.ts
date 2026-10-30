@@ -6,15 +6,19 @@ import path from 'pathe';
 import * as vscode from 'vscode';
 import type { CommitDetails, LineAnnotation } from '../../core/blame/line-blame';
 import {
+    type DiffChunkLike,
     findAnnotation,
     formatHoverMarkdown,
     formatLineBlameText,
     formatUncommittedHoverMarkdown,
     isUncommittedLine,
+    type LineChange,
     lineBlameCacheKey,
+    pickLineChange,
 } from '../../core/blame/line-blame';
 import type { JjRepository } from '../../core/jj-repository';
 import type { JjRepositoryManager } from '../../core/jj-repository-manager';
+import { parseDiff } from '../../core/patch-helper';
 import type { LoggerChannel } from '../../utils/output-channel';
 
 const DECORATION_COLOR = 'var(--vscode-editorCodeLens-foreground, rgba(153, 153, 153, 0.9))';
@@ -32,6 +36,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
     private readonly _detailsCache = new Map<string, CommitDetails | undefined>();
     private readonly _parentCache = new Map<string, LineAnnotation[] | undefined>();
     private readonly _wcCommitIds = new Map<string, string | undefined>();
+    private readonly _diffCache = new Map<string, readonly DiffChunkLike[] | undefined>();
     private _timer: ReturnType<typeof setTimeout> | undefined;
     private _disposed = false;
     private _requestId = 0;
@@ -179,16 +184,22 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         // The tooltip needs the full commit message, which cannot be part of the
         // one-record-per-line annotate output, so resolve it lazily and cache per commit.
         let markdown: string;
+        const showDiff = config.get<boolean>('lineBlame.showLineDiff', true);
+        const diff = showDiff ? await this._getLineChange(repo, annotation.commitId, relativePath, line) : undefined;
+        if (this._disposed || requestId !== this._requestId) {
+            return;
+        }
+
         if (uncommitted) {
             const parentAnnotations = await this._getParentAnnotations(repo, root, document.version, relativePath);
             const parentAnnotation = findAnnotation(parentAnnotations, line);
             const parentDetails = parentAnnotation
                 ? await this._getCommitDetails(repo, parentAnnotation.commitId)
                 : undefined;
-            markdown = formatUncommittedHoverMarkdown(parentAnnotation, parentDetails);
+            markdown = formatUncommittedHoverMarkdown(parentAnnotation, parentDetails, diff);
         } else {
             const details = await this._getCommitDetails(repo, annotation.commitId);
-            markdown = formatHoverMarkdown(annotation, details);
+            markdown = formatHoverMarkdown(annotation, details, diff);
         }
 
         if (this._disposed || requestId !== this._requestId) {
@@ -283,6 +294,41 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         return details;
     }
 
+    /** Resolves the change of a single line, parsing (and caching) the file diff per revision. */
+    private async _getLineChange(
+        repo: JjRepository,
+        revision: string,
+        relativePath: string,
+        zeroBasedLine: number,
+    ): Promise<LineChange | undefined> {
+        const key = `${revision}|${relativePath}`;
+        if (!this._diffCache.has(key)) {
+            let chunks: readonly DiffChunkLike[] | undefined;
+            try {
+                const output = await repo.jj.getFileDiff(revision, relativePath);
+                chunks = output ? (parseDiff(output) as DiffChunkLike[]) : undefined;
+            } catch (error: unknown) {
+                chunks = undefined;
+                this._outputChannel?.debug?.(`[LineBlame] diff lookup failed for ${relativePath}: ${String(error)}`);
+            }
+            this._diffCache.set(key, chunks);
+            this._trimMap(this._diffCache);
+        }
+
+        const chunks = this._diffCache.get(key);
+        return chunks ? pickLineChange(chunks, zeroBasedLine + 1) : undefined;
+    }
+
+    private _trimMap<T>(map: Map<string, T>): void {
+        while (map.size > MAX_CACHED_FILES) {
+            const oldest = map.keys().next();
+            if (oldest.done) {
+                return;
+            }
+            map.delete(oldest.value);
+        }
+    }
+
     private _trimCache(): void {
         while (this._cache.size > MAX_CACHED_FILES) {
             const oldest = this._cache.keys().next();
@@ -296,6 +342,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
     private _invalidate(fsPath: string): void {
         // The working-copy commit id changes with every edit, so drop it along with the file caches.
         this._wcCommitIds.clear();
+        this._diffCache.clear();
         const suffix = `|${fsPath}|`;
         for (const key of [...this._cache.keys()]) {
             if (key.includes(suffix)) {
