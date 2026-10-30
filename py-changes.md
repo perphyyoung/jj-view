@@ -102,6 +102,7 @@ git config core.autocrlf false   # 仅本仓库
 | 改动                                                                                                                  | 原因                                                                                                                                        |
 | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DirectoryWatcher` 对 120ms 内完全相同的批次去重，日志加实例号 `(#N)`                                                 | Windows `ReadDirectoryChangesW` 会对一次写入上报两次                                                                                        |
+| watcher 忽略规则按 `.gitignore` 逐层判定（root / 嵌套 / `.git/info/exclude` / global），进入目录前先剪枝              | 不再维护 `node_modules`/`dist` 之类的硬编码目录名单，规则唯一来源是 gitignore                                                               |
 | 窗口激活只刷新**聚焦仓库**（`ChangeDetectionManager.isFocused`，由 `JjRepositoryManager.syncRepositoryFocus()` 维护） | 多仓库时窗口切回来会同时跑 N 个 `jj status`                                                                                                 |
 | 切换聚焦仓库时立即刷新一次（`reason: focused repository`）                                                            | 非聚焦仓库不再随激活刷新，避免切过去看到旧数据                                                                                              |
 | 自产 `op_heads` 抑制（`SELF_OP_SUPPRESS_MS = 1500`）                                                                  | jj 每条命令都会 auto-snapshot 并写 `op_heads`，否则一次编辑触发「立即 + deferred」两轮刷新                                                  |
@@ -115,16 +116,16 @@ git config core.autocrlf false   # 仅本仓库
 
 ## 3. 配置项
 
-| 设置                                   | 默认      | 说明                                                 |
-| -------------------------------------- | --------- | ---------------------------------------------------- |
-| `jj-view.nativeScm.enabled`            | `false`   | 是否注册到原生 SCM 视图                              |
-| `jj-view.codeForge.enabled`            | `false`   | 是否读取远端 PR/CI/评论                              |
-| `jj-view.fileWatcherMode`              | `watch`   | 事件驱动；watcher 启动失败自动回退 `polling`（5s/仓库） |
-| `jj-view.refreshDebounceMillis`        | `100`     | 文件事件防抖                                         |
-| `jj-view.refreshDebounceMaxMultiplier` | `4`       | 持续事件时的最大放大倍数                             |
-| `jj-view.maxMutableAncestors`          | `10`      | 快照里抓取的祖先数量，影响单次刷新耗时               |
-| `jj-view.autoRepositoryDetection`      | `true`    | 设为 `subFolders` / `openEditors` 可减少被监控仓库数 |
-| `jj-view.binaryPath`                   | `""`      | jj 可执行文件绝对路径                                |
+| 设置                                   | 默认    | 说明                                                    |
+| -------------------------------------- | ------- | ------------------------------------------------------- |
+| `jj-view.nativeScm.enabled`            | `false` | 是否注册到原生 SCM 视图                                 |
+| `jj-view.codeForge.enabled`            | `false` | 是否读取远端 PR/CI/评论                                 |
+| `jj-view.fileWatcherMode`              | `watch` | 事件驱动；watcher 启动失败自动回退 `polling`（5s/仓库） |
+| `jj-view.refreshDebounceMillis`        | `100`   | 文件事件防抖                                            |
+| `jj-view.refreshDebounceMaxMultiplier` | `4`     | 持续事件时的最大放大倍数                                |
+| `jj-view.maxMutableAncestors`          | `10`    | 快照里抓取的祖先数量，影响单次刷新耗时                  |
+| `jj-view.autoRepositoryDetection`      | `true`  | 设为 `subFolders` / `openEditors` 可减少被监控仓库数    |
+| `jj-view.binaryPath`                   | `""`    | jj 可执行文件绝对路径                                   |
 
 ---
 
@@ -151,7 +152,7 @@ git config core.autocrlf false   # 仅本仓库
 | `src/vscode/vscode-webview-html.ts`                              | 内联自定义图标字体                                                                                            |
 | `src/vscode/providers/vscode-scm-provider.ts`                    | 支持跳过原生 SCM、`setInputBoxValue()` 回退                                                                   |
 | `src/core/code-forge-service.ts`                                 | `enabled` 开关与各入口短路                                                                                    |
-| `src/core/change-detection-manager.ts`                           | 聚焦刷新、自产 op_heads 抑制、实例化参数                                                                      |
+| `src/core/change-detection-manager.ts`                           | 聚焦刷新、自产 op_heads 抑制、gitignore 逐层剪枝、实例化参数                                                  |
 | `src/core/directory-watcher.ts`                                  | 事件去重 + 实例号日志                                                                                         |
 | `src/core/jj-repository.ts` / `jj-repository-manager.ts`         | 焦点标志、仓库实例去重与回收                                                                                  |
 | `esbuild.js` / `package.json`                                    | 单平台构建、Changes webview 入口、视图与菜单、新配置项                                                        |

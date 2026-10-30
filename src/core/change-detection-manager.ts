@@ -12,6 +12,15 @@ import type { HostDisposable, HostEnvironment } from './host/host-environment';
 import type { JjService } from './jj-service';
 import { Poller } from './poller';
 
+/** A single ignore rule parsed from `.gitignore`, `info/exclude` or a global excludes file. */
+interface IgnoreRule {
+    /** POSIX-style directory the rule is relative to (`''` for the repository root). */
+    baseDir: string;
+    /** Pattern with wildcards stripped (the watcher only supports literal paths). */
+    literal: string;
+    negated: boolean;
+}
+
 export class ChangeDetectionManager implements HostDisposable {
     private _disposed = false;
     private disposables: HostDisposable[] = [];
@@ -452,33 +461,180 @@ export class ChangeDetectionManager implements HostDisposable {
         }
     }
 
+    /**
+     * Version control metadata is never part of the working copy, so these directories are
+     * skipped unconditionally. Every other directory (node_modules, dist, ...) is decided by
+     * the repository's own ignore rules — there is no hardcoded pattern list.
+     */
+    private static readonly VCS_META_DIRS = new Set(['.git', '.jj']);
+
+    /** Safety valve for pathological trees; deeper directories are not scanned for ignore files. */
+    private static readonly IGNORE_SCAN_MAX_DEPTH = 8;
+
+    /**
+     * Collects ignore patterns from every source git itself honors: the root and
+     * nested `.gitignore` files, `.git/info/exclude`, and the global excludes file.
+     * Nested rules are gathered while walking the tree, and directories that the
+     * already-collected rules ignore are pruned instead of scanned.
+     */
     private async getGitIgnorePatterns(): Promise<string[]> {
         try {
             const hostFs = this.host.system?.fs;
             if (!hostFs) {
                 return [];
             }
-            const gitIgnorePath = path.join(this.workspaceRoot, '.gitignore');
-            const data = await hostFs.readTextFile(gitIgnorePath);
-            return data
-                .split('\n')
-                .map((line) => line.trim())
-                .filter((line) => line.length > 0 && !line.startsWith('#') && !line.startsWith('!'))
-                .map((line) => {
-                    // Strip leading/trailing slashes and wildcards to pass as literals.
-                    // PARCEL-WATCHER BEHAVIOR:
-                    // 1. Literal paths (e.g. 'out') prune all descendants recursively.
-                    // 2. Glob patterns (e.g. 'out*') do NOT prune descendants recursively.
-                    //
-                    // By stripping wildcards we ensure directory contents are ignored, which is the common case
-                    // for gitignore patterns like /out/. The caveat is that we lose true wildcard matching
-                    // (e.g. /out*/ will only match a directory named exactly 'out').
-                    return line.replace(/^[/*?]+|[/*?]+$/g, '');
-                })
-                .filter((pattern) => pattern.length > 0);
-        } catch {
+
+            const rootRules: IgnoreRule[] = [];
+
+            const rootIgnore = path.join(this.workspaceRoot, '.gitignore');
+            if (await hostFs.exists(rootIgnore)) {
+                rootRules.push(...this.parseIgnoreRules(await hostFs.readTextFile(rootIgnore).catch(() => ''), ''));
+            }
+
+            const infoExclude = path.join(this.workspaceRoot, '.git', 'info', 'exclude');
+            if (await hostFs.exists(infoExclude)) {
+                rootRules.push(...this.parseIgnoreRules(await hostFs.readTextFile(infoExclude).catch(() => ''), ''));
+            }
+
+            for (const globalExclude of await this.getGlobalExcludeFiles()) {
+                if (await hostFs.exists(globalExclude)) {
+                    rootRules.push(
+                        ...this.parseIgnoreRules(await hostFs.readTextFile(globalExclude).catch(() => ''), ''),
+                    );
+                }
+            }
+
+            const nestedRules: IgnoreRule[] = [];
+            await this.collectNestedIgnoreRules(this.workspaceRoot, rootRules, 0, nestedRules);
+
+            // @parcel/watcher cannot express negated patterns, so only positive literals are passed on.
+            const patterns = [...rootRules, ...nestedRules]
+                .filter((rule) => !rule.negated)
+                .map((rule) => (rule.baseDir ? `${rule.baseDir}/${rule.literal}` : rule.literal));
+
+            return [...new Set(patterns)];
+        } catch (err) {
+            this.outputChannel.error(`[ChangeDetectionManager] getGitIgnorePatterns error: ${err}`);
             return [];
         }
+    }
+
+    private parseIgnoreRules(content: string, baseDir: string): IgnoreRule[] {
+        const rules: IgnoreRule[] = [];
+        for (const rawLine of content.split(/\r?\n/)) {
+            const line = rawLine.trim();
+            if (!line || line.startsWith('#')) {
+                continue;
+            }
+
+            const negated = line.startsWith('!');
+            // PARCEL-WATCHER BEHAVIOR:
+            // 1. Literal paths (e.g. 'out') prune all descendants recursively.
+            // 2. Glob patterns (e.g. 'out*') do NOT prune descendants recursively.
+            //
+            // By stripping wildcards we ensure directory contents are ignored, which is the common case
+            // for gitignore patterns like /out/. The caveat is that we lose true wildcard matching
+            // (e.g. /out*/ will only match a directory named exactly 'out').
+            const literal = (negated ? line.slice(1) : line).replace(/^[/*?]+|[/*?]+$/g, '');
+            if (!literal) {
+                continue;
+            }
+            rules.push({ baseDir, literal, negated });
+        }
+        return rules;
+    }
+
+    /** Mirrors git semantics: the last matching rule wins, and a directory match covers its subtree. */
+    private isIgnored(relativePath: string, rules: readonly IgnoreRule[]): boolean {
+        const normalized = relativePath.replace(/\\/g, '/');
+        for (let i = rules.length - 1; i >= 0; i--) {
+            const rule = rules[i];
+            const target = rule.baseDir ? `${rule.baseDir}/${rule.literal}` : rule.literal;
+            if (normalized === target || normalized.startsWith(`${target}/`)) {
+                return !rule.negated;
+            }
+        }
+        return false;
+    }
+
+    private async collectNestedIgnoreRules(
+        dir: string,
+        inherited: readonly IgnoreRule[],
+        depth: number,
+        out: IgnoreRule[],
+    ): Promise<void> {
+        const hostFs = this.host.system?.fs;
+        if (!hostFs || depth >= ChangeDetectionManager.IGNORE_SCAN_MAX_DEPTH) {
+            return;
+        }
+
+        let entries: string[];
+        try {
+            entries = await hostFs.readdir(dir);
+        } catch {
+            return;
+        }
+
+        for (const name of entries) {
+            if (ChangeDetectionManager.VCS_META_DIRS.has(name)) {
+                continue;
+            }
+
+            const fullPath = path.join(dir, name);
+            try {
+                if (!(await hostFs.lstat(fullPath)).isDirectory()) {
+                    continue;
+                }
+            } catch {
+                continue;
+            }
+
+            const relativeDir = path.relative(this.workspaceRoot, fullPath).replace(/\\/g, '/');
+            if (this.isIgnored(relativeDir, inherited)) {
+                continue;
+            }
+
+            const rules: IgnoreRule[] = [...inherited];
+            const ignoreFile = path.join(fullPath, '.gitignore');
+            if (await hostFs.exists(ignoreFile)) {
+                const nested = this.parseIgnoreRules(
+                    await hostFs.readTextFile(ignoreFile).catch(() => ''),
+                    relativeDir,
+                );
+                rules.push(...nested);
+                out.push(...nested);
+            }
+
+            await this.collectNestedIgnoreRules(fullPath, rules, depth + 1, out);
+        }
+    }
+
+    /** Global git ignore files: `core.excludesFile` (if configured) plus the XDG default. */
+    private async getGlobalExcludeFiles(): Promise<string[]> {
+        const files: string[] = [];
+        const home = process.env.USERPROFILE || process.env.HOME || '';
+        const system = this.host.system;
+        if (!system) {
+            return files;
+        }
+
+        try {
+            const result = await system.process.execFile('git', ['config', '--get', 'core.excludesFile']);
+            const configured = result.stdout.trim();
+            if (configured) {
+                const expanded = configured.startsWith('~')
+                    ? path.join(home, configured.replace(/^~[\\/]?/, ''))
+                    : configured;
+                files.push(expanded);
+            }
+        } catch {
+            // git not installed or core.excludesFile not configured
+        }
+
+        if (home) {
+            files.push(path.join(home, '.config', 'git', 'ignore'));
+        }
+        return [...new Set(files)];
     }
 
     private async getGitModulesPatterns(): Promise<string[]> {

@@ -568,6 +568,64 @@ describe('ChangeDetectionManager', () => {
             );
         });
 
+        it('honors nested .gitignore files', async () => {
+            host.config.set('fileWatcherMode', 'watch');
+
+            await fs.mkdir(path.join(repo.path, 'sub'), { recursive: true });
+            await fs.writeFile(path.join(repo.path, 'sub', '.gitignore'), 'hidden.txt\n');
+            await fs.writeFile(path.join(repo.path, 'sub', 'hidden.txt'), 'initial');
+
+            changeManager = new ChangeDetectionManager(repo.path, jj, outputChannel, triggerRefreshSpy, host);
+            await waitForLog('Working Copy Watcher] Started');
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            triggerRefreshSpy.mockClear();
+
+            await fs.writeFile(path.join(repo.path, 'sub', 'hidden.txt'), 'changed');
+            await new Promise((resolve) => setTimeout(resolve, 500));
+
+            const calls = triggerRefreshSpy.mock.calls.filter((call) => call[0].reason === 'file watcher event');
+            expect(calls, 'Nested .gitignore should suppress the event').toHaveLength(0);
+        });
+
+        it('honors .git/info/exclude', async () => {
+            host.config.set('fileWatcherMode', 'watch');
+
+            await fs.mkdir(path.join(repo.path, '.git', 'info'), { recursive: true });
+            await fs.writeFile(path.join(repo.path, '.git', 'info', 'exclude'), 'secret.txt\n');
+            await fs.writeFile(path.join(repo.path, 'secret.txt'), 'initial');
+
+            changeManager = new ChangeDetectionManager(repo.path, jj, outputChannel, triggerRefreshSpy, host);
+            await waitForLog('Working Copy Watcher] Started');
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            triggerRefreshSpy.mockClear();
+
+            await fs.writeFile(path.join(repo.path, 'secret.txt'), 'changed');
+            await new Promise((resolve) => setTimeout(resolve, 500));
+
+            const calls = triggerRefreshSpy.mock.calls.filter((call) => call[0].reason === 'file watcher event');
+            expect(calls, '.git/info/exclude should suppress the event').toHaveLength(0);
+        });
+
+        it('collects nested .gitignore files from directories that are not ignored', async () => {
+            host.config.set('fileWatcherMode', 'watch');
+
+            // `dist` used to be skipped by a hardcoded directory list; it must be walked now.
+            await fs.mkdir(path.join(repo.path, 'dist'), { recursive: true });
+            await fs.writeFile(path.join(repo.path, 'dist', '.gitignore'), 'x.log\n');
+            await fs.writeFile(path.join(repo.path, 'dist', 'x.log'), 'initial');
+
+            changeManager = new ChangeDetectionManager(repo.path, jj, outputChannel, triggerRefreshSpy, host);
+            await waitForLog('Working Copy Watcher] Started');
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            triggerRefreshSpy.mockClear();
+
+            await fs.writeFile(path.join(repo.path, 'dist', 'x.log'), 'changed');
+            await new Promise((resolve) => setTimeout(resolve, 500));
+
+            const calls = triggerRefreshSpy.mock.calls.filter((call) => call[0].reason === 'file watcher event');
+            expect(calls, 'dist/.gitignore must be honored').toHaveLength(0);
+        });
+
         it('ignores directories matching literal patterns like /out/', async () => {
             // Setup config to return 'watch'
             host.config.set('fileWatcherMode', 'watch');

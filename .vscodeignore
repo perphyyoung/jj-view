@@ -38,6 +38,7 @@ package-lock.json
 .vscode-test.mjs
 playwright.config.ts
 GEMINI.md
+py-changes.md
 .agents/**
 media/custom-icons-src/**
 pnpm-lock.yaml
