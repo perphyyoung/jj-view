@@ -334,6 +334,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         const composite = vscode.Disposable.from(scmProvider, decorationProvider, repoStatusSub);
         scmProviders.set(repo.rootUri.fsPath, scmProvider);
         activeScmSubscriptions.set(repo.rootUri.fsPath, composite);
+        outputChannel.info(`[Extension] Created SCM provider for ${repo.rootUri.fsPath}`);
 
         if (
             !logWebviewProvider.repository ||
@@ -397,6 +398,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         repositoryManager.onDidOpenRepository((repo) => {
             ensureScmProvider(repo);
         }),
+        // Belt-and-braces: providers can be missed when repositories are registered while
+        // activation is still wiring things up (cached restore / workspace scan). Re-ensuring
+        // on every repository-list change makes the missing-provider state self-healing.
+        repositoryManager.onDidChangeRepositories(() => {
+            for (const repo of repositoryManager.repositories) {
+                ensureScmProvider(repo);
+            }
+        }),
         repositoryManager.onDidCloseRepository(async (repo) => {
             const sub = activeScmSubscriptions.get(repo.rootUri.fsPath);
             if (sub) {
@@ -413,6 +422,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
     context.subscriptions.push(
         repositoryManager.onDidChangeFocusedRepository((repo) => {
             if (repo) {
+                ensureScmProvider(repo);
                 logWebviewProvider.updateRepository(repo).catch((err) => {
                     outputChannel.error('[Extension] Failed to update webview repository', toError(err));
                 });
@@ -447,6 +457,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         outputChannel,
         logWebviewProvider,
         hostEnvironment,
+        ensureScmProvider,
     });
 
     context.subscriptions.push(
@@ -463,6 +474,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
 
     // Load cached repositories immediately
     await repositoryManager.restoreCachedRepositories();
+
+    // Restored repositories rely on `onDidOpenRepository`; ensure the providers exist even
+    // if that event was emitted before the listener above was registered.
+    for (const repo of repositoryManager.repositories) {
+        ensureScmProvider(repo);
+    }
 
     // Trigger initial scan (non-blocking)
     if (!resolvedBinaryPath) {

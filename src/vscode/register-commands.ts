@@ -111,6 +111,12 @@ export interface RegisterCommandsOptions {
     outputChannel: LoggerChannel;
     logWebviewProvider: VsCodeLogWebviewProvider;
     hostEnvironment?: VsCodeHostEnvironment;
+    /**
+     * Ensures the repository has an SCM provider before the command runs. Providers can be
+     * missed during activation (cached restore / workspace scan), which leaves Changes and
+     * the Repositories counts empty until a full refresh rebuilds them.
+     */
+    ensureScmProvider?: (repo: JjRepository) => void;
 }
 
 interface ResolvedCommandRepository {
@@ -139,7 +145,7 @@ export function selectCommandRepository(options: {
 }
 
 export function registerCommands(options: RegisterCommandsOptions): void {
-    const { context, repositoryManager, scmProviders, outputChannel, logWebviewProvider } = options;
+    const { context, repositoryManager, scmProviders, outputChannel, logWebviewProvider, ensureScmProvider } = options;
     const host = options.hostEnvironment ?? new VsCodeHostEnvironment({ context });
 
     function resolveRepositoryLocal(
@@ -162,6 +168,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
         return vscode.commands.registerCommand(commandId, async (...args: unknown[]) => {
             const resolved = resolveRepositoryLocal(args, host);
             if (resolved?.repo) {
+                ensureScmProvider?.(resolved.repo);
                 repositoryManager.setFocusedRepository(resolved.repo);
                 const cmdCtx = new VSCodeCommandContext(resolved.repo, host, outputChannel);
                 const payload = payloadCreator(args, resolved.scm);
@@ -193,6 +200,8 @@ export function registerCommands(options: RegisterCommandsOptions): void {
                 resolveFromContext: () => resolveRepositoryLocal(args, host),
             });
             if (resolved?.repo) {
+                // Self-heal a missing provider (e.g. after a reinstall) before the command runs.
+                ensureScmProvider?.(resolved.repo);
                 if (!options?.preserveFocus) {
                     repositoryManager.setFocusedRepository(resolved.repo);
                 }
