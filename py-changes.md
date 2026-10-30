@@ -114,6 +114,28 @@ git config core.autocrlf false   # 仅本仓库
 
 ---
 
+### 2.7 本地优先（local-first）
+
+三条保证：
+
+1. 没有用户命令时**零网络请求**（激活、刷新、渲染、切换仓库都不联网）
+2. 唯一的远端写入口是 `Upload` / `Upload Stack`（`jj git push`）
+3. 远端状态只在显式开启 `jj-view.codeForge.enabled` 后读取
+
+为此做了：
+
+- `package.json` 的 `configurationDefaults` 关闭 VS Code 内置 Git 扩展的自动行为：`git.autofetch=false`（真正的联网）、`git.autorefresh=false`（与 jj 重复的本地 `git status`）
+- Code Forge 默认关闭（见 2.4）：provider 不注册、轮询/认证/状态刷新全部短路
+- 5s 文件轮询与 60s CodeForge 轮询默认都不启动（前者 `watch` 模式，后者关闭）
+- `git config --get core.excludesFile` 与 `watchman` 探测改为**进程级缓存**，避免每个仓库重复 spawn
+- 新增 `tooling/lint-local-only.ts`（挂在 `pnpm lint`）：扫描 `src/core` + `src/vscode`，除 upload 命令与终端命令检测外，禁止出现 `git push/fetch/clone`
+
+| 仍会联网的操作        | 触发方式                           |
+| --------------------- | ---------------------------------- |
+| Upload / Upload Stack | 用户显式执行命令                   |
+| Manage Auth           | 仅 `codeForge.enabled=true` 时出现 |
+| 帮助/文档链接         | 用户点击                           |
+
 ## 3. 配置项
 
 | 设置                                   | 默认    | 说明                                                    |

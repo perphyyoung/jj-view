@@ -39,6 +39,7 @@ package-lock.json
 playwright.config.ts
 GEMINI.md
 py-changes.md
+*.log
 .agents/**
 media/custom-icons-src/**
 pnpm-lock.yaml

@@ -55,6 +55,7 @@ function deleteWatchmanWatches(openedRepos: string[]): void {
 export const DEFAULT_SETTINGS: Record<string, unknown> = {
     'workbench.colorTheme': 'Default Dark Modern',
     'git.enabled': false,
+    'git.autofetch': false,
     'workbench.startupEditor': 'none',
     'workbench.sideBar.location': 'left',
     'scm.alwaysShowProviders': true,

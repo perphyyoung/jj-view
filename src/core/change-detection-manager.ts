@@ -12,6 +12,9 @@ import type { HostDisposable, HostEnvironment } from './host/host-environment';
 import type { JjService } from './jj-service';
 import { Poller } from './poller';
 
+/** Process-wide cache: `git config --get core.excludesFile` runs at most once per host. */
+let cachedGlobalExcludeFiles: Promise<string[]> | null = null;
+
 /** A single ignore rule parsed from `.gitignore`, `info/exclude` or a global excludes file. */
 interface IgnoreRule {
     /** POSIX-style directory the rule is relative to (`''` for the repository root). */
@@ -609,8 +612,16 @@ export class ChangeDetectionManager implements HostDisposable {
         }
     }
 
-    /** Global git ignore files: `core.excludesFile` (if configured) plus the XDG default. */
+    /** Resolved once per extension host so `git config` is not spawned for every repository. */
     private async getGlobalExcludeFiles(): Promise<string[]> {
+        if (!cachedGlobalExcludeFiles) {
+            cachedGlobalExcludeFiles = this.resolveGlobalExcludeFiles().catch(() => []);
+        }
+        return cachedGlobalExcludeFiles;
+    }
+
+    /** Global git ignore files: `core.excludesFile` (if configured) plus the XDG default. */
+    private async resolveGlobalExcludeFiles(): Promise<string[]> {
         const files: string[] = [];
         const home = process.env.USERPROFILE || process.env.HOME || '';
         const system = this.host.system;

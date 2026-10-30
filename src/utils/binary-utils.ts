@@ -84,8 +84,9 @@ export async function isWatchmanAvailable(): Promise<boolean> {
 
     // Invariant: Only one promise is executing at any given time.
     cachedWatchmanAvailable = new Promise((resolve) => {
+        // Cached for the lifetime of the extension host: a watchman install mid-session
+        // is not worth re-probing this on every repository.
         cp.execFile('watchman', ['--version'], { timeout: 2000 }, (err) => {
-            setTimeout(() => (cachedWatchmanAvailable = null), 5000);
             if (err) {
                 resolve(false);
             } else {
