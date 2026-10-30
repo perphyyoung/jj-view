@@ -210,6 +210,10 @@ export class LogViewController implements Disposable {
         if (this._disposed) {
             return;
         }
+        // Only the focused repository renders a log view; others keep just their status snapshot.
+        if (this._repo && !this._repo.isFocused) {
+            return;
+        }
         const reasonStr = reason ? ` (reason: ${reason})` : '';
         this._logger?.info?.(`[LogViewController] Queuing refresh${reasonStr}...`);
         await this._refreshQueue.run();

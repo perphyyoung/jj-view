@@ -126,6 +126,12 @@ git config core.autocrlf false   # 仅本仓库
 | 自产 `op_heads` 抑制（`SELF_OP_SUPPRESS_MS = 1500`）                                                                  | jj 每条命令都会 auto-snapshot 并写 `op_heads`，否则一次编辑触发「立即 + deferred」两轮刷新                                                  |
 | 仓库实例去重（扫描 vs 动态注册竞态）                                                                                  | 曾因同一 root 创建两个 `JjRepository`，导致双 watcher、所有刷新做两遍；现在扫描复用并发注册的实例、动态注册创建后再校验、对账按实例身份回收 |
 
+| **非聚焦仓库只做轻量快照**（跳过 `(::@ & mutable())` 与 `children()` 查询，只保留 `jj status` + `jj log -r @`） | Changes 视图看不到非聚焦仓库；Repositories 只需要变更数/冲突数 |
+| 非聚焦仓库不再触发 `LogView` 刷新（`LogViewController.refresh` 按 `repo.isFocused` 提前返回） | 多仓库时后台改动只更新徽标，不再重渲染不可见的日志视图 |
+| Changes 视图只订阅**聚焦仓库**的快照，Repositories 订阅全部 | 减少反序列化与 postMessage 次数 |
+| 非聚焦仓库事件 debounce 1500ms（聚焦为配置的 100ms） | 保存/构建产生的连续事件合并为一次 |
+| 窗口在后台时只有聚焦仓库响应 watcher 事件 | 后台构建不再让所有仓库各自跑一轮 `jj status`/`log` |
+
 ### 2.6 webview 自定义图标
 
 `getWebviewHtml()` 现在内联 `media/custom-icons/jj-view-icons.css`（去掉原 `@font-face`），并追加指向 `jj-view-icons.woff2` 的 webview URI 字体声明。否则 `$(jj-icon-squash-into)` 这类自定义图标在 webview 中是空白。

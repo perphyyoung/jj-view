@@ -286,6 +286,9 @@ export class ChangeDetectionManager implements HostDisposable {
                 this._opHeadsWatcher = new DirectoryWatcher(
                     realOpHeadsPath,
                     () => {
+                        if (!this._isActive && !this.isFocused()) {
+                            return;
+                        }
                         if (this.isSelfProducedOpHeadsEvent()) {
                             return;
                         }
@@ -394,6 +397,11 @@ export class ChangeDetectionManager implements HostDisposable {
         this._workingCopyWatcher = new DirectoryWatcher(
             this.workspaceRoot,
             () => {
+                // While the window is in the background only the focused repository reacts to
+                // file events; the rest refresh when the window becomes active or on focus change.
+                if (!this._isActive && !this.isFocused()) {
+                    return;
+                }
                 const writes = this.hasActiveOrRecentWrites;
                 if (writes) {
                     this._scheduleDeferredRefresh(true);
@@ -473,6 +481,9 @@ export class ChangeDetectionManager implements HostDisposable {
 
     /** Safety valve for pathological trees; deeper directories are not scanned for ignore files. */
     private static readonly IGNORE_SCAN_MAX_DEPTH = 8;
+
+    /** Debounce used for non-focused repositories (they only feed the Repositories view counts). */
+    public static readonly NON_FOCUSED_DEBOUNCE_MS = 1500;
 
     /**
      * Collects ignore patterns from every source git itself honors: the root and

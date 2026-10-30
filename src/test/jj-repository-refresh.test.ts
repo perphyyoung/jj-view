@@ -159,6 +159,9 @@ describe('JjRepository.refresh error handling', () => {
         });
         registry.register({ id: 'mock-provider', create: () => mockProvider });
 
+        // Code forge is disabled by default (local-first); this test needs an active provider.
+        host.config.set('codeForge.enabled', true);
+
         jjRepo = new JjRepository(
             Uri.file(repo.path),
             path.join(repo.path, '.jj', 'repo'),

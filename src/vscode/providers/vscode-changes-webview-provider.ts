@@ -102,7 +102,10 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 }),
             ),
             this._repositoryManager.onDidChangeFocusedRepository(() =>
-                this._guard('focused repository changed', () => this._postState()),
+                this._guard('focused repository changed', () => {
+                    this._syncSnapshotSubscriptions();
+                    this._postState();
+                }),
             ),
         );
 
@@ -212,8 +215,17 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     private _syncSnapshotSubscriptions(): void {
         const alive = new Set<string>();
 
+        // The Changes view only renders the focused repository, so it only subscribes to that
+        // repository's snapshots. The Repositories view shows counts for every repository and
+        // therefore subscribes to all of them.
+        const focusedRoot = this._repositoryManager.focusedRepository?.rootUri.fsPath;
+        const changesOnlyRoot = this._mode === 'changes' ? focusedRoot : undefined;
+
         for (const repo of this._repositoryManager.repositories) {
             const root = repo.rootUri.fsPath;
+            if (changesOnlyRoot && root !== changesOnlyRoot) {
+                continue;
+            }
             alive.add(root);
             if (this._snapshotSubscriptions.has(root)) {
                 continue;

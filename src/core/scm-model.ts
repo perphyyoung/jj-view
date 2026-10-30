@@ -145,19 +145,27 @@ export class ScmModel implements Disposable {
         const start = performance.now();
 
         try {
-            const maxMutableAncestors = this.repo.host.config.get<number>('maxMutableAncestors', 10) ?? 10;
+            // Non-focused repositories only need the working copy status (used for the
+            // Repositories view counts); the mutable ancestor graph and children are skipped.
+            const isFocused = this.repo.isFocused;
+            const maxMutableAncestors = isFocused
+                ? (this.repo.host.config.get<number>('maxMutableAncestors', 10) ?? 10)
+                : 0;
             const minChangeIdLength = this.repo.host.config.get<number>('minChangeIdLength', 1) ?? 1;
             const limit = maxMutableAncestors + 1;
 
-            const bulkLogPromise = this.jj.getLog({
-                revision: `(::@ & mutable()) | parents(roots(::@ & mutable()))`,
-                limit,
-            });
+            const bulkLogPromise =
+                maxMutableAncestors > 0
+                    ? this.jj.getLog({
+                          revision: `(::@ & mutable()) | parents(roots(::@ & mutable()))`,
+                          limit,
+                      })
+                    : Promise.resolve<JjLogEntry[]>([]);
 
             const [bulkLog, workingCopyEntries, children, conflictedPaths] = await Promise.all([
                 bulkLogPromise,
                 this.jj.getLog({ revision: '@', limit: 1 }),
-                this.jj.getChildren('@'),
+                isFocused ? this.jj.getChildren('@') : Promise.resolve<JjLogEntry[]>([]),
                 this.jj.getConflictedFiles(),
             ]);
 

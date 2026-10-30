@@ -82,7 +82,12 @@ export class JjRepository implements Disposable {
                 }
             },
             {
-                getDebounceMillis: () => host.config.get<number>('refreshDebounceMillis', 100) ?? 100,
+                // Non-focused repositories only feed the Repositories view counts, so their
+                // events are coalesced over a longer window than the focused one.
+                getDebounceMillis: () =>
+                    this._isFocused
+                        ? (host.config.get<number>('refreshDebounceMillis', 100) ?? 100)
+                        : ChangeDetectionManager.NON_FOCUSED_DEBOUNCE_MS,
                 getMaxMultiplier: () => host.config.get<number>('refreshDebounceMaxMultiplier', 4) ?? 4,
                 mergePayloads: (prev, next) => ({
                     forceSnapshot: prev.forceSnapshot || next.forceSnapshot,
@@ -118,6 +123,10 @@ export class JjRepository implements Disposable {
     /** Updated by the repository manager whenever the focused repository changes. */
     public setFocused(focused: boolean): void {
         this._isFocused = focused;
+    }
+
+    get isFocused(): boolean {
+        return this._isFocused;
     }
 
     get activeRefresh(): Promise<void> | undefined {
