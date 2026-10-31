@@ -236,21 +236,21 @@ describe('JJ Utils', () => {
     });
 
     describe('buildLogRevset', () => {
-        it('should include the working copy, the local stack, the remote history and the trunk', () => {
-            expect(buildLogRevset(10)).toBe(
-                '@ | ancestors(immutable_heads().., 10) | ancestors(immutable_heads(), 10) | trunk()',
+        it('should bound the local stack and the remote history separately', () => {
+            expect(buildLogRevset(10, 100)).toBe(
+                'ancestors(@, 100) ~ ancestors(immutable_heads()) | ancestors(immutable_heads(), 10) | trunk()',
             );
         });
 
         it('should clamp invalid depths', () => {
-            expect(buildLogRevset(-5)).toBe(
-                '@ | ancestors(immutable_heads().., 0) | ancestors(immutable_heads(), 0) | trunk()',
+            expect(buildLogRevset(-5, -1)).toBe(
+                'ancestors(@, 0) ~ ancestors(immutable_heads()) | ancestors(immutable_heads(), 0) | trunk()',
             );
-            expect(buildLogRevset(2.7)).toBe(
-                '@ | ancestors(immutable_heads().., 2) | ancestors(immutable_heads(), 2) | trunk()',
+            expect(buildLogRevset(2.7, 3.2)).toBe(
+                'ancestors(@, 3) ~ ancestors(immutable_heads()) | ancestors(immutable_heads(), 2) | trunk()',
             );
-            expect(buildLogRevset(Number.NaN)).toBe(
-                '@ | ancestors(immutable_heads().., 0) | ancestors(immutable_heads(), 0) | trunk()',
+            expect(buildLogRevset(Number.NaN, Number.NaN)).toBe(
+                'ancestors(@, 0) ~ ancestors(immutable_heads()) | ancestors(immutable_heads(), 0) | trunk()',
             );
         });
     });

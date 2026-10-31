@@ -13,6 +13,8 @@ src/core/webview/themes.generated.ts
 media/themes.generated.css
 build/
 *.log
+tmp/
+temp/
 .workspaces/
 web/dist/*
 !web/dist/.gitkeep

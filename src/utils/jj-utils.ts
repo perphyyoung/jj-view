@@ -84,20 +84,20 @@ export function isDefaultLogRevset(value: string): boolean {
 /**
  * Builds the revset used by the JJ Log view.
  *
- * - `@`: the working copy.
- * - `ancestors(immutable_heads().., N)`: the N newest commits that are not
- *   remote heads, i.e. the local (mutable) stack. jj's own `present(@)` only
- *   resolves to the working copy itself, so local commits in between would be
- *   missing without this part.
- * - `ancestors(immutable_heads(), N)`: the remote head plus its N-1 newest
- *   ancestors, i.e. the recent remote history.
+ * - `ancestors(@, LOCAL) ~ ancestors(immutable_heads())`: the local stack, i.e.
+ *   the commits above the remote heads. `LOCAL` bounds how many of them are
+ *   shown (the working copy counts as one).
+ * - `ancestors(immutable_heads(), REMOTE)`: the remote head plus its REMOTE-1
+ *   newest ancestors, i.e. the recent remote history.
  * - `trunk()`: the trunk commit.
  *
- * The depth applies to the local stack and to the remote history separately.
+ * Note: jj's own `present(@)` resolves to the working copy only, so it cannot
+ * be used to pick up the local commits in between.
  */
-export function buildLogRevset(depth: number): string {
-    const n = Number.isFinite(depth) ? Math.max(0, Math.floor(depth)) : 0;
-    return `@ | ancestors(immutable_heads().., ${n}) | ancestors(immutable_heads(), ${n}) | trunk()`;
+export function buildLogRevset(remoteDepth: number, localDepth: number): string {
+    const remote = Number.isFinite(remoteDepth) ? Math.max(0, Math.floor(remoteDepth)) : 0;
+    const local = Number.isFinite(localDepth) ? Math.max(0, Math.floor(localDepth)) : 0;
+    return `ancestors(@, ${local}) ~ ancestors(immutable_heads()) | ancestors(immutable_heads(), ${remote}) | trunk()`;
 }
 
 /**
