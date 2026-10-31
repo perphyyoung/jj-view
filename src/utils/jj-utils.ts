@@ -64,6 +64,36 @@ export function formatCommitTitle(
 }
 
 /**
+ * The revset jj uses when `revsets.log` is not customized.
+ */
+export const DEFAULT_LOG_REVSET = 'present(@) | ancestors(immutable_heads().., 2) | trunk()';
+
+/**
+ * Checks whether a `revsets.log` value is effectively the built-in default.
+ * Newer jj versions report the default as `builtin_log()`; older ones report the
+ * expanded expression.
+ */
+export function isDefaultLogRevset(value: string): boolean {
+    const normalized = value.replace(/\s+/g, ' ');
+    if (normalized.includes('builtin_log()')) {
+        return true;
+    }
+    return normalized === DEFAULT_LOG_REVSET;
+}
+
+/**
+ * Builds the revset used by the JJ Log view.
+ *
+ * Includes the working copy, the `depth` most recent committed ancestors of the
+ * remote (immutable) heads, and the trunk commit. `depth` counts committed
+ * ancestors only; the working copy is always shown on top.
+ */
+export function buildLogRevset(depth: number): string {
+    const n = Number.isFinite(depth) ? Math.max(0, Math.floor(depth)) : 0;
+    return `present(@) | ancestors(immutable_heads(), ${n}) | trunk()`;
+}
+
+/**
  * Checks if a commit can be squashed (i.e. is mutable, has exactly one parent, and that parent is mutable).
  */
 export function canSquashCommit(commit: { is_immutable?: boolean; parents?: { is_immutable?: boolean }[] }): boolean {

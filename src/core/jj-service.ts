@@ -6,6 +6,7 @@ import path from 'pathe';
 import type { z } from 'zod';
 import { AsyncCache } from '../utils/async-cache';
 import { getErrorMessage } from '../utils/error-utils';
+import { DEFAULT_LOG_REVSET, isDefaultLogRevset } from '../utils/jj-utils';
 import { type LoggerChannel, NO_OP_LOGGER } from '../utils/output-channel';
 import { type LineAnnotation, parseAnnotationOutput } from './blame/line-blame';
 import { type HostSystem, type ProcessExecOptions, ProcessExitError, type TrackableProcess } from './host/host-system';
@@ -573,6 +574,26 @@ export class JjService {
         return entries;
     }
 
+    /**
+     * Returns the user-configured `revsets.log` value, or `undefined` when the
+     * built-in default is in effect (jj reports the default as `builtin_log()`).
+     */
+    async getConfiguredLogRevset(): Promise<string | undefined> {
+        try {
+            const output = await this.run('config', ['get', 'revsets.log'], {
+                useCachedSnapshot: true,
+                label: 'getLog:revsets.log',
+            });
+            const value = output.trim();
+            if (!value || isDefaultLogRevset(value)) {
+                return undefined;
+            }
+            return value;
+        } catch {
+            return undefined;
+        }
+    }
+
     async getLogEntry(revision: string): Promise<JjLogEntry | undefined> {
         const entries = await this.getLog({ revision, limit: 1, omitChanges: true });
         return entries[0];
@@ -617,14 +638,7 @@ export class JjService {
         // Otherwise, we default to the configured log revset (or a safe fallback).
         let searchSet = revision;
         if (!searchSet) {
-            try {
-                searchSet = await this.run('config', ['get', 'revsets.log'], {
-                    useCachedSnapshot: true,
-                    label: 'getLog:revsets.log',
-                });
-            } catch {
-                searchSet = 'present(@) | ancestors(immutable_heads().., 2) | trunk()';
-            }
+            searchSet = (await this.getConfiguredLogRevset()) ?? DEFAULT_LOG_REVSET;
         }
 
         const followUps: Promise<void>[] = [];

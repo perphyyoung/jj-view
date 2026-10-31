@@ -594,4 +594,39 @@ test.describe('JJ Log Pane E2E', () => {
 
         await expect(featureDesc).toHaveAttribute('title', expectedPattern);
     });
+
+    test('Shows the latest remote commits in the log', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        // jj refuses to push the (empty) root commit when it has no description.
+        repo.describe('root commit');
+
+        // A local remote makes the pushed commits immutable, i.e. remote commits.
+        const remoteRepo = new TestRepo();
+        remoteRepo.init();
+        repo.addRemote('origin', remoteRepo.path);
+        repo.config('git.push-new-bookmarks', 'true');
+
+        const nodes = await buildGraph(repo, [
+            { label: 'c1', description: 'remote commit 1' },
+            { label: 'c2', parents: ['c1'], description: 'remote commit 2' },
+            { label: 'c3', parents: ['c2'], description: 'remote commit 3' },
+            { label: 'c4', parents: ['c3'], description: 'remote commit 4' },
+            { label: 'wc', parents: ['c4'], description: 'local working copy', isCurrentWorkingCopy: true },
+        ]);
+
+        // Push the chain so that c1..c4 all become remote commits.
+        repo.bookmark('main', nodes.c4.changeId);
+        repo.gitPush('main');
+
+        const { page } = await vscode.openWorkspace(repo);
+        await focusJJLog(page);
+
+        // jj's built-in log revset only exposes the two newest remote commits,
+        // the log view must show the whole recent remote history.
+        for (const index of [1, 2, 3, 4]) {
+            const row = await waitForLogCommitRow(page, `remote commit ${index}`);
+            await expect(row).toBeVisible();
+        }
+    });
 });

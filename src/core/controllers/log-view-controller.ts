@@ -5,7 +5,7 @@
 
 import { CoalescingQueue } from '../../utils/coalescing-queue';
 import { toError } from '../../utils/error-utils';
-import { canAbsorbCommit } from '../../utils/jj-utils';
+import { buildLogRevset, canAbsorbCommit } from '../../utils/jj-utils';
 import type { LoggerChannel } from '../../utils/output-channel';
 import { type Disposable, type Event, EventEmitter } from '../host/events';
 import type { HostEnvironment } from '../host/host-environment';
@@ -33,6 +33,9 @@ export interface LogViewControllerOptions {
     logger?: LoggerChannel;
     onSelectionChange?: (commitIds: string[]) => void;
 }
+
+/** Number of committed ancestors shown in the JJ Log view by default. */
+export const DEFAULT_LOG_DEPTH = 10;
 
 export class LogViewController implements Disposable {
     private static readonly HIDDEN_ACTIONS_STORAGE_KEY = 'jj-view.hiddenCommitActions';
@@ -80,6 +83,9 @@ export class LogViewController implements Disposable {
         if (this._host.config.onDidChangeConfiguration) {
             this._disposables.push(
                 this._host.config.onDidChangeConfiguration((e) => {
+                    if (e.affectsConfiguration('jj-view.logDepth')) {
+                        void this.refresh('configChanged:logDepth');
+                    }
                     if (
                         e.affectsConfiguration('jj-view.logTheme') ||
                         e.affectsConfiguration('jj-view.graphLabelAlignment') ||
@@ -195,9 +201,12 @@ export class LogViewController implements Disposable {
 
         try {
             const start = performance.now();
+            const depth = this._host.config.get<number>('logDepth', DEFAULT_LOG_DEPTH);
+            const revision = await this._resolveLogRevision(jj, depth);
             const commits = await jj.getLog({
                 omitChanges: true,
                 includeNearestVisibleAncestors: true,
+                revision,
             });
 
             if (this._repo?.rootUri.fsPath !== targetRepoPath || this._disposed) {
@@ -217,6 +226,21 @@ export class LogViewController implements Disposable {
             this._logger?.error('[LogViewController] Failed to fetch log', toError(e));
             return;
         }
+    }
+
+    /**
+     * Resolves the revset used to populate the log view.
+     *
+     * A user-customized `revsets.log` always takes precedence. Otherwise jj's
+     * built-in default only exposes a couple of ancestors, so the depth is
+     * expanded to show the latest committed records.
+     */
+    private async _resolveLogRevision(jj: JjService, depth: number): Promise<string | undefined> {
+        const configured = await jj.getConfiguredLogRevset();
+        if (configured) {
+            return configured;
+        }
+        return buildLogRevset(depth);
     }
 
     public setCommits(commits: readonly JjLogEntry[]): void {

@@ -3,7 +3,7 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.1.0",
+    "version": "3.2.0",
     "license": "Apache-2.0",
     "author": "perphyyoung",
     "repository": {
@@ -151,6 +151,13 @@
                     "default": 10,
                     "minimum": 0,
                     "description": "Maximum number of mutable ancestors to display in the SCM view."
+                },
+                "jj-view.logDepth": {
+                    "type": "number",
+                    "default": 10,
+                    "minimum": 0,
+                    "maximum": 500,
+                    "markdownDescription": "Number of recent committed records shown in the JJ Log view. The log view uses `present(@) | ancestors(immutable_heads(), N) | trunk()` instead of jj's built-in `revsets.log`, which only exposes the two newest remote ancestors. Ignored when `revsets.log` is customized in the jj config. Risk: the customization is detected by comparing against jj's reported default (`builtin_log()`); if a future jj version reports that default in a different form, the depth is silently ignored and the view falls back to jj's default (2 remote commits)."
                 },
                 "jj-view.logTheme": {
                     "type": "string",

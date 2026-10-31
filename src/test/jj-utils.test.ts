@@ -4,12 +4,15 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+    buildLogRevset,
     canAbsorbCommit,
     canSquashCommit,
     convertJjChangeIdToHex,
+    DEFAULT_LOG_REVSET,
     formatCommitTitle,
     formatDisplayChangeId,
     getChangeIdDisplayLength,
+    isDefaultLogRevset,
     isMutableCommit,
     shortenChangeId,
 } from '../utils/jj-utils';
@@ -229,6 +232,29 @@ describe('JJ Utils', () => {
 
         it('should return false if commit is immutable', () => {
             expect(isMutableCommit({ is_immutable: true })).toBe(false);
+        });
+    });
+
+    describe('buildLogRevset', () => {
+        it('should include the working copy, the given number of ancestors and the trunk', () => {
+            expect(buildLogRevset(10)).toBe('present(@) | ancestors(immutable_heads(), 10) | trunk()');
+        });
+
+        it('should clamp invalid depths', () => {
+            expect(buildLogRevset(-5)).toBe('present(@) | ancestors(immutable_heads(), 0) | trunk()');
+            expect(buildLogRevset(2.7)).toBe('present(@) | ancestors(immutable_heads(), 2) | trunk()');
+            expect(buildLogRevset(Number.NaN)).toBe('present(@) | ancestors(immutable_heads(), 0) | trunk()');
+        });
+    });
+
+    describe('isDefaultLogRevset', () => {
+        it('should detect the builtin default', () => {
+            expect(isDefaultLogRevset('builtin_log()')).toBe(true);
+            expect(isDefaultLogRevset(DEFAULT_LOG_REVSET)).toBe(true);
+        });
+
+        it('should not treat a customized revset as default', () => {
+            expect(isDefaultLogRevset('present(@) | ancestors(immutable_heads(), 30) | trunk()')).toBe(false);
         });
     });
 });
