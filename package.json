@@ -157,7 +157,7 @@
                     "default": 10,
                     "minimum": 0,
                     "maximum": 500,
-                    "markdownDescription": "Number of recent committed records shown in the JJ Log view. The log view uses `present(@) | ancestors(immutable_heads(), N) | trunk()` instead of jj's built-in `revsets.log`, which only exposes the two newest remote ancestors. Ignored when `revsets.log` is customized in the jj config. Risk: the customization is detected by comparing against jj's reported default (`builtin_log()`); if a future jj version reports that default in a different form, the depth is silently ignored and the view falls back to jj's default (2 remote commits)."
+                    "markdownDescription": "Number of recent committed records shown in the JJ Log view. The log view uses `@ | ancestors(immutable_heads().., N) | ancestors(immutable_heads(), N) | trunk()` instead of jj's built-in `revsets.log`, which only exposes the two newest remote ancestors. The depth applies to the local stack and to the remote history separately, so up to 2N rows are shown. Ignored when `revsets.log` is customized in the jj config. Risk: the customization is detected by comparing against jj's reported default (`builtin_log()`); if a future jj version reports that default in a different form, the depth is silently ignored and the view falls back to jj's default (2 remote commits)."
                 },
                 "jj-view.logTheme": {
                     "type": "string",

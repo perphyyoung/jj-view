@@ -84,13 +84,20 @@ export function isDefaultLogRevset(value: string): boolean {
 /**
  * Builds the revset used by the JJ Log view.
  *
- * Includes the working copy, the `depth` most recent committed ancestors of the
- * remote (immutable) heads, and the trunk commit. `depth` counts committed
- * ancestors only; the working copy is always shown on top.
+ * - `@`: the working copy.
+ * - `ancestors(immutable_heads().., N)`: the N newest commits that are not
+ *   remote heads, i.e. the local (mutable) stack. jj's own `present(@)` only
+ *   resolves to the working copy itself, so local commits in between would be
+ *   missing without this part.
+ * - `ancestors(immutable_heads(), N)`: the remote head plus its N-1 newest
+ *   ancestors, i.e. the recent remote history.
+ * - `trunk()`: the trunk commit.
+ *
+ * The depth applies to the local stack and to the remote history separately.
  */
 export function buildLogRevset(depth: number): string {
     const n = Number.isFinite(depth) ? Math.max(0, Math.floor(depth)) : 0;
-    return `present(@) | ancestors(immutable_heads(), ${n}) | trunk()`;
+    return `@ | ancestors(immutable_heads().., ${n}) | ancestors(immutable_heads(), ${n}) | trunk()`;
 }
 
 /**

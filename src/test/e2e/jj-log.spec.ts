@@ -629,4 +629,68 @@ test.describe('JJ Log Pane E2E', () => {
             await expect(row).toBeVisible();
         }
     });
+
+    test('Renders new local commits on top of remote history without overlap', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        // jj refuses to push the (empty) root commit when it has no description.
+        repo.describe('root commit');
+
+        // A local remote makes the pushed commits immutable, i.e. remote commits.
+        const remoteRepo = new TestRepo();
+        remoteRepo.init();
+        repo.addRemote('origin', remoteRepo.path);
+        repo.config('git.push-new-bookmarks', 'true');
+
+        const remote = await buildGraph(repo, [
+            { label: 'r1', description: 'remote commit 1' },
+            { label: 'r2', parents: ['r1'], description: 'remote commit 2' },
+            { label: 'r3', parents: ['r2'], description: 'remote commit 3' },
+            { label: 'r4', parents: ['r3'], description: 'remote commit 4' },
+        ]);
+
+        // Push the chain so that r1..r4 are remote commits.
+        repo.bookmark('main', remote.r4.changeId);
+        repo.gitPush('main');
+
+        // Two new local commits on top of the remote history.
+        await buildGraph(repo, [
+            { label: 'n1', parents: [remote.r4.changeId], description: 'new local commit 1' },
+            { label: 'n2', parents: ['n1'], description: 'new local commit 2', isCurrentWorkingCopy: true },
+        ]);
+
+        const { page } = await vscode.openWorkspace(repo);
+        await focusJJLog(page);
+
+        const expected = [
+            'new local commit 1',
+            'new local commit 2',
+            'remote commit 1',
+            'remote commit 2',
+            'remote commit 3',
+            'remote commit 4',
+        ];
+
+        const boxes: Array<{ text: string; box: { x: number; y: number; width: number; height: number } }> = [];
+        for (const text of expected) {
+            const row = await waitForLogCommitRow(page, text);
+            await expect(row).toBeVisible();
+            const box = await row.boundingBox();
+            if (!box) {
+                throw new Error(`no bounding box for "${text}"`);
+            }
+            boxes.push({ text, box });
+        }
+
+        // Every commit must be rendered on its own row, none may cover another one.
+        for (let i = 0; i < boxes.length; i++) {
+            for (let j = i + 1; j < boxes.length; j++) {
+                const a = boxes[i].box;
+                const b = boxes[j].box;
+                const overlaps =
+                    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+                expect(overlaps, `"${boxes[i].text}" overlaps "${boxes[j].text}"`).toBe(false);
+            }
+        }
+    });
 });

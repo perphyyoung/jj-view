@@ -940,7 +940,7 @@ export async function waitForLogPill(page: Page, label: string, kind?: LogPillKi
         },
         `Failed to find log ${kind || 'pill'} with text "${label}"`,
     ).toPass({
-        timeout: 20000,
+        timeout: 5000,
         intervals: [50, 100, 250, 500],
     });
 
@@ -980,7 +980,7 @@ export async function waitForLogCommitRow(page: Page, criteria: LogRowCriteria, 
             },
             `Failed to find log row matching ${JSON.stringify(criteria)}`,
         ).toPass({
-            timeout: 20000,
+            timeout: 5000,
             intervals: [50, 100, 250, 500],
         });
     } catch (e) {
