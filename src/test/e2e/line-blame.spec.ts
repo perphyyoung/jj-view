@@ -91,11 +91,28 @@ test.describe('Line Blame E2E', () => {
 
         // Right after the edit the blame must not be painted inside the line: the
         // provider drops the stale decoration, so it is either gone or already
-        // anchored to the end of the merged line. When it reappears is timing (jj round
-        // trips plus repository refreshes, see todo.md) and is deliberately not asserted.
+        // anchored to the end of the merged line.
         const immediate = await blameGeometry();
         if (immediate) {
             expect(immediate.blameX).toBeGreaterThanOrEqual(immediate.contentEndX - 1);
         }
+
+        // The blame must reappear at the end of the merged line. The annotation cache is
+        // keyed by the file content on disk, so only the debounce plus the working-copy
+        // lookup remain on this path (measured ~1s).
+        let geometry: { blameX: number; contentEndX: number; text: string } | null = null;
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+            geometry = await blameGeometry();
+            if (
+                geometry !== null &&
+                geometry.text.includes('third line') &&
+                geometry.blameX >= geometry.contentEndX - 1
+            ) {
+                break;
+            }
+            await page.waitForTimeout(200);
+        }
+        expect(geometry, 'blame did not reappear at the end of the merged line').not.toBeNull();
     });
 });

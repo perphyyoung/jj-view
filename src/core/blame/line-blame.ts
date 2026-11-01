@@ -212,15 +212,16 @@ export function findAnnotation(
 }
 
 /**
- * Cache key including the document version (edits invalidate the annotations) and the
- * working-copy commit id (new commits / bookmark advances swap `@` without touching the
- * document, so the annotations must be re-read).
+ * Cache key including a signature of the file content (`jj file annotate` reads the file
+ * on disk, so an unsaved edit must not invalidate the annotations) and the working-copy
+ * commit id (new commits / bookmark advances swap `@` without touching the document, so
+ * the annotations must be re-read).
  */
 export function lineBlameCacheKey(
     repoRoot: string,
     fsPath: string,
-    documentVersion: number,
+    contentSignature: string | number,
     workingCopyCommitId: string | undefined,
 ): string {
-    return `${repoRoot}|${fsPath}|${documentVersion}|${workingCopyCommitId ?? ''}`;
+    return `${repoRoot}|${fsPath}|${contentSignature}|${workingCopyCommitId ?? ''}`;
 }

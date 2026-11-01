@@ -159,9 +159,16 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             return;
         }
 
-        const cacheKey = lineBlameCacheKey(root, document.uri.fsPath, document.version, workingCopyCommitId);
+        const cacheKey = lineBlameCacheKey(
+            root,
+            document.uri.fsPath,
+            await this._contentSignature(document),
+            workingCopyCommitId,
+        );
+        const cached = this._cache.has(cacheKey);
         let annotations = this._cache.get(cacheKey);
-        if (!this._cache.has(cacheKey)) {
+        const annotateStart = Date.now();
+        if (!cached) {
             try {
                 annotations = await repo.jj.annotateFile(relativePath);
             } catch (error: unknown) {
@@ -170,6 +177,9 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             }
             this._cache.set(cacheKey, annotations);
             this._trimCache();
+            this._outputChannel?.debug?.(
+                `[LineBlame] annotate ${relativePath} took ${Date.now() - annotateStart}ms (cached: false)`,
+            );
         }
 
         if (this._disposed || requestId !== this._requestId) {
@@ -260,6 +270,20 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         } catch (error: unknown) {
             this._outputChannel?.debug?.(`[LineBlame] working copy lookup failed for ${root}: ${String(error)}`);
             return undefined;
+        }
+    }
+
+    /**
+     * Signature of the content `jj file annotate` would read. The editor version changes
+     * on every keystroke while the file on disk stays the same, so keying the annotation
+     * cache by version would re-run annotate for nothing on each edit.
+     */
+    private async _contentSignature(document: vscode.TextDocument): Promise<string> {
+        try {
+            const stat = await vscode.workspace.fs.stat(document.uri);
+            return `${stat.mtime}:${stat.size}`;
+        } catch {
+            return `v${document.version}`;
         }
     }
 
