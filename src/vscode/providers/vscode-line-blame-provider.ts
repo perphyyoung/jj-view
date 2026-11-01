@@ -57,11 +57,11 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         });
 
         this._disposables.push(
-            vscode.window.onDidChangeTextEditorSelection((event) => this._schedule(event.textEditor)),
+            vscode.window.onDidChangeTextEditorSelection((event) => this._schedule(event.textEditor, 'selection')),
             vscode.window.onDidChangeActiveTextEditor((editor) => {
                 this._clearAll();
                 if (editor) {
-                    this._schedule(editor);
+                    this._schedule(editor, 'selection');
                 }
             }),
             vscode.workspace.onDidChangeTextDocument((event) => {
@@ -69,19 +69,20 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
                 // Hide the blame while the document is being edited: a range that was
                 // captured before the edit would paint the blame text inside the line.
                 // The next update after the debounce delay renders it at the new line end.
-                this._requestId++;
+                // In-flight updates are stopped by the document-version check in
+                // _applyDecoration, so cancelling them here is not needed.
                 for (const editor of vscode.window.visibleTextEditors) {
                     if (editor.document.uri.toString() !== event.document.uri.toString()) {
                         continue;
                     }
                     this._clearEditor(editor);
-                    this._schedule(editor);
+                    this._schedule(editor, 'document');
                 }
             }),
         );
 
         if (vscode.window.activeTextEditor) {
-            this._schedule(vscode.window.activeTextEditor);
+            this._schedule(vscode.window.activeTextEditor, 'selection');
         }
     }
 
@@ -101,7 +102,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         this._cache.clear();
     }
 
-    private _schedule(editor: vscode.TextEditor): void {
+    private _schedule(editor: vscode.TextEditor, kind: 'selection' | 'document' = 'selection'): void {
         if (this._disposed) {
             return;
         }
@@ -110,7 +111,12 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             this._clearAll();
             return;
         }
-        const delay = Math.max(0, config.get<number>('lineBlame.delay', 150) ?? 150);
+        // Edits get a longer debounce than cursor moves: the blame is hidden while typing
+        // and only the settled state is worth an annotate round trip.
+        const delay =
+            kind === 'document'
+                ? Math.max(0, config.get<number>('lineBlame.documentDelay', 400) ?? 400)
+                : Math.max(0, config.get<number>('lineBlame.delay', 150) ?? 150);
         if (this._timer) {
             clearTimeout(this._timer);
         }
@@ -123,6 +129,9 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
     private async _update(editor: vscode.TextEditor): Promise<void> {
         const requestId = ++this._requestId;
         const document = editor.document;
+        // Guards every decoration against being applied to a document that changed while
+        // this update was awaiting jj.
+        const version = document.version;
 
         if (editor.selections.length !== 1 || !editor.selection.isEmpty) {
             this._clearEditor(editor);
@@ -199,9 +208,19 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             return;
         }
 
-        this._applyDecoration(editor, line, text);
+        this._applyDecoration(editor, line, text, undefined, version);
 
         if (!config.get<boolean>('lineBlame.showHover', true)) {
+            return;
+        }
+
+        // The tooltip needs two or three extra jj calls, so resolve it only once the
+        // cursor has settled: quick cursor movements never pay for it.
+        const hoverDelay = Math.max(0, config.get<number>('lineBlame.hoverDelay', 1000) ?? 1000);
+        if (hoverDelay > 0) {
+            await new Promise((resolve) => setTimeout(resolve, hoverDelay));
+        }
+        if (this._disposed || requestId !== this._requestId) {
             return;
         }
 
@@ -235,7 +254,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         if (this._disposed || requestId !== this._requestId) {
             return;
         }
-        this._applyDecoration(editor, editor.selection.active.line, text, markdown);
+        this._applyDecoration(editor, editor.selection.active.line, text, markdown, version);
     }
 
     /**
@@ -243,8 +262,19 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
      * document: VS Code renders the `after` text at the end of the range, so a range
      * captured before an await would paint the blame text inside the line.
      */
-    private _applyDecoration(editor: vscode.TextEditor, line: number, text: string, hoverMarkdown?: string): void {
+    private _applyDecoration(
+        editor: vscode.TextEditor,
+        line: number,
+        text: string,
+        hoverMarkdown?: string,
+        expectedVersion?: number,
+    ): void {
         const document = editor.document;
+        if (expectedVersion !== undefined && document.version !== expectedVersion) {
+            // The document changed while this update was awaiting jj: the range and the
+            // text are both stale, so drop the result instead of painting it.
+            return;
+        }
         if (line < 0 || line >= document.lineCount) {
             return;
         }

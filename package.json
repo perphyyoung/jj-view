@@ -81,6 +81,16 @@
                     "default": 150,
                     "description": "Delay (ms) after the cursor moves before the line blame is shown."
                 },
+                "jj-view.lineBlame.documentDelay": {
+                    "type": "number",
+                    "default": 400,
+                    "description": "Delay (ms) after an edit before the line blame is recomputed. The blame is hidden while editing."
+                },
+                "jj-view.lineBlame.hoverDelay": {
+                    "type": "number",
+                    "default": 1000,
+                    "description": "Delay (ms) after the cursor settles before the hover tooltip is resolved. The tooltip needs extra jj calls, so quick cursor moves skip it."
+                },
                 "jj-view.lineBlame.maxFileLines": {
                     "type": "number",
                     "default": 5000,
