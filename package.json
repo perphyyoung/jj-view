@@ -3,7 +3,7 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.2.1",
+    "version": "3.2.2",
     "license": "Apache-2.0",
     "author": "perphyyoung",
     "repository": {
@@ -96,8 +96,8 @@
                 },
                 "jj-view.lineBlame.hoverDelay": {
                     "type": "number",
-                    "default": 1000,
-                    "description": "Delay (ms) after the cursor settles before the hover tooltip is resolved. The tooltip needs extra jj calls, so quick cursor moves skip it."
+                    "default": 300,
+                    "description": "Delay (ms) after the cursor settles before the full hover tooltip (commit message + line diff) is resolved. A summary tooltip is available immediately. Quick cursor moves skip the extra work."
                 },
                 "jj-view.lineBlame.maxFileLines": {
                     "type": "number",
@@ -107,7 +107,7 @@
                 "jj-view.lineBlame.showHover": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Show a multi-line tooltip with the full commit message when hovering the annotated line."
+                    "description": "Show a multi-line tooltip when hovering the annotated line (only the cursor line is annotated). The tooltip starts with the author, time and summary, then gets the full commit message and line diff."
                 },
                 "jj-view.lineBlame.showLineDiff": {
                     "type": "boolean",

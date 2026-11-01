@@ -24,6 +24,8 @@ import type { LoggerChannel } from '../../utils/output-channel';
 const DECORATION_COLOR = 'var(--vscode-editorCodeLens-foreground, rgba(153, 153, 153, 0.9))';
 const MAX_TEXT_LENGTH = 120;
 const MAX_CACHED_FILES = 64;
+/** How long the working-copy commit id is reused; it only drives the annotation cache key. */
+const WORKING_COPY_TTL_MS = 1000;
 
 /**
  * GitLens-style current-line blame: whenever the cursor settles on a line, the commit
@@ -31,6 +33,12 @@ const MAX_CACHED_FILES = 64;
  */
 export class VsCodeLineBlameProvider implements vscode.Disposable {
     private readonly _decoration: vscode.TextEditorDecorationType;
+    /**
+     * Tooltip markdown per document, keyed by the decorated line. The blame text is an
+     * `after` decoration rendered outside its range, so decoration hovers never fire for
+     * it; the registered hover provider serves the same markdown for the whole line.
+     */
+    private readonly _hoverByUri = new Map<string, { line: number; markdown: string }>();
     private readonly _disposables: vscode.Disposable[] = [];
     private readonly _cache = new Map<string, LineAnnotation[] | undefined>();
     private readonly _detailsCache = new Map<string, CommitDetails | undefined>();
@@ -39,6 +47,10 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
     private _timer: ReturnType<typeof setTimeout> | undefined;
     private _disposed = false;
     private _requestId = 0;
+    /** Last scheduled target, so column-only cursor moves do not restart the update. */
+    private _lastTarget: { uri: string; version: number; line: number } | undefined;
+    /** Short-lived working-copy commit id, see WORKING_COPY_TTL_MS. */
+    private _workingCopy: { root: string; id: string | undefined; at: number } | undefined;
 
     constructor(
         private readonly _repositoryManager: JjRepositoryManager,
@@ -57,6 +69,12 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         });
 
         this._disposables.push(
+            vscode.languages.registerHoverProvider(
+                { scheme: 'file' },
+                {
+                    provideHover: (document, position) => this._provideHover(document, position),
+                },
+            ),
             vscode.window.onDidChangeTextEditorSelection((event) => this._schedule(event.textEditor, 'selection')),
             vscode.window.onDidChangeActiveTextEditor((editor) => {
                 this._clearAll();
@@ -65,7 +83,14 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
                 }
             }),
             vscode.workspace.onDidChangeTextDocument((event) => {
-                this._invalidate(event.document.uri.fsPath);
+                const docRepo = this._repositoryManager.getRepositoryForUri(event.document.uri);
+                const docRelativePath = docRepo
+                    ? path.relative(docRepo.rootUri.fsPath, event.document.uri.fsPath).replace(/\\/g, '/')
+                    : '';
+                this._invalidate(
+                    event.document.uri.fsPath,
+                    docRelativePath && !docRelativePath.startsWith('..') ? docRelativePath : undefined,
+                );
                 // Hide the blame while the document is being edited: a range that was
                 // captured before the edit would paint the blame text inside the line.
                 // The next update after the debounce delay renders it at the new line end.
@@ -100,6 +125,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         this._disposables.length = 0;
         this._decoration.dispose();
         this._cache.clear();
+        this._hoverByUri.clear();
     }
 
     private _schedule(editor: vscode.TextEditor, kind: 'selection' | 'document' = 'selection'): void {
@@ -117,6 +143,21 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             kind === 'document'
                 ? Math.max(0, config.get<number>('lineBlame.documentDelay', 400) ?? 400)
                 : Math.max(0, config.get<number>('lineBlame.delay', 150) ?? 150);
+
+        const document = editor.document;
+        const line = editor.selection.active.line;
+        const target = { uri: document.uri.toString(), version: document.version, line };
+        if (
+            kind === 'selection' &&
+            this._lastTarget?.uri === target.uri &&
+            this._lastTarget.version === target.version &&
+            this._lastTarget.line === target.line
+        ) {
+            // Moving inside the same line must not cancel the hover work in flight.
+            return;
+        }
+        this._lastTarget = target;
+
         if (this._timer) {
             clearTimeout(this._timer);
         }
@@ -132,6 +173,15 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         // Guards every decoration against being applied to a document that changed while
         // this update was awaiting jj.
         const version = document.version;
+        // Phase timings, emitted as a single debug line so slow tooltips can be traced.
+        const updateStart = Date.now();
+        const timings: string[] = [];
+        let lapStart = updateStart;
+        const lap = (label: string): void => {
+            const now = Date.now();
+            timings.push(`${label}=${now - lapStart}ms`);
+            lapStart = now;
+        };
 
         if (editor.selections.length !== 1 || !editor.selection.isEmpty) {
             this._clearEditor(editor);
@@ -161,40 +211,39 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             return;
         }
 
-        // Reads are not serialized with mutations, so a read issued while a refresh is
-        // snapshotting the working copy would fight for the jj repository lock. Back off
-        // and retry instead of joining that contention.
-        if (repo.activeRefresh) {
-            this._outputChannel?.debug?.('[LineBlame] repository refresh in flight, deferring update');
-            this._schedule(editor);
-            return;
-        }
-        if (!(await repo.jj.whenIdle())) {
-            this._outputChannel?.debug?.('[LineBlame] repository busy, deferring update');
-            this._schedule(editor);
-            return;
-        }
-        if (this._disposed || requestId !== this._requestId) {
-            return;
-        }
-
         // The `@` commit id must be resolved first: new commits (advance bookmark / new / squash)
         // swap `@` without touching the document, so it drives the annotation cache key.
+        // It is cached briefly (see _getWorkingCopyCommitId) so hovering does not re-run it.
         const workingCopyCommitId = await this._getWorkingCopyCommitId(repo, root);
+        lap('wcId');
         if (this._disposed || requestId !== this._requestId) {
             return;
         }
 
-        const cacheKey = lineBlameCacheKey(
-            root,
-            document.uri.fsPath,
-            await this._contentSignature(document),
-            workingCopyCommitId,
-        );
+        const contentSignature = await this._contentSignature(document);
+        const cacheKey = lineBlameCacheKey(root, document.uri.fsPath, contentSignature, workingCopyCommitId);
         const cached = this._cache.has(cacheKey);
         let annotations = this._cache.get(cacheKey);
         const annotateStart = Date.now();
         if (!cached) {
+            // Reads are not serialized with mutations, so a read issued while a refresh is
+            // snapshotting the working copy would fight for the jj repository lock. Back off
+            // and retry instead of joining that contention. Cached annotations never need
+            // this wait.
+            if (repo.activeRefresh) {
+                this._outputChannel?.debug?.('[LineBlame] repository refresh in flight, deferring update');
+                this._schedule(editor);
+                return;
+            }
+            if (!(await repo.jj.whenIdle())) {
+                this._outputChannel?.debug?.(`[LineBlame] repository busy, deferring update (${timings.join(' ')})`);
+                this._schedule(editor);
+                return;
+            }
+            lap('whenIdle');
+            if (this._disposed || requestId !== this._requestId) {
+                return;
+            }
             try {
                 annotations = await repo.jj.annotateFile(relativePath);
             } catch (error: unknown) {
@@ -207,6 +256,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
                 `[LineBlame] annotate ${relativePath} took ${Date.now() - annotateStart}ms (cached: false)`,
             );
         }
+        lap(cached ? 'annotate(cached)' : 'annotate');
 
         if (this._disposed || requestId !== this._requestId) {
             return;
@@ -225,53 +275,70 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             return;
         }
 
-        this._applyDecoration(editor, line, text, undefined, version);
+        // First paint carries a tooltip built from the annotation alone (no jj calls), so
+        // hovering right after the cursor lands already shows the author, time and summary.
+        this._applyDecoration(
+            editor,
+            line,
+            text,
+            uncommitted ? formatUncommittedHoverMarkdown(undefined) : formatHoverMarkdown(annotation),
+            version,
+        );
 
         if (!config.get<boolean>('lineBlame.showHover', true)) {
             return;
         }
 
-        // The tooltip needs two or three extra jj calls, so resolve it only once the
+        // The full tooltip needs two or three extra jj calls, so resolve it only once the
         // cursor has settled: quick cursor movements never pay for it.
-        const hoverDelay = Math.max(0, config.get<number>('lineBlame.hoverDelay', 1000) ?? 1000);
+        const hoverDelay = Math.max(0, config.get<number>('lineBlame.hoverDelay', 300) ?? 300);
         if (hoverDelay > 0) {
             await new Promise((resolve) => setTimeout(resolve, hoverDelay));
         }
+        lap('hoverDelay');
         if (this._disposed || requestId !== this._requestId) {
+            this._outputChannel?.debug?.(`[LineBlame] hover skipped: superseded (${timings.join(' ')})`);
             return;
         }
 
         // The tooltip needs the full commit message, which cannot be part of the
         // one-record-per-line annotate output, so resolve it lazily and cache per commit.
+        // The three lookups are independent, so they run in parallel.
         let markdown: string;
         const showDiff = config.get<boolean>('lineBlame.showLineDiff', true);
-        const diff = showDiff ? await this._getLineChange(repo, annotation.commitId, relativePath, line) : undefined;
-        if (this._disposed || requestId !== this._requestId) {
-            return;
-        }
-
         if (uncommitted) {
-            const parentAnnotations = await this._getParentAnnotations(
-                repo,
-                root,
-                document.version,
-                relativePath,
-                workingCopyCommitId,
-            );
+            const [diff, parentAnnotations] = await Promise.all([
+                showDiff ? this._getLineChange(repo, annotation.commitId, relativePath, line) : undefined,
+                this._getParentAnnotations(repo, root, contentSignature, relativePath, workingCopyCommitId),
+            ]);
+            lap('diff+parentAnnotate');
+            if (this._disposed || requestId !== this._requestId) {
+                this._outputChannel?.debug?.(`[LineBlame] hover skipped: superseded (${timings.join(' ')})`);
+                return;
+            }
             const parentAnnotation = findAnnotation(parentAnnotations, line);
             const parentDetails = parentAnnotation
                 ? await this._getCommitDetails(repo, parentAnnotation.commitId)
                 : undefined;
+            lap('parentDetails');
             markdown = formatUncommittedHoverMarkdown(parentAnnotation, parentDetails, diff);
         } else {
-            const details = await this._getCommitDetails(repo, annotation.commitId);
+            const [diff, details] = await Promise.all([
+                showDiff ? this._getLineChange(repo, annotation.commitId, relativePath, line) : undefined,
+                this._getCommitDetails(repo, annotation.commitId),
+            ]);
+            lap('diff+details');
             markdown = formatHoverMarkdown(annotation, details, diff);
         }
 
         if (this._disposed || requestId !== this._requestId) {
+            this._outputChannel?.debug?.(`[LineBlame] hover skipped: superseded (${timings.join(' ')})`);
             return;
         }
         this._applyDecoration(editor, editor.selection.active.line, text, markdown, version);
+        this._outputChannel?.debug?.(
+            `[LineBlame] hover ${relativePath} | ${timings.join(' | ')} | total=${Date.now() - updateStart}ms`,
+        );
     }
 
     /**
@@ -297,13 +364,28 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         }
         const range = new vscode.Range(line, 0, line, document.lineAt(line).text.length);
         const decoration: vscode.DecorationOptions = { range, renderOptions: { after: { contentText: text } } };
-        if (hoverMarkdown !== undefined) {
-            const hover = new vscode.MarkdownString(hoverMarkdown);
-            hover.isTrusted = true;
-            decoration.hoverMessage = hover;
-        }
         this._clearAll();
         editor.setDecorations(this._decoration, [decoration]);
+        if (hoverMarkdown === undefined) {
+            this._hoverByUri.delete(document.uri.toString());
+        } else {
+            this._hoverByUri.set(document.uri.toString(), { line, markdown: hoverMarkdown });
+        }
+    }
+
+    /**
+     * Serves the blame tooltip for the decorated line. The blame text itself is an `after`
+     * decoration rendered outside its range, so decoration hover messages never fire when
+     * the pointer is over the blame text; answering for the whole line covers both.
+     */
+    private _provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.Hover | undefined {
+        const entry = this._hoverByUri.get(document.uri.toString());
+        if (!entry || entry.line !== position.line) {
+            return undefined;
+        }
+        const markdown = new vscode.MarkdownString(entry.markdown);
+        markdown.isTrusted = true;
+        return new vscode.Hover(markdown, document.lineAt(entry.line).range);
     }
 
     /**
@@ -312,8 +394,14 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
      * `@` without touching any document, so a cached id would go stale and misclassify lines.
      */
     private async _getWorkingCopyCommitId(repo: JjRepository, root: string): Promise<string | undefined> {
+        const now = Date.now();
+        if (this._workingCopy && this._workingCopy.root === root && now - this._workingCopy.at < WORKING_COPY_TTL_MS) {
+            return this._workingCopy.id;
+        }
         try {
-            return (await repo.jj.getLogEntry('@'))?.commit_id;
+            const id = (await repo.jj.getLogEntry('@'))?.commit_id;
+            this._workingCopy = { root, id, at: Date.now() };
+            return id;
         } catch (error: unknown) {
             this._outputChannel?.debug?.(`[LineBlame] working copy lookup failed for ${root}: ${String(error)}`);
             return undefined;
@@ -338,11 +426,11 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
     private async _getParentAnnotations(
         repo: JjRepository,
         root: string,
-        documentVersion: number,
+        contentSignature: string,
         relativePath: string,
         workingCopyCommitId: string | undefined,
     ): Promise<LineAnnotation[] | undefined> {
-        const key = `@-|${root}|${relativePath}|${documentVersion}|${workingCopyCommitId ?? ''}`;
+        const key = `@-|${root}|${relativePath}|${contentSignature}|${workingCopyCommitId ?? ''}`;
         if (this._parentCache.has(key)) {
             return this._parentCache.get(key);
         }
@@ -444,13 +532,23 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         }
     }
 
-    private _invalidate(fsPath: string): void {
-        // The working-copy commit id and diff both change with every edit.
-        this._diffCache.clear();
+    private _invalidate(fsPath: string, relativePath?: string): void {
         const suffix = `|${fsPath}|`;
         for (const key of [...this._cache.keys()]) {
             if (key.includes(suffix)) {
                 this._cache.delete(key);
+            }
+        }
+        // Only this file's diffs can change; dropping the whole cache would force every
+        // other file to re-run `jj diff` on its next hover.
+        if (!relativePath) {
+            this._diffCache.clear();
+            return;
+        }
+        const diffSuffix = `|${relativePath}`;
+        for (const key of [...this._diffCache.keys()]) {
+            if (key.endsWith(diffSuffix)) {
+                this._diffCache.delete(key);
             }
         }
     }
@@ -463,5 +561,6 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
 
     private _clearEditor(editor: vscode.TextEditor): void {
         editor.setDecorations(this._decoration, []);
+        this._hoverByUri.delete(editor.document.uri.toString());
     }
 }

@@ -70,7 +70,7 @@ const MUTATION_TIMEOUT_MS = ONE_MINUTE;
 const READ_TIMEOUT_MS = 2 * ONE_MINUTE;
 const UPLOAD_TIMEOUT_MS = 6 * ONE_MINUTE;
 /** Default upper bound for `whenIdle()`: callers would rather retry than queue behind a long write. */
-const DEFAULT_IDLE_TIMEOUT_MS = 800;
+const DEFAULT_IDLE_TIMEOUT_MS = 300;
 
 declare global {
     var __JJ_VIEW_COMMAND_HOOK__: ((command: string, args: string[], durationMs: number) => void) | undefined;
