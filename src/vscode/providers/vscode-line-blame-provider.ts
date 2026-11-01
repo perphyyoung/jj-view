@@ -50,6 +50,10 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
                 fontStyle: 'italic',
                 margin: '0 0 0 2em',
             },
+            // Keep the decoration glued to the end of the line. With the default
+            // OpenOpen behavior the range end stays where it was when text is
+            // appended, so the blame text would be rendered inside the line.
+            rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
         });
 
         this._disposables.push(
@@ -62,6 +66,17 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             }),
             vscode.workspace.onDidChangeTextDocument((event) => {
                 this._invalidate(event.document.uri.fsPath);
+                // Hide the blame while the document is being edited: a range that was
+                // captured before the edit would paint the blame text inside the line.
+                // The next update after the debounce delay renders it at the new line end.
+                this._requestId++;
+                for (const editor of vscode.window.visibleTextEditors) {
+                    if (editor.document.uri.toString() !== event.document.uri.toString()) {
+                        continue;
+                    }
+                    this._clearEditor(editor);
+                    this._schedule(editor);
+                }
             }),
         );
 
@@ -174,9 +189,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             return;
         }
 
-        const range = new vscode.Range(line, 0, line, document.lineAt(line).text.length);
-        this._clearAll();
-        editor.setDecorations(this._decoration, [{ range, renderOptions: { after: { contentText: text } } }]);
+        this._applyDecoration(editor, line, text);
 
         if (!config.get<boolean>('lineBlame.showHover', true)) {
             return;
@@ -212,12 +225,28 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         if (this._disposed || requestId !== this._requestId) {
             return;
         }
-        const hover = new vscode.MarkdownString(markdown);
-        hover.isTrusted = true;
+        this._applyDecoration(editor, editor.selection.active.line, text, markdown);
+    }
+
+    /**
+     * Applies the blame decoration, always computing the range from the current
+     * document: VS Code renders the `after` text at the end of the range, so a range
+     * captured before an await would paint the blame text inside the line.
+     */
+    private _applyDecoration(editor: vscode.TextEditor, line: number, text: string, hoverMarkdown?: string): void {
+        const document = editor.document;
+        if (line < 0 || line >= document.lineCount) {
+            return;
+        }
+        const range = new vscode.Range(line, 0, line, document.lineAt(line).text.length);
+        const decoration: vscode.DecorationOptions = { range, renderOptions: { after: { contentText: text } } };
+        if (hoverMarkdown !== undefined) {
+            const hover = new vscode.MarkdownString(hoverMarkdown);
+            hover.isTrusted = true;
+            decoration.hoverMessage = hover;
+        }
         this._clearAll();
-        editor.setDecorations(this._decoration, [
-            { range, renderOptions: { after: { contentText: text } }, hoverMessage: hover },
-        ]);
+        editor.setDecorations(this._decoration, [decoration]);
     }
 
     /**
