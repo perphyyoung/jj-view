@@ -69,6 +69,8 @@ const ONE_MINUTE = 60_000;
 const MUTATION_TIMEOUT_MS = ONE_MINUTE;
 const READ_TIMEOUT_MS = 2 * ONE_MINUTE;
 const UPLOAD_TIMEOUT_MS = 6 * ONE_MINUTE;
+/** Default upper bound for `whenIdle()`: callers would rather retry than queue behind a long write. */
+const DEFAULT_IDLE_TIMEOUT_MS = 800;
 
 declare global {
     var __JJ_VIEW_COMMAND_HOOK__: ((command: string, args: string[], durationMs: number) => void) | undefined;
@@ -237,6 +239,32 @@ export class JjService {
 
     get lastWriteTime(): number {
         return this._lastWriteTime;
+    }
+
+    /**
+     * Resolves to `true` once no mutation is running or queued, or to `false` when the
+     * repository stayed busy for the whole timeout.
+     *
+     * Reads are not serialized with mutations (see `runMutation`), so a read issued while
+     * a snapshot or another write is in flight competes for the jj repository lock.
+     * Callers use this to back off and retry instead of joining that contention.
+     */
+    async whenIdle(options: { timeoutMs?: number } = {}): Promise<boolean> {
+        if (this._writeOperationCount === 0) {
+            return true;
+        }
+        const timeoutMs = Math.max(0, options.timeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const expired = new Promise<boolean>((resolve) => {
+            timer = setTimeout(() => resolve(false), timeoutMs);
+        });
+        try {
+            return await Promise.race([this._mutationMutex.then(() => true), expired]);
+        } finally {
+            if (timer !== undefined) {
+                clearTimeout(timer);
+            }
+        }
     }
 
     static isIndexLockError(error: unknown): boolean {

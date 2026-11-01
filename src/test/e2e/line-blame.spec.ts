@@ -103,12 +103,9 @@ test.describe('Line Blame E2E', () => {
         let geometry: { blameX: number; contentEndX: number; text: string } | null = null;
         const deadline = Date.now() + 5000;
         while (Date.now() < deadline) {
-            geometry = await blameGeometry();
-            if (
-                geometry !== null &&
-                geometry.text.includes('third line') &&
-                geometry.blameX >= geometry.contentEndX - 1
-            ) {
+            const current = await blameGeometry();
+            geometry = current;
+            if (current?.text.includes('third line') && current.blameX >= current.contentEndX - 1) {
                 break;
             }
             await page.waitForTimeout(200);

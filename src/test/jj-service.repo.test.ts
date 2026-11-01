@@ -29,6 +29,18 @@ describe('JjService Unit Tests', () => {
         expect(log.commit_id).toBeTruthy();
     });
 
+    test('whenIdle resolves immediately when no mutation is running', async () => {
+        await expect(jjService.whenIdle()).resolves.toBe(true);
+    });
+
+    test('whenIdle reports busy while a mutation is in flight', async () => {
+        const mutation = jjService.status();
+        // runMutation bumps the write counter synchronously, so the repo is busy right here.
+        await expect(jjService.whenIdle({ timeoutMs: 0 })).resolves.toBe(false);
+        await mutation;
+        await expect(jjService.whenIdle()).resolves.toBe(true);
+    });
+
     test('getLog caches entries by immutable commit_id on omitChanges and returns defensively cloned copies', async () => {
         repo.describe('test cache commit', '@');
         const [original] = await jjService.getLog({ revision: '@', omitChanges: true });

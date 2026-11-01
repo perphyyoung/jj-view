@@ -161,6 +161,23 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             return;
         }
 
+        // Reads are not serialized with mutations, so a read issued while a refresh is
+        // snapshotting the working copy would fight for the jj repository lock. Back off
+        // and retry instead of joining that contention.
+        if (repo.activeRefresh) {
+            this._outputChannel?.debug?.('[LineBlame] repository refresh in flight, deferring update');
+            this._schedule(editor);
+            return;
+        }
+        if (!(await repo.jj.whenIdle())) {
+            this._outputChannel?.debug?.('[LineBlame] repository busy, deferring update');
+            this._schedule(editor);
+            return;
+        }
+        if (this._disposed || requestId !== this._requestId) {
+            return;
+        }
+
         // The `@` commit id must be resolved first: new commits (advance bookmark / new / squash)
         // swap `@` without touching the document, so it drives the annotation cache key.
         const workingCopyCommitId = await this._getWorkingCopyCommitId(repo, root);
