@@ -21,6 +21,14 @@
         "workspaceContains:.jj"
     ],
     "main": "./dist/extension.js",
+    "files": [
+        "dist/**",
+        "media/**",
+        "scripts/**",
+        "README.md",
+        "CHANGELOG.md",
+        "LICENSE"
+    ],
     "contributes": {
         "resourceLabelFormatters": [
             {
@@ -1154,7 +1162,7 @@
     "scripts": {
         "setup-jj": "node tooling/jj/setup.ts",
         "prepare": "pnpm build:themes && pnpm build:icons",
-        "vscode:prepublish": "pnpm prepare && pnpm check-types && pnpm lint && node esbuild.js --production",
+        "vscode:prepublish": "pnpm prepare && pnpm check-types && pnpm lint && pnpm clean:dist-maps && node esbuild.js --production",
         "build": "pnpm prepare && pnpm check-types && pnpm lint && node esbuild.js",
         "build:icons": "node tooling/build-icons.ts",
         "watch": "npm-run-all -p watch:*",
@@ -1165,6 +1173,7 @@
         "package": "pnpm vsce package --no-dependencies --target win32-x64",
         "release": "pnpm ovsx publish --no-dependencies && pnpm vsce publish --no-dependencies",
         "clean:tests": "rimraf out",
+        "clean:dist-maps": "node -e \"const fs=require('node:fs');const walk=(d)=>{for(const e of fs.readdirSync(d,{withFileTypes:true})){const f=d+'/'+e.name;if(e.isDirectory()){walk(f);}else if(f.endsWith('.map')){fs.rmSync(f);}}};if(fs.existsSync('dist')){walk('dist');}\"",
         "build:tests": "tsc -p . --outDir out",
         "build:themes": "node tooling/generate-themes.ts",
         "watch-tests": "tsc -p . -w --outDir out",
