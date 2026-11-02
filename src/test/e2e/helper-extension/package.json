@@ -5,7 +5,7 @@
         "vscode": "^1.85.0"
     },
     "activationEvents": [
-        "*"
+        "onStartupFinished"
     ],
     "main": "../../../../out/test/e2e/helper-extension/index.js"
 }
