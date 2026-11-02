@@ -43,6 +43,28 @@ describe('PersonInfo Logic', () => {
             expect(result.emailToDisplay).toBe('(no email set)');
             expect(result.hasEmail).toBe(false);
         });
+
+        it('formats the absolute timestamp independently of the runtime locale', () => {
+            // Local time on both sides, so the assertion holds in any timezone.
+            const timestamp = '2026-02-10T12:34:56';
+            const local = new Date(timestamp);
+            const pad = (value: number): string => String(value).padStart(2, '0');
+            const expected = `${local.getFullYear()}/${pad(local.getMonth() + 1)}/${pad(local.getDate())} ${pad(local.getHours())}:${pad(local.getMinutes())}:${pad(local.getSeconds())}`;
+
+            const result = getPersonDisplayStrings({ name: 'Alice', email: 'alice@example.com', timestamp });
+
+            expect(result.fullTime).toBe(expected);
+            expect(result.fullTime).toMatch(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}$/);
+        });
+
+        it('falls back to the raw timestamp when it cannot be parsed', () => {
+            const result = getPersonDisplayStrings({
+                name: 'Alice',
+                email: 'alice@example.com',
+                timestamp: 'not-a-date',
+            });
+            expect(result.fullTime).toBe('not-a-date');
+        });
     });
 
     describe('getRelativeTimeString', () => {

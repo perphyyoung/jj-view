@@ -28,7 +28,14 @@ export function getPersonDisplayStrings(person: {
     const nameToDisplay = hasName ? person.name : hasEmail ? person.email : '(no name set)';
     const emailToDisplay = hasEmail ? person.email : '(no email set)';
 
-    const fullTime = new Date(person.timestamp).toLocaleString();
+    // Format explicitly: `toLocaleString()` depends on the runtime locale, so the same
+    // commit rendered in the webview (Chromium) and in tests (Node) produced different
+    // text, and the tooltip changed with the VS Code display language.
+    const date = new Date(person.timestamp);
+    const pad = (value: number): string => String(value).padStart(2, '0');
+    const fullTime = Number.isNaN(date.getTime())
+        ? person.timestamp
+        : `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
     let relTime = person.timestamp;
     try {
         relTime = getRelativeTimeString(person.timestamp);
