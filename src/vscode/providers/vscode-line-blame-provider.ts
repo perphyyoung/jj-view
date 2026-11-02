@@ -28,6 +28,10 @@ const MAX_CACHED_FILES = 64;
 const WORKING_COPY_TTL_MS = 1000;
 /** Lines annotated around the cursor for large files (window = 2 * this + 1). */
 const ANNOTATION_WINDOW_LINES = 1000;
+/** How long a hover request waits for the full tooltip before falling back to the summary. */
+const HOVER_WAIT_MS = 800;
+
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * GitLens-style current-line blame: whenever the cursor settles on a line, the commit
@@ -40,7 +44,10 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
      * `after` decoration rendered outside its range, so decoration hovers never fire for
      * it; the registered hover provider serves the same markdown for the whole line.
      */
-    private readonly _hoverByUri = new Map<string, { line: number; markdown: string }>();
+    private readonly _hoverByUri = new Map<
+        string,
+        { line: number; markdown: string; resolve?: () => Promise<string>; pending?: Promise<string> }
+    >();
     private readonly _disposables: vscode.Disposable[] = [];
     private readonly _cache = new Map<string, LineAnnotation[] | undefined>();
     private readonly _detailsCache = new Map<string, CommitDetails | undefined>();
@@ -281,8 +288,9 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             return;
         }
 
-        // First paint carries a tooltip built from the annotation alone (no jj calls), so
-        // hovering right after the cursor lands already shows the author, time and summary.
+        // The tooltip starts from the annotation alone and is upgraded on demand: resolving
+        // the commit message and the line diff takes a few jj calls, so it only happens when
+        // someone actually hovers (see _provideHover).
         const showHover = config.get<boolean>('lineBlame.showHover', true);
         const summaryMarkdown = uncommitted
             ? formatUncommittedHoverMarkdown(undefined)
@@ -291,63 +299,27 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             editor,
             line,
             text,
-            showHover ? `${summaryMarkdown}\n\n_Resolving commit details…_` : undefined,
+            showHover
+                ? {
+                      markdown: summaryMarkdown,
+                      resolve: () =>
+                          this._resolveHoverMarkdown(
+                              repo,
+                              root,
+                              relativePath,
+                              annotation,
+                              uncommitted,
+                              workingCopyCommitId,
+                              contentSignature,
+                              window,
+                              line,
+                          ),
+                  }
+                : undefined,
             version,
         );
-
-        if (!showHover) {
-            return;
-        }
-
-        // The full tooltip needs two or three extra jj calls, so resolve it only once the
-        // cursor has settled: quick cursor movements never pay for it.
-        const hoverDelay = Math.max(0, config.get<number>('lineBlame.hoverDelay', 300) ?? 300);
-        if (hoverDelay > 0) {
-            await new Promise((resolve) => setTimeout(resolve, hoverDelay));
-        }
-        lap('hoverDelay');
-        if (this._disposed || requestId !== this._requestId) {
-            this._outputChannel?.debug?.(`[LineBlame] hover skipped: superseded (${timings.join(' ')})`);
-            return;
-        }
-
-        // The tooltip needs the full commit message, which cannot be part of the
-        // one-record-per-line annotate output, so resolve it lazily and cache per commit.
-        // The three lookups are independent, so they run in parallel.
-        let markdown: string;
-        const showDiff = config.get<boolean>('lineBlame.showLineDiff', true);
-        if (uncommitted) {
-            const [diff, parentAnnotations] = await Promise.all([
-                showDiff ? this._getLineChange(repo, annotation.commitId, relativePath, line) : undefined,
-                this._getParentAnnotations(repo, root, contentSignature, relativePath, workingCopyCommitId, window),
-            ]);
-            lap('diff+parentAnnotate');
-            if (this._disposed || requestId !== this._requestId) {
-                this._outputChannel?.debug?.(`[LineBlame] hover skipped: superseded (${timings.join(' ')})`);
-                return;
-            }
-            const parentAnnotation = findAnnotation(parentAnnotations, line);
-            const parentDetails = parentAnnotation
-                ? await this._getCommitDetails(repo, parentAnnotation.commitId)
-                : undefined;
-            lap('parentDetails');
-            markdown = formatUncommittedHoverMarkdown(parentAnnotation, parentDetails, diff);
-        } else {
-            const [diff, details] = await Promise.all([
-                showDiff ? this._getLineChange(repo, annotation.commitId, relativePath, line) : undefined,
-                this._getCommitDetails(repo, annotation.commitId),
-            ]);
-            lap('diff+details');
-            markdown = formatHoverMarkdown(annotation, details, diff);
-        }
-
-        if (this._disposed || requestId !== this._requestId) {
-            this._outputChannel?.debug?.(`[LineBlame] hover skipped: superseded (${timings.join(' ')})`);
-            return;
-        }
-        this._applyDecoration(editor, editor.selection.active.line, text, markdown, version);
         this._outputChannel?.debug?.(
-            `[LineBlame] hover ${relativePath} | ${timings.join(' | ')} | total=${Date.now() - updateStart}ms`,
+            `[LineBlame] update ${relativePath} | ${timings.join(' | ')} | total=${Date.now() - updateStart}ms`,
         );
     }
 
@@ -360,7 +332,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         editor: vscode.TextEditor,
         line: number,
         text: string,
-        hoverMarkdown?: string,
+        hover?: { markdown: string; resolve?: () => Promise<string> },
         expectedVersion?: number,
     ): void {
         const document = editor.document;
@@ -376,10 +348,10 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         const decoration: vscode.DecorationOptions = { range, renderOptions: { after: { contentText: text } } };
         this._clearAll();
         editor.setDecorations(this._decoration, [decoration]);
-        if (hoverMarkdown === undefined) {
+        if (hover === undefined) {
             this._hoverByUri.delete(document.uri.toString());
         } else {
-            this._hoverByUri.set(document.uri.toString(), { line, markdown: hoverMarkdown });
+            this._hoverByUri.set(document.uri.toString(), { line, markdown: hover.markdown, resolve: hover.resolve });
         }
     }
 
@@ -387,21 +359,80 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
      * Serves the blame tooltip for the decorated line. The blame text itself is an `after`
      * decoration rendered outside its range, so decoration hover messages never fire when
      * the pointer is over the blame text; answering for the whole line covers both.
+     *
+     * The full tooltip is resolved here, on demand: VS Code does not re-render a tooltip
+     * that is already visible, so showing a placeholder and upgrading it later would leave
+     * the user with stale content until the mouse moves.
      */
-    private _provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.Hover | undefined {
+    private async _provideHover(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+    ): Promise<vscode.Hover | undefined> {
         const entry = this._hoverByUri.get(document.uri.toString());
         if (!entry || entry.line !== position.line) {
             return undefined;
+        }
+        if (!entry.pending && entry.resolve) {
+            const resolve = entry.resolve;
+            entry.resolve = undefined;
+            entry.pending = resolve().then(
+                (markdown) => markdown,
+                () => entry.markdown,
+            );
+        }
+        if (entry.pending) {
+            const resolved = await Promise.race([entry.pending, delay(HOVER_WAIT_MS).then(() => undefined)]);
+            if (typeof resolved === 'string' && resolved.length > 0) {
+                entry.markdown = resolved;
+                entry.pending = undefined;
+            }
         }
         const markdown = new vscode.MarkdownString(entry.markdown);
         markdown.isTrusted = true;
         return new vscode.Hover(markdown, document.lineAt(entry.line).range);
     }
 
+    /** Builds the full tooltip: line diff plus the complete commit message. */
+    private async _resolveHoverMarkdown(
+        repo: JjRepository,
+        root: string,
+        relativePath: string,
+        annotation: LineAnnotation,
+        uncommitted: boolean,
+        workingCopyCommitId: string | undefined,
+        contentSignature: string,
+        window: { from: number; to: number } | undefined,
+        line: number,
+    ): Promise<string> {
+        const start = Date.now();
+        const config = vscode.workspace.getConfiguration('jj-view');
+        const showDiff = config.get<boolean>('lineBlame.showLineDiff', true);
+        let markdown: string;
+        if (uncommitted) {
+            const [diff, parentAnnotations] = await Promise.all([
+                showDiff ? this._getLineChange(repo, annotation.commitId, relativePath, line) : undefined,
+                this._getParentAnnotations(repo, root, contentSignature, relativePath, workingCopyCommitId, window),
+            ]);
+            const parentAnnotation = findAnnotation(parentAnnotations, line);
+            const parentDetails = parentAnnotation
+                ? await this._getCommitDetails(repo, parentAnnotation.commitId)
+                : undefined;
+            markdown = formatUncommittedHoverMarkdown(parentAnnotation, parentDetails, diff);
+        } else {
+            const [diff, details] = await Promise.all([
+                showDiff ? this._getLineChange(repo, annotation.commitId, relativePath, line) : undefined,
+                this._getCommitDetails(repo, annotation.commitId),
+            ]);
+            markdown = formatHoverMarkdown(annotation, details, diff);
+        }
+        this._outputChannel?.debug?.(`[LineBlame] hover resolved in ${Date.now() - start}ms`);
+        return markdown;
+    }
+
     /**
      * Commit id of the working-copy commit (`@`), used to detect uncommitted lines.
-     * Queried fresh every time: context-menu actions (advance bookmark / new / squash) swap
-     * `@` without touching any document, so a cached id would go stale and misclassify lines.
+     * Cached for WORKING_COPY_TTL_MS: context-menu actions (advance bookmark / new / squash)
+     * swap `@` without touching any document, so the cache is deliberately short-lived.
      */
     private async _getWorkingCopyCommitId(repo: JjRepository, root: string): Promise<string | undefined> {
         const now = Date.now();

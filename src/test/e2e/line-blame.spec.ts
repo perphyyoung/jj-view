@@ -8,6 +8,53 @@ import { TestRepo } from '../test-repo';
 import { openFileInEditor, test } from './e2e-helpers';
 
 test.describe('Line Blame E2E', () => {
+    test('Shows the full tooltip on the first hover', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('notes.md', 'first line\nsecond line\nthird line\n');
+        // The marker lives in the commit body, so it only shows up in the full tooltip.
+        repo.describe('add notes\n\nBODY_MARKER in the commit body');
+        repo.new();
+
+        const { page } = await vscode.openWorkspace(repo);
+        await openFileInEditor(vscode, page, 'notes.md');
+
+        const editor = page.locator('.editor-instance .monaco-editor').first();
+        const line = editor.locator('.view-line').nth(1);
+        await expect(line).toBeVisible({ timeout: 5000 });
+
+        await line.click();
+        await page.keyboard.press('End');
+
+        const hasBlame = async (): Promise<boolean> =>
+            line.evaluate((el) => {
+                const isBlame = (value: string): boolean => value.includes('add notes');
+                const walk = (node: Node): boolean => {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        return isBlame(node.textContent ?? '');
+                    }
+                    if (node.nodeType !== Node.ELEMENT_NODE) {
+                        return false;
+                    }
+                    const element = node as Element;
+                    if (isBlame(getComputedStyle(element, '::after').content ?? '')) {
+                        return true;
+                    }
+                    return Array.from(element.childNodes).some(walk);
+                };
+                return walk(el);
+            });
+        await expect.poll(hasBlame, { timeout: 5000 }).toBe(true);
+
+        // Hover once, right away: the tooltip must already contain the commit body and must
+        // not show a placeholder that only a mouse move would refresh.
+        await line.hover();
+        const hover = page.locator('.monaco-hover').first();
+        await expect(hover).toBeVisible({ timeout: 5000 });
+        await expect(hover).toContainText('BODY_MARKER', { timeout: 5000 });
+        await expect(hover).not.toContainText('Resolving');
+    });
+
     test('Shows the blame tooltip for the cursor line', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();

@@ -20,7 +20,7 @@
 | 纯 spawn 基线  | `jj --version`                        | 88 ms        |
 | **串行合计**   |                                       | **≈1010 ms** |
 
-叠加 300ms `hoverDelay` 后完整版 ≈1.3s；实测体感 >5s，来自下列额外阻塞：
+（当时的 300ms `hoverDelay` 已在 P5 中删除，改为悬停时按需解析。）实测体感 >5s 来自下列额外阻塞：
 
 1. `whenIdle` / `activeRefresh` 让路：仓库一忙就 `_schedule` 重试（400ms 延迟 + 最多 800ms 等待），一次让路 ≈1.2s；`ChangeDetectionManager` 在保存文件、窗口激活、**每 5s 轮询**时都会 `triggerRefresh({forceSnapshot:true})`。
 2. `JjRepository.refresh` 里的 `clearCache()` 会清掉 `getLogEntry('@')` 的缓存 → 每次刷新后首次 hover 重新 `jj log @`（178ms）。
@@ -39,13 +39,16 @@
   实测（1638 行文件）：全量 219ms / **240 KB / 1638 条**；窗口 100~110 → 187ms / **1.6 KB / 11 条**（范围精确）。
   jj 侧仍要 blame 全文件，所以**耗时基本不变**，收益是输出体积与解析量不再随文件大小线性增长；
   `lineBlame.maxFileLines`（5000 行）仍作为上限保护。
-- [x] **P5 hover 进度提示**：第一段摘要 tooltip 末尾追加 `_Resolving commit details…_`，完整信息到手后替换；`showHover=false` 时不再注册 tooltip。
+- [x] **P5 hover 改为按需解析（已取代"进度提示"方案）**：不再显示 `_Resolving commit details…_`
+  —— 实测 VS Code **不会重新渲染已显示的 tooltip**，占位文案会一直挂着直到鼠标移动。
+  现在 `provideHover` 是异步的：悬停时才触发解析（`_resolveHoverMarkdown`），最多等 800ms，
+  拿到就返回完整内容，超时回退到摘要。随之**删除 `lineBlame.hoverDelay` 设置**（不再需要人为延迟）。
 
 ### 已加的诊断日志
 
 ```
-[LineBlame] hover <file> | whenIdle=0ms | wcId=178ms | annotate(cached)=0ms | hoverDelay=300ms | diff=203ms | parentAnnotate=219ms | parentDetails=198ms | details=198ms | total=1296ms
-[LineBlame] hover skipped: superseded (...)
+[LineBlame] update <file> | wcId=178ms | annotate(cached)=0ms | total=190ms
+[LineBlame] hover resolved in 620ms        ← 仅在真正悬停时出现
 [LineBlame] repository busy, deferring update (...)
 ```
 
