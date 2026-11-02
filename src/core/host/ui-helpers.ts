@@ -307,6 +307,21 @@ export function resolveRepository(
 ): JjRepository | undefined {
     let uri: Uri | undefined;
 
+    // 0. View-scoped commands carry the repository they belong to (`root`), so they never
+    //    resolve through the active editor (which may belong to another project).
+    const rootArg = options?.args?.[0];
+    if (rootArg && typeof rootArg === 'object' && typeof (rootArg as { root?: unknown }).root === 'string') {
+        const rootPath = (rootArg as { root: string }).root;
+        const normalize = (value: string) =>
+            (process.platform === 'win32' ? value.replace(/\//g, '\\').toLowerCase() : value).replace(/[\\/]+$/, '');
+        const matched = repositoryManager.repositories.find(
+            (repo) => normalize(repo.rootUri.fsPath) === normalize(rootPath),
+        );
+        if (matched) {
+            return matched;
+        }
+    }
+
     // 1. Check if args contain URI, SCM object with rootUri, or resource group
     if (options?.args && options.args.length > 0) {
         const firstArg = options.args[0];

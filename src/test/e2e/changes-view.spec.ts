@@ -190,6 +190,12 @@ test.describe('JJ View Container E2E', () => {
         // alpha must receive the commit.
         expect(alpha.getLog('@-', 'description')).toContain('commit to alpha');
         expect(alpha.getFileContent('@-', 'a.txt')).toBe('a2\n');
+
+        // Opening beta's file must not steal the focused repository from alpha.
+        await vscode.executeCommand('jj-view.logView.focus');
+        await expect(page.locator('.pane-header', { hasText: `JJ Log (alpha)` }).first()).toBeVisible({
+            timeout: 5000,
+        });
     });
 
     test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {

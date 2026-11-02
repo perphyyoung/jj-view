@@ -167,12 +167,19 @@ export function registerCommands(options: RegisterCommandsOptions): void {
         commandId: string,
         payloadCreator: (args: unknown[], scm?: VsCodeScmProvider) => TPayload,
         handler: (ctx: CommandContext, payload: TPayload) => Promise<TReturn>,
+        /**
+         * Only commands that legitimately move the working copy (new / edit / workspace add)
+         * should change the focused repository; everything else must leave the view alone.
+         */
+        options?: { focusRepo?: boolean },
     ): vscode.Disposable {
         return vscode.commands.registerCommand(commandId, async (...args: unknown[]) => {
             const resolved = resolveRepositoryLocal(args, host);
             if (resolved?.repo) {
                 ensureScmProvider?.(resolved.repo);
-                repositoryManager.setFocusedRepository(resolved.repo);
+                if (options?.focusRepo) {
+                    repositoryManager.setFocusedRepository(resolved.repo);
+                }
                 const cmdCtx = new VSCodeCommandContext(resolved.repo, host, outputChannel);
                 const payload = payloadCreator(args, resolved.scm);
                 return await handler(cmdCtx, payload);
@@ -236,8 +243,10 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     }
 
     context.subscriptions.push(
-        registerCommandWithPayload('jj-view.new', createNewPayload, newCommand),
-        registerCommandWithPayload('jj-view.newMergeChange', createNewMergeChangePayload, newMergeChangeCommand),
+        registerCommandWithPayload('jj-view.new', createNewPayload, newCommand, { focusRepo: true }),
+        registerCommandWithPayload('jj-view.newMergeChange', createNewMergeChangePayload, newMergeChangeCommand, {
+            focusRepo: true,
+        }),
         // Committing and setting the description act on the repository the Changes view shows,
         // not on the repository that happens to own the active editor (multi-project layout).
         registerViewCommandWithPayload('jj-view.commit', createCommitPayload, commitCommand),
@@ -275,9 +284,9 @@ export function registerCommands(options: RegisterCommandsOptions): void {
         registerCommand('jj-view.undo', undoCommand),
         registerCommand('jj-view.redo', redoCommand),
         registerCommandWithPayload('jj-view.duplicate', createDuplicatePayload, duplicateCommand),
-        registerCommandWithPayload('jj-view.edit', createEditPayload, editCommand),
-        registerCommandWithPayload('jj-view.newBefore', createNewBeforePayload, newBeforeCommand),
-        registerCommandWithPayload('jj-view.newAfter', createNewAfterPayload, newAfterCommand),
+        registerCommandWithPayload('jj-view.edit', createEditPayload, editCommand, { focusRepo: true }),
+        registerCommandWithPayload('jj-view.newBefore', createNewBeforePayload, newBeforeCommand, { focusRepo: true }),
+        registerCommandWithPayload('jj-view.newAfter', createNewAfterPayload, newAfterCommand, { focusRepo: true }),
         registerCommandWithPayload('jj-view.upload', createUploadPayload, uploadCommand),
         registerCommandWithPayload('jj-view.uploadStack', createUploadStackPayload, uploadStackCommand),
         registerCommandWithPayload('jj-view.setBookmark', createSetBookmarkPayload, setBookmarkCommand),

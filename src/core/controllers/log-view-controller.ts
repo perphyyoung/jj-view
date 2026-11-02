@@ -469,6 +469,13 @@ export class LogViewController implements Disposable {
         }
     }
 
+    /** Tags a view action with the repository the view shows, so commands never resolve
+     * through the active editor (which may belong to a different project). */
+    private _withRoot<T extends object>(msg: T): T & { root?: string } {
+        const root = this._repo?.rootUri.fsPath;
+        return root ? { ...msg, root } : msg;
+    }
+
     private _createRpcReceiver(): WebviewRpcReceiver<LogViewToHostMessage, LogViewHostToWebviewMessage> {
         return createWebviewRpcReceiver<LogViewToHostMessage, LogViewHostToWebviewMessage>(
             LogViewToHostMessageSchema,
@@ -477,13 +484,13 @@ export class LogViewController implements Disposable {
                     await this.refresh('webviewLoaded');
                 },
                 newChild: async (msg) => {
-                    await this._host.commands.executeCommand('jj-view.new', msg);
+                    await this._host.commands.executeCommand('jj-view.new', this._withRoot(msg));
                 },
                 squash: async (msg) => {
-                    await this._host.commands.executeCommand('jj-view.squashRevisionIntoParent', msg);
+                    await this._host.commands.executeCommand('jj-view.squashRevisionIntoParent', this._withRoot(msg));
                 },
                 edit: async (msg) => {
-                    await this._host.commands.executeCommand('jj-view.edit', msg);
+                    await this._host.commands.executeCommand('jj-view.edit', this._withRoot(msg));
                 },
                 select: async (msg) => {
                     if (!this.jj) {
@@ -501,7 +508,7 @@ export class LogViewController implements Disposable {
                     await this._host.commands.executeCommand('jj-view.redo');
                 },
                 abandon: async (msg) => {
-                    await this._host.commands.executeCommand('jj-view.abandon', msg);
+                    await this._host.commands.executeCommand('jj-view.abandon', this._withRoot(msg));
                 },
                 getDetails: async (msg) => {
                     if (this._repo) {
@@ -518,10 +525,18 @@ export class LogViewController implements Disposable {
                     await this._host.commands.executeCommand('jj-view.new');
                 },
                 newBefore: async (msg) => {
-                    await this._host.commands.executeCommand('jj-view.newBefore', ...(msg.changeIds || []));
+                    await this._host.commands.executeCommand(
+                        'jj-view.newBefore',
+                        this._withRoot({}),
+                        ...(msg.changeIds || []),
+                    );
                 },
                 newAfter: async (msg) => {
-                    await this._host.commands.executeCommand('jj-view.newAfter', ...(msg.changeIds || []));
+                    await this._host.commands.executeCommand(
+                        'jj-view.newAfter',
+                        this._withRoot({}),
+                        ...(msg.changeIds || []),
+                    );
                 },
                 resolve: async (msg) => {
                     await this.executeJjMutation('Resolving conflict...', 'Failed to resolve conflict', async (jj) => {

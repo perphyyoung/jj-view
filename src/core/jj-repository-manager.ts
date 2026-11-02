@@ -91,6 +91,11 @@ export class JjRepositoryManager implements HostDisposable {
                     if (!uri) {
                         return;
                     }
+                    // Opening a file from another project must not steal the focus of the
+                    // views unless the user opted in (or nothing is focused yet).
+                    if (!this.shouldFollowActiveDocument()) {
+                        return;
+                    }
                     if (this.tryAutoSwitch(uri)) {
                         return;
                     }
@@ -505,7 +510,8 @@ export class JjRepositoryManager implements HostDisposable {
         this.fireEvent(this._onDidChangeRepositories, this._repositories);
         this._outputChannel.info(`[RepositoryManager] Total registered repositories: ${this._repositories.length}`);
 
-        // 5. Update focus
+        // 5. Update focus: only when nothing is focused (or the focused repo disappeared), so a
+        //    scan never overrides the user's current selection.
         if (this._repositories.length > 0) {
             if (
                 !this._focusedRepository ||
@@ -513,7 +519,9 @@ export class JjRepositoryManager implements HostDisposable {
                     this.isSamePath(r.rootUri.fsPath, this._focusedRepository?.rootUri.fsPath),
                 )
             ) {
-                const activeUri = this._host.documents.getActiveDocumentUri?.();
+                const activeUri = this.shouldFollowActiveDocument()
+                    ? this._host.documents.getActiveDocumentUri?.()
+                    : undefined;
                 const matched = activeUri ? this.getRepositoryForUri(activeUri) : undefined;
                 this.setFocusedRepository(matched ?? this._repositories[0]);
             }
@@ -891,7 +899,10 @@ export class JjRepositoryManager implements HostDisposable {
             this.fireEvent(this._onDidOpenRepository, repo);
             this.fireEvent(this._onDidChangeRepositories, this._repositories);
         }
-        this.setFocusedRepository(repo);
+        // Registering a repository must not steal the focus from the current one.
+        if (!this._focusedRepository) {
+            this.setFocusedRepository(repo);
+        }
     }
 
     private registerRepositories(repos: JjRepository[]): void {
@@ -1081,6 +1092,18 @@ export class JjRepositoryManager implements HostDisposable {
                 this._ignoredAbsolutePaths.add(this.normalizePath(abs));
             }
         }
+    }
+
+    /**
+     * Whether opening an editor should move the focused repository. Off by default in a
+     * multi-project workspace: opening another project's file must not steal the views.
+     * With nothing focused yet, following the first opened document is still helpful.
+     */
+    private shouldFollowActiveDocument(): boolean {
+        if (!this._focusedRepository) {
+            return true;
+        }
+        return this._host.config.get<boolean>('followActiveEditor', false) === true;
     }
 
     /**

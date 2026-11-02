@@ -5,18 +5,27 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { expect, type Page } from '@playwright/test';
+import { expect, type Frame, type Page } from '@playwright/test';
 import { buildGraph, type CommitId, TestRepo } from '../test-repo';
-import {
-    clickScmAction,
-    focusJJViewLocal,
-    focusNativeScm,
-    openFileInEditor,
-    SCM_ACTIONS,
-    test,
-    waitForLogCommitRow,
-    waitForTab,
-} from './e2e-helpers';
+import { focusJJViewLocal, openFileInEditor, test, waitForLogCommitRow, waitForTab } from './e2e-helpers';
+
+/** Finds the webview frame that renders the Repositories view. */
+async function getReposFrame(page: Page): Promise<Frame> {
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+        for (const frame of page.frames()) {
+            try {
+                if ((await frame.locator('[data-testid="jj-repos-root"]').count()) > 0) {
+                    return frame;
+                }
+            } catch {
+                // Frame may be navigating; retry.
+            }
+        }
+        await page.waitForTimeout(100);
+    }
+    throw new Error('Repositories webview frame was not found');
+}
 
 test.describe('Multi-Repo Switching E2E', () => {
     let mainRepo: TestRepo;
@@ -76,6 +85,8 @@ test.describe('Multi-Repo Switching E2E', () => {
 
         const setup = await vscode.openWorkspace(fakeRepo, {
             'workbench.editor.enablePreview': false,
+            // This suite covers the opt-in behaviour where opening an editor switches repos.
+            'jj-view.followActiveEditor': true,
         });
         page = setup.page;
     });
@@ -153,7 +164,7 @@ test.describe('Multi-Repo Switching E2E', () => {
         await waitForLogCommitRow(page, 'second base commit');
     });
 
-    test('automatic repository switching when clicking inline focus button in SCM pane', async () => {
+    test('repository switching from the Repositories view', async ({ vscode }) => {
         const mainRepoFolderName = path.basename(mainRepo.path);
         const secondRepoFolderName = path.basename(secondRepo.path);
 
@@ -164,25 +175,32 @@ test.describe('Multi-Repo Switching E2E', () => {
         });
         await waitForLogCommitRow(page, 'main base commit');
 
-        // Open SCM view
-        await focusNativeScm(page);
+        await vscode.executeCommand('jj-view.reposView.focus');
+        const reposFrame = await getReposFrame(page);
 
-        const secondRepoRowName = new RegExp(`Jujutsu \\(${secondRepoFolderName}\\)`);
-        await clickScmAction(page, secondRepoRowName, SCM_ACTIONS.FocusRepository);
+        await reposFrame
+            .locator('[data-testid="jj-repo-row"]', { hasText: secondRepoFolderName })
+            .first()
+            .locator('button')
+            .first()
+            .click();
 
-        // Verify repository manager automatically switched focus to the second repo by checking log view
+        // Verify repository manager switched focus to the second repo by checking log view
         await focusJJViewLocal(page);
         await expect(page.locator('.pane-header', { hasText: `JJ Log (${secondRepoFolderName})` }).first()).toBeVisible(
             { timeout: 5000 },
         );
         await waitForLogCommitRow(page, 'second base commit');
 
-        // Click focus inline action button on the main repo's row
-        await focusNativeScm(page);
-        const mainRepoRowName = new RegExp(`Jujutsu \\(${mainRepoFolderName}\\)`);
-        await clickScmAction(page, mainRepoRowName, SCM_ACTIONS.FocusRepository);
+        await vscode.executeCommand('jj-view.reposView.focus');
+        await reposFrame
+            .locator('[data-testid="jj-repo-row"]', { hasText: mainRepoFolderName })
+            .first()
+            .locator('button')
+            .first()
+            .click();
 
-        // Verify repository manager automatically switched focus back to the main repo by checking log view
+        // Verify repository manager switched focus back to the main repo by checking log view
         await focusJJViewLocal(page);
         await expect(page.locator('.pane-header', { hasText: `JJ Log (${mainRepoFolderName})` }).first()).toBeVisible({
             timeout: 5000,
