@@ -1303,9 +1303,18 @@ export class JjService {
      * Returns `undefined` for untracked/binary files, or when the installed jj
      * release is too old to support `jj file annotate`.
      */
-    async annotateFile(filePath: string, revision = '@'): Promise<LineAnnotation[] | undefined> {
-        const template =
+    async annotateFile(
+        filePath: string,
+        revision = '@',
+        lineRange?: { from: number; to: number },
+    ): Promise<LineAnnotation[] | undefined> {
+        const record =
             'line_number ++ "\\t" ++ commit.commit_id() ++ "\\t" ++ commit.commit_id().short() ++ "\\t" ++ commit.author().name() ++ "\\t" ++ commit.author().timestamp().ago() ++ "\\t" ++ commit.description().first_line() ++ "\\n"';
+        // Only emit the requested lines: jj still blames the whole file, but the output
+        // (and the parsing on this side) stops growing with the file size.
+        const template = lineRange
+            ? `if(line_number >= ${lineRange.from} && line_number <= ${lineRange.to}, ${record}, "")`
+            : record;
         try {
             const output = await this.run('file', ['annotate', '-r', revision, '-T', template, '--', filePath], {
                 useCachedSnapshot: true,

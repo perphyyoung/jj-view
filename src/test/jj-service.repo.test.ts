@@ -29,6 +29,16 @@ describe('JjService Unit Tests', () => {
         expect(log.commit_id).toBeTruthy();
     });
 
+    test('annotateFile with a line range returns only those lines', async () => {
+        const content = `${Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join('\n')}\n`;
+        repo.writeFile('range.txt', content);
+        const all = await jjService.annotateFile('range.txt');
+        expect(all?.length).toBe(20);
+
+        const windowed = await jjService.annotateFile('range.txt', '@', { from: 5, to: 7 });
+        expect(windowed?.map((a) => a.line)).toEqual([5, 6, 7]);
+    });
+
     test('whenIdle resolves immediately when no mutation is running', async () => {
         await expect(jjService.whenIdle()).resolves.toBe(true);
     });

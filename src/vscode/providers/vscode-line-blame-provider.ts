@@ -26,6 +26,8 @@ const MAX_TEXT_LENGTH = 120;
 const MAX_CACHED_FILES = 64;
 /** How long the working-copy commit id is reused; it only drives the annotation cache key. */
 const WORKING_COPY_TTL_MS = 1000;
+/** Lines annotated around the cursor for large files (window = 2 * this + 1). */
+const ANNOTATION_WINDOW_LINES = 1000;
 
 /**
  * GitLens-style current-line blame: whenever the cursor settles on a line, the commit
@@ -220,8 +222,13 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             return;
         }
 
+        const line = editor.selection.active.line;
         const contentSignature = await this._contentSignature(document);
-        const cacheKey = lineBlameCacheKey(root, document.uri.fsPath, contentSignature, workingCopyCommitId);
+        // Large files are annotated around the cursor only: the output no longer grows with
+        // the file, while moving inside the window still reuses the cached annotations.
+        const window = this._annotationWindow(document, line);
+        const cacheSignature = window ? `${contentSignature}#${window.from}-${window.to}` : contentSignature;
+        const cacheKey = lineBlameCacheKey(root, document.uri.fsPath, cacheSignature, workingCopyCommitId);
         const cached = this._cache.has(cacheKey);
         let annotations = this._cache.get(cacheKey);
         const annotateStart = Date.now();
@@ -245,7 +252,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
                 return;
             }
             try {
-                annotations = await repo.jj.annotateFile(relativePath);
+                annotations = await repo.jj.annotateFile(relativePath, '@', window);
             } catch (error: unknown) {
                 annotations = undefined;
                 this._outputChannel?.debug?.(`[LineBlame] annotate failed for ${relativePath}: ${String(error)}`);
@@ -262,7 +269,6 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             return;
         }
 
-        const line = editor.selection.active.line;
         const annotation = findAnnotation(annotations, line);
         if (!annotation) {
             this._clearEditor(editor);
@@ -277,15 +283,19 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
 
         // First paint carries a tooltip built from the annotation alone (no jj calls), so
         // hovering right after the cursor lands already shows the author, time and summary.
+        const showHover = config.get<boolean>('lineBlame.showHover', true);
+        const summaryMarkdown = uncommitted
+            ? formatUncommittedHoverMarkdown(undefined)
+            : formatHoverMarkdown(annotation);
         this._applyDecoration(
             editor,
             line,
             text,
-            uncommitted ? formatUncommittedHoverMarkdown(undefined) : formatHoverMarkdown(annotation),
+            showHover ? `${summaryMarkdown}\n\n_Resolving commit details…_` : undefined,
             version,
         );
 
-        if (!config.get<boolean>('lineBlame.showHover', true)) {
+        if (!showHover) {
             return;
         }
 
@@ -309,7 +319,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         if (uncommitted) {
             const [diff, parentAnnotations] = await Promise.all([
                 showDiff ? this._getLineChange(repo, annotation.commitId, relativePath, line) : undefined,
-                this._getParentAnnotations(repo, root, contentSignature, relativePath, workingCopyCommitId),
+                this._getParentAnnotations(repo, root, contentSignature, relativePath, workingCopyCommitId, window),
             ]);
             lap('diff+parentAnnotate');
             if (this._disposed || requestId !== this._requestId) {
@@ -422,6 +432,21 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         }
     }
 
+    /**
+     * Annotation window for large files: jj always blames the whole file, but only the
+     * lines around the cursor are emitted, so the transferred and parsed output stays
+     * bounded. Small files are annotated in full.
+     */
+    private _annotationWindow(document: vscode.TextDocument, line: number): { from: number; to: number } | undefined {
+        if (document.lineCount <= ANNOTATION_WINDOW_LINES * 2 + 1) {
+            return undefined;
+        }
+        return {
+            from: Math.max(1, line + 1 - ANNOTATION_WINDOW_LINES),
+            to: Math.min(document.lineCount, line + 1 + ANNOTATION_WINDOW_LINES),
+        };
+    }
+
     /** Annotations of the parent revision (`@-`), resolved lazily for uncommitted lines. */
     private async _getParentAnnotations(
         repo: JjRepository,
@@ -429,15 +454,17 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         contentSignature: string,
         relativePath: string,
         workingCopyCommitId: string | undefined,
+        window?: { from: number; to: number },
     ): Promise<LineAnnotation[] | undefined> {
-        const key = `@-|${root}|${relativePath}|${contentSignature}|${workingCopyCommitId ?? ''}`;
+        const windowKey = window ? `#${window.from}-${window.to}` : '';
+        const key = `@-|${root}|${relativePath}|${contentSignature}${windowKey}|${workingCopyCommitId ?? ''}`;
         if (this._parentCache.has(key)) {
             return this._parentCache.get(key);
         }
 
         let annotations: LineAnnotation[] | undefined;
         try {
-            annotations = await repo.jj.annotateFile(relativePath, '@-');
+            annotations = await repo.jj.annotateFile(relativePath, '@-', window);
         } catch (error: unknown) {
             this._outputChannel?.debug?.(`[LineBlame] parent annotate failed for ${relativePath}: ${String(error)}`);
         }
