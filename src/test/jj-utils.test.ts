@@ -236,18 +236,20 @@ describe('JJ Utils', () => {
     });
 
     describe('buildLogRevset', () => {
-        it('should select every local commit plus the remote window', () => {
-            expect(buildLogRevset(10)).toBe('mutable() | ancestors(immutable_heads(), 10) | trunk()');
+        it('should select every local commit plus the remote window below them', () => {
+            expect(buildLogRevset(10)).toBe('mutable() | ancestors(parents(roots(mutable())), 10)');
         });
 
-        it('should not bound the local side by a depth', () => {
-            expect(buildLogRevset(10)).not.toContain('ancestors(@');
+        it('should take the remote commits next to the local work, not every immutable head', () => {
+            const revset = buildLogRevset(10);
+            expect(revset).not.toContain('immutable_heads');
+            expect(revset).not.toContain('trunk()');
         });
 
         it('should clamp invalid depths', () => {
-            expect(buildLogRevset(-5)).toBe('mutable() | ancestors(immutable_heads(), 0) | trunk()');
-            expect(buildLogRevset(2.7)).toBe('mutable() | ancestors(immutable_heads(), 2) | trunk()');
-            expect(buildLogRevset(Number.NaN)).toBe('mutable() | ancestors(immutable_heads(), 0) | trunk()');
+            expect(buildLogRevset(-5)).toBe('mutable() | ancestors(parents(roots(mutable())), 0)');
+            expect(buildLogRevset(2.7)).toBe('mutable() | ancestors(parents(roots(mutable())), 2)');
+            expect(buildLogRevset(Number.NaN)).toBe('mutable() | ancestors(parents(roots(mutable())), 0)');
         });
     });
 

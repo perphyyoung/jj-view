@@ -607,6 +607,14 @@ export class TestRepo {
         this.exec(['git', 'push', '--bookmark', bookmarkName]);
     }
 
+    /**
+     * Stops tracking a remote bookmark. Tracked remote bookmarks stay mutable in jj, while
+     * untracked ones count as immutable heads — the state a fetched colleague branch is in.
+     */
+    untrackRemoteBookmark(bookmarkName: string) {
+        this.exec(['bookmark', 'untrack', `${bookmarkName}@origin`]);
+    }
+
     listWorkspaces(): string {
         return this.exec(['workspace', 'list']).stdout;
     }

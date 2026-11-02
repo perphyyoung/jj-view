@@ -223,7 +223,7 @@ git config core.autocrlf false   # 仅本仓库
 | `jj-view.maxMutableAncestors`          | `10`    | 快照里抓取的祖先数量，影响单次刷新耗时                  |
 | `jj-view.autoRepositoryDetection`      | `true`  | 设为 `subFolders` / `openEditors` 可减少被监控仓库数    |
 | `jj-view.binaryPath`                   | `""`    | jj 可执行文件绝对路径                                   |
-| `jj-view.remoteLogDepth`               | `10`    | JJ Log 远端窗口：`ancestors(immutable_heads(), N)`      |
+| `jj-view.remoteLogDepth`               | `10`    | JJ Log 显示的远端提交数                                 |
 | `jj-view.logLimit`                     | `200`   | JJ Log 总行数上限（`jj log -n`），`0` = 不限            |
 | `jj-view.lineBlame.enabled`            | `true`  | 行级 blame 开关                                         |
 | `jj-view.lineBlame.delay`              | `150`   | 光标移动后注解的防抖（ms）                              |

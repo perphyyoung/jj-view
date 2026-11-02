@@ -89,16 +89,17 @@ export function isDefaultLogRevset(value: string): boolean {
  *   Selecting only `ancestors(@)` hides side branches, so the log cannot be used
  *   to act on them; the total number of rows is capped separately via the
  *   `jj log -n` limit instead of a revset depth.
- * - `ancestors(immutable_heads(), REMOTE)`: the remote head plus its REMOTE-1
- *   newest ancestors, i.e. the recent remote history.
- * - `trunk()`: the trunk commit.
+ * - `ancestors(parents(roots(mutable())), REMOTE)`: the REMOTE commits directly
+ *   below the local stack. `roots(mutable())` is the oldest local commit, its
+ *   parent the first remote one, so the window sits next to the local work
+ *   instead of the remote tip. Unrelated remote branches stay hidden.
  *
  * Note: jj's own `present(@)` resolves to the working copy only, so it cannot
  * be used to pick up the local commits in between.
  */
 export function buildLogRevset(remoteDepth: number): string {
     const remote = Number.isFinite(remoteDepth) ? Math.max(0, Math.floor(remoteDepth)) : 0;
-    return `mutable() | ancestors(immutable_heads(), ${remote}) | trunk()`;
+    return `mutable() | ancestors(parents(roots(mutable())), ${remote})`;
 }
 
 /**

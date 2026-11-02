@@ -630,6 +630,81 @@ test.describe('JJ Log Pane E2E', () => {
         }
     });
 
+    test('Shows the remote commits next to the local commits', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.describe('root commit');
+
+        const remoteRepo = new TestRepo();
+        remoteRepo.init();
+        repo.addRemote('origin', remoteRepo.path);
+        repo.config('git.push-new-bookmarks', 'true');
+
+        // Six remote commits on main; the local work starts from the fourth one.
+        const remote = await buildGraph(repo, [
+            { label: 'r1', description: 'remote commit 1' },
+            { label: 'r2', parents: ['r1'], description: 'remote commit 2' },
+            { label: 'r3', parents: ['r2'], description: 'remote commit 3' },
+            { label: 'r4', parents: ['r3'], description: 'remote commit 4' },
+            { label: 'r5', parents: ['r4'], description: 'remote commit 5' },
+            { label: 'r6', parents: ['r5'], description: 'remote commit 6' },
+        ]);
+        repo.bookmark('main', remote.r6.changeId);
+        repo.gitPush('main');
+
+        repo.new([remote.r4.changeId]);
+        repo.writeFile('local.txt', 'local\n');
+        repo.describe('local work');
+
+        // Three remote commits: the one below the local work plus two older ones.
+        const { page } = await vscode.openWorkspace(repo, { 'jj-view.remoteLogDepth': 3 });
+        await focusJJViewLocal(page);
+        await waitForLogCommitRow(page, 'local work');
+
+        const webview = await getLogWebview(page);
+        const rows = (text: string) => webview.locator('.commit-row', { hasText: text });
+
+        await expect(rows('remote commit 4')).toHaveCount(1);
+        await expect(rows('remote commit 2')).toHaveCount(1);
+        // Beyond the window, and the newer remote commits above the local base.
+        await expect(rows('remote commit 1')).toHaveCount(0);
+        await expect(rows('remote commit 5')).toHaveCount(0);
+        await expect(rows('remote commit 6')).toHaveCount(0);
+    });
+
+    test('Does not render remote commits unrelated to the local commits', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.describe('root commit');
+
+        const remoteRepo = new TestRepo();
+        remoteRepo.init();
+        repo.addRemote('origin', remoteRepo.path);
+        repo.config('git.push-new-bookmarks', 'true');
+
+        const nodes = await buildGraph(repo, [{ label: 'trunk', description: 'trunk commit' }]);
+        repo.bookmark('main', nodes.trunk.changeId);
+        repo.gitPush('main');
+
+        // A remote bookmark on a side branch, untracked so its commit is immutable. The local
+        // work stays on the trunk line, so this branch is not the local context.
+        const side = await buildGraph(repo, [
+            { label: 'side', parents: [nodes.trunk.changeId], description: 'side branch commit' },
+        ]);
+        repo.bookmark('side', side.side.changeId);
+        repo.gitPush('side');
+        repo.untrackRemoteBookmark('side');
+        repo.new([nodes.trunk.changeId]);
+
+        const { page } = await vscode.openWorkspace(repo);
+        await focusJJViewLocal(page);
+
+        await waitForLogCommitRow(page, 'trunk commit');
+
+        const webview = await getLogWebview(page);
+        await expect(webview.locator('.commit-row', { hasText: 'side branch commit' })).toHaveCount(0);
+    });
+
     test('Renders new local commits on top of remote history without overlap', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();
