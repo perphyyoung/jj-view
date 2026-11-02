@@ -37,8 +37,8 @@ export interface LogViewControllerOptions {
 /** Number of remote commits shown in the JJ Log view by default. */
 export const DEFAULT_REMOTE_LOG_DEPTH = 10;
 
-/** Number of local commits shown in the JJ Log view by default. */
-export const DEFAULT_LOCAL_LOG_DEPTH = 100;
+/** Maximum number of commits rendered in the JJ Log view by default (0 = no limit). */
+export const DEFAULT_LOG_LIMIT = 200;
 
 export class LogViewController implements Disposable {
     private static readonly HIDDEN_ACTIONS_STORAGE_KEY = 'jj-view.hiddenCommitActions';
@@ -88,7 +88,7 @@ export class LogViewController implements Disposable {
                 this._host.config.onDidChangeConfiguration((e) => {
                     if (
                         e.affectsConfiguration('jj-view.remoteLogDepth') ||
-                        e.affectsConfiguration('jj-view.localLogDepth')
+                        e.affectsConfiguration('jj-view.logLimit')
                     ) {
                         void this.refresh('configChanged:logDepths');
                     }
@@ -208,12 +208,14 @@ export class LogViewController implements Disposable {
         try {
             const start = performance.now();
             const remoteDepth = this._host.config.get<number>('remoteLogDepth', DEFAULT_REMOTE_LOG_DEPTH);
-            const localDepth = this._host.config.get<number>('localLogDepth', DEFAULT_LOCAL_LOG_DEPTH);
-            const revision = await this._resolveLogRevision(jj, remoteDepth, localDepth);
+            const logLimit = this._host.config.get<number>('logLimit', DEFAULT_LOG_LIMIT);
+            const revision = await this._resolveLogRevision(jj, remoteDepth);
             const commits = await jj.getLog({
                 omitChanges: true,
                 includeNearestVisibleAncestors: true,
                 revision,
+                // The revset selects every local commit, so the row count is capped here.
+                ...(Number.isFinite(logLimit) && logLimit > 0 ? { limit: Math.floor(logLimit) } : {}),
             });
 
             if (this._repo?.rootUri.fsPath !== targetRepoPath || this._disposed) {
@@ -239,19 +241,15 @@ export class LogViewController implements Disposable {
      * Resolves the revset used to populate the log view.
      *
      * A user-customized `revsets.log` always takes precedence. Otherwise jj's
-     * built-in default only exposes a couple of ancestors, so the depths are
-     * applied to show the latest local and remote records.
+     * built-in default only exposes a couple of ancestors, so every local commit
+     * plus a window of remote history is requested.
      */
-    private async _resolveLogRevision(
-        jj: JjService,
-        remoteDepth: number,
-        localDepth: number,
-    ): Promise<string | undefined> {
+    private async _resolveLogRevision(jj: JjService, remoteDepth: number): Promise<string | undefined> {
         const configured = await jj.getConfiguredLogRevset();
         if (configured) {
             return configured;
         }
-        return buildLogRevset(remoteDepth, localDepth);
+        return buildLogRevset(remoteDepth);
     }
 
     public setCommits(commits: readonly JjLogEntry[]): void {

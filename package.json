@@ -172,12 +172,12 @@
                     "maximum": 500,
                     "markdownDescription": "Number of recent remote commits shown in the JJ Log view. The remote history is taken as `ancestors(immutable_heads(), N)`, i.e. the remote head plus its N-1 newest ancestors. Ignored when `revsets.log` is customized in the jj config. Risk: the customization is detected by comparing against jj's reported default (`builtin_log()`); if a future jj version reports that default in a different form, the depth is silently ignored and the view falls back to jj's default (2 remote commits)."
                 },
-                "jj-view.localLogDepth": {
+                "jj-view.logLimit": {
                     "type": "number",
-                    "default": 100,
+                    "default": 200,
                     "minimum": 0,
-                    "maximum": 500,
-                    "markdownDescription": "Number of recent local commits shown in the JJ Log view. The local stack is taken as `ancestors(@, N) ~ ancestors(immutable_heads())`, i.e. the commits above the remote heads; the working copy counts as one. Ignored when `revsets.log` is customized in the jj config. Risk: the customization is detected by comparing against jj's reported default (`builtin_log()`); if a future jj version reports that default in a different form, the depth is silently ignored and the view falls back to jj's default (2 local commits)."
+                    "maximum": 5000,
+                    "markdownDescription": "Maximum number of commits rendered in the JJ Log view (`jj log -n`). The revset selects every local commit (`mutable()`) plus the recent remote history, so this caps the row count and keeps the graph responsive on large stacks. `0` removes the limit."
                 },
                 "jj-view.logTheme": {
                     "type": "string",

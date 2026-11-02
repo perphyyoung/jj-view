@@ -84,9 +84,11 @@ export function isDefaultLogRevset(value: string): boolean {
 /**
  * Builds the revset used by the JJ Log view.
  *
- * - `ancestors(@, LOCAL) ~ ancestors(immutable_heads())`: the local stack, i.e.
- *   the commits above the remote heads. `LOCAL` bounds how many of them are
- *   shown (the working copy counts as one).
+ * - `mutable()`: every local commit, i.e. the working copy, its ancestors above
+ *   the remote heads, commits built on top of it, and commits on side branches.
+ *   Selecting only `ancestors(@)` hides side branches, so the log cannot be used
+ *   to act on them; the total number of rows is capped separately via the
+ *   `jj log -n` limit instead of a revset depth.
  * - `ancestors(immutable_heads(), REMOTE)`: the remote head plus its REMOTE-1
  *   newest ancestors, i.e. the recent remote history.
  * - `trunk()`: the trunk commit.
@@ -94,10 +96,9 @@ export function isDefaultLogRevset(value: string): boolean {
  * Note: jj's own `present(@)` resolves to the working copy only, so it cannot
  * be used to pick up the local commits in between.
  */
-export function buildLogRevset(remoteDepth: number, localDepth: number): string {
+export function buildLogRevset(remoteDepth: number): string {
     const remote = Number.isFinite(remoteDepth) ? Math.max(0, Math.floor(remoteDepth)) : 0;
-    const local = Number.isFinite(localDepth) ? Math.max(0, Math.floor(localDepth)) : 0;
-    return `ancestors(@, ${local}) ~ ancestors(immutable_heads()) | ancestors(immutable_heads(), ${remote}) | trunk()`;
+    return `mutable() | ancestors(immutable_heads(), ${remote}) | trunk()`;
 }
 
 /**
