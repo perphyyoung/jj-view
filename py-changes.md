@@ -1,7 +1,7 @@
 # py-changes.md
 
 > py 的改动记录：这个 fork 相对上游 `jj-view` 做了哪些**功能变更**、为什么这样做、以及**怎么开发/验证**。
-> 最后更新：2026-10-29
+> 最后更新：2026-11-03
 
 ---
 
@@ -82,22 +82,26 @@ git config core.autocrlf false   # 仅本仓库
 | Changes      | `jj-view.changesView` | 只显示**聚焦仓库**的提交输入框与变更分组，标题为 `Changes (repo)`     |
 | JJ Log       | `jj-view.logView`     | 已有提交图                                                            |
 
-- 点击 Repositories 中的一行 → `setFocusedRepository` → Changes 自动切换
+- 点击 Repositories 中的一行 → `setFocusedRepository` → Changes 自动切换（只由用户显式触发）
+- 打开文件**不再**切换聚焦仓库：`onDidChangeActiveDocument` 只用于从打开的编辑器发现仓库，不会改 focus；`followActiveEditor` 开关已删除。多项目下浏览别的项目代码不会把 Changes / JJ Log 带走
 - 两个 webview 共用一个 bundle `dist/webview/changes.js`，由 `init` 消息里的 `mode`（`repos` / `changes`）决定渲染内容
 - 视图标题栏动作：Changes 有 Commit（✓）/ Refresh / New / Add Workspace；Repositories 有 Add Workspace / Refresh
 
 ### 2.2 Changes 视图细节
 
-| 行为           | 实现                                                                                                                                                                                                                              |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 只显示当前仓库 | provider 只推送 `focusedRoot` 的快照；切换仓库由 `onDidChangeFocusedRepository` 驱动                                                                                                                                              |
-| 分组           | Merge Conflicts / Working Copy / ancestors；**ancestors 默认折叠**（`ScmPane` 的 `expandAncestors=false`）                                                                                                                        |
-| 写操作         | 资源级走 `state.command`（`vscode.diff` / `vscode.open` / `jj-view.openMergeEditor`）；分组级重建 `{ id, rootUri, ancestor, resourceStates }` 后调用既有命令（absorb / squash / abandon / show details / edit / multi-file diff） |
-| 右键菜单       | 复用 web 侧 `MenuRegistry` + `WhenEvaluator` + `ContextMenu.svelte`，菜单数据由扩展在 `init` 时注入真实 `package.json` contributes                                                                                                |
-| 提交输入框     | 单行（约 26px）按行增高，240px 后内部滚动；不拦截 Ctrl+Enter；只有标题栏 ✓ 提交                                                                                                                                                   |
-| 提交链路       | 输入内容通过 `draft` 消息写入 `setInputBoxValue()`（无 SCM 时缓存到 `_inputBoxFallback`），`jj-view.commit` 读到的就是新视图里的文字                                                                                              |
-| View as Tree   | 命令 `jj-view.changesAsTree` / `jj-view.changesAsList`，按上下文键 `jj.changesViewAsTree` 互斥显示，模式存 `globalState`（`jj-view.changesViewMode`，默认 `list`）                                                                |
-| 目录树         | `web/src/scm/file-tree.ts` 构建；单链目录折叠成 `src \ core \ webview` 一行（与原生 compact folders 一致）                                                                                                                        |
+| 行为           | 实现                                                                                                                                                                                                                                                        |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 只显示当前仓库 | provider 只推送 `focusedRoot` 的快照；切换仓库由 `onDidChangeFocusedRepository` 驱动                                                                                                                                                                        |
+| 分组           | Merge Conflicts / Working Copy / ancestors；**ancestors 默认折叠**（`ScmPane` 的 `expandAncestors=false`），但拆分产生的新提交所在组会自动展开并滚入视口                                                                                                    |
+| 写操作         | 资源级走 `state.command`（`vscode.diff` / `vscode.open`；合并编辑器已移除，见 2.5）；分组级重建 `{ id, rootUri, ancestor, resourceStates }` 后调用既有命令（absorb / squash / abandon / show details / edit / multi-file diff / split above / split below） |
+| 右键菜单       | 复用 web 侧 `MenuRegistry` + `WhenEvaluator` + `ContextMenu.svelte`，菜单数据由扩展在 `init` 时注入真实 `package.json` contributes                                                                                                                          |
+| 提交输入框     | 单行（约 26px）按行增高，240px 后内部滚动；不拦截 Ctrl+Enter；只有标题栏 ✓ 提交                                                                                                                                                                             |
+| 提交链路       | 输入通过 `draft` 消息写入 provider 的**草稿**（`setDraft()`，带 dirty 标记）；标题栏 ✓ 执行 `jj-view.commit`（视图级命令，作用于聚焦仓库）读取该草稿                                                                                                        |
+| 草稿不丢       | 刷新/状态推送**不会**覆盖脏草稿（`renderSnapshot` 见 `_draftDirty` 直接跳过）；只有真实 input 事件才上报 draft（挂载/属性同步只重算高度）；提交成功或 `setDescription` 成功后 `clearDraft()`，旧文案不会被下次复用                                          |
+| 拆分为新提交   | 文件右键 `Split File into New Commit Above` / `Below`（`jj-view.splitFileIntoCommitAbove/Below`）：`jj squash --from <rev> -A\|-B <rev> -- <file>` + `--keep-emptied`；源提交被搬空也保留，新提交描述留空                                                   |
+| 新提交自动展开 | 拆分后比较操作前后 `children`/`parents` 差集得到新 change id，调用 `jj-view.revealChangesGroup`；provider 在 state 里带一次性 `revealChangeId`，webview 展开该组并 `scrollIntoView`                                                                         |
+| View as Tree   | 命令 `jj-view.changesAsTree` / `jj-view.changesAsList`，按上下文键 `jj.changesViewAsTree` 互斥显示，模式存 `globalState`（`jj-view.changesViewMode`，默认 `list`）                                                                                          |
+| 目录树         | `web/src/scm/file-tree.ts` 构建；单链目录折叠成 `src \ core \ webview` 一行（与原生 compact folders 一致）                                                                                                                                                  |
 
 ### 2.3 原生 SCM 集成已移除
 
@@ -106,7 +110,7 @@ git config core.autocrlf false   # 仅本仓库
 - 不再 `createSourceControl`，没有 SCM 输入框、resource group、gutter quick diff
 - 删除**仅原生 SCM 使用**的 `scm/title`、`scm/change/title` 菜单与 `scmProvider =~ /^jj/` 的 3 个键位
 - Changes webview 的分组/文件行菜单改用 `jvl/resourceGroup/context` 与 `jvl/resourceState/context`：它们由 `ScmResourceGroup` / `ScmResourceItem` 作为 `menuId` 交给 webview 的 `MenuRegistry` 解析（VS Code 会忽略未知菜单位置），与原生 SCM 的 `scm/*` 命名解耦，避免再被当作原生 SCM 误删
-- **保留** `ScmModel`、`FileDecorationProvider` 与 Changes / Repositories 视图；描述输入缓存于内存（`_inputBoxFallback`）
+- **保留** `ScmModel`、`FileDecorationProvider` 与 Changes / Repositories 视图；描述输入缓存于内存草稿（`setDraft()` / `clearDraft()`，带 dirty 标记，刷新不覆盖）
 - 仅原生 SCM 使用的 `jj-view.focusRepository`、`jj-view.focusDescriptionInput` 命令删除
 
 ### 2.4 Code Forge 集成已移除
@@ -149,7 +153,7 @@ git config core.autocrlf false   # 仅本仓库
 
 ---
 
-### 2.7 本地优先（local-first）
+### 2.8 本地优先（local-first）
 
 三条保证：
 
@@ -170,7 +174,7 @@ git config core.autocrlf false   # 仅本仓库
 | Upload / Upload Stack | 用户显式执行命令 |
 | 帮助/文档链接         | 用户点击         |
 
-### 2.8 行级 blame（current line blame）
+### 2.9 行级 blame（current line blame）
 
 点击/移动光标到某一行时，在该行末尾用灰色斜体显示「最后一次改动该行的提交」：`作者 · 相对时间 · 提交摘要`（如 `py · 1 day ago · feat: …`，超长截断），行为对齐 GitLens 的 current line blame。悬停整行（含行尾的 blame 文本区域）用 Markdown 气泡显示：`作者 · 相对时间` → 行级 diff 代码块 → 完整提交描述（不显示邮箱与 commit id）。
 
@@ -194,6 +198,7 @@ git config core.autocrlf false   # 仅本仓库
 - `jj diff -r <commit>` 的 hunk 使用「该提交时文件的行号」；后续提交在上方插入/删除行后，用当前行号查 hunk 会 miss；若该提交新增/重写了整个文件，hunk 覆盖全部行，则任何行号都会"命中"，结果是**别的行**的内容
 - 解法（`src/core/blame/line-map.ts`）：`jj file show -r <commit>` 取提交版本全文（按 commit+path 缓存），与编辑器 buffer 文本用 `diff`（jsdiff `diffArrays`）建「buffer 行 → 提交行」映射，再 `pickLineChange()` 查 hunk；一律先映射，不保留"直接查"快路径。用 buffer 文本映射，未保存的编辑也正确；映射不到（该行被改写）则不显示 diff
 - `pickLineChange()` 的删除行只与**同一连续块**内的新增行配对（遇到上下文行清空 pending），避免 `-` 侧取到别处内容
+- **行尾符归一**：`jj file show` 给的是 blob 原样（常见 LF），而工作区被 `core.autocrlf` 转成 CRLF；直接比较会让每行都"被改写"，映射为空 → hover 没有 diff（paim 实测 52 行全失配）。`buildBufferToCommitLineMap` 先 `stripCarriageReturn` 再 `diffArrays`，覆盖 LF / CRLF / 混合 / 无结尾换行
 
 #### 未提交行
 
@@ -211,7 +216,40 @@ git config core.autocrlf false   # 仅本仓库
 - `src/vscode/providers/vscode-line-blame-provider.ts`：渲染、调度、缓存、HoverProvider、诊断日志
 - 诊断日志：`[LineBlame] update <file> | wcId=… | annotate(cached)=… | total=…`、`[LineBlame] hover resolved in …ms`、`[LineBlame] repository busy, deferring update (…)`
 - 单测：注解解析、hover markdown（含 diff 段）、`pickLineChange` 配对、`line-map` 插入/删除/改写/追加/空文件
-- e2e（`src/test/e2e/line-blame.spec.ts`，6 个）：首次悬停即完整内容（无占位）、光标行 tooltip、行尾语义触发（`editor.action.showHover`，不用像素坐标）、上方插入后仍显示本行 diff、整文件新增的提交不错行、编辑时 blame 不夹在行中间
+- e2e（`src/test/e2e/line-blame.spec.ts`，11 个）：首次悬停即完整内容（无占位）、光标行 tooltip、行尾语义触发（`editor.action.showHover`，不用像素坐标）、上方插入后仍显示本行 diff、整文件新增的提交不错行、编辑时 blame 不夹在行中间，以及 5 种行尾组合（LF / CRLF / 混合 / 无结尾换行 / CRLF 无结尾换行）都必须显示 diff
+- 绝对时间用固定格式 `YYYY/MM/DD HH:mm:ss`（本地时区、补零，解析失败回退原串）：`toLocaleString()` 在 webview(Chromium/en-US) 与 Node(zh-CN) 输出不同，曾导致 tooltip 断言长期失败、切换显示语言时文案变化
+
+### 2.10 JJ Log：显示范围与条数
+
+revset（用户自定义 `revsets.log` 时优先用用户的）：
+
+```text
+mutable() | ancestors(parents(roots(mutable())), REMOTE)
+```
+
+| 部分                                           | 含义                                                                                                                                                                              |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mutable()`                                    | 全部本地可变提交：@ 的祖先、@ 之上的提交、侧分支。原先用 `ancestors(@, N)`，进入旧提交后上方工作与侧分支全部消失（e2e 报 `Failed to find log row matching "side branch commit"`） |
+| `ancestors(parents(roots(mutable())), REMOTE)` | `roots(mutable())` 是本地最早的提交，其父是紧贴本地的远端提交；往下取 REMOTE 条。窗口贴本地工作，不再把视口让给与本地无关的远端历史                                               |
+
+- `jj-view.remoteLogDepth`（默认 10）：上面那个 REMOTE，`0` = 不显示远端
+- 不显示：非本地的远端分叉、旧 tag 线；本地落后远端时看不到远端新增提交（设计如此）
+- `jj-view.logLimit`（默认 200，`0` = 不限）：revset 无法按总数截断，条数由 `jj log -n` 控制；`jj-view.localLogDepth` 已删除（`mutable()` 无深度语义）
+
+### 2.11 Chip 设计
+
+四类 chip + 状态 chip 的完整规则见根目录 `design.md`，要点：
+
+| chip          | 颜色   | 条件                                                                                           |
+| ------------- | ------ | ---------------------------------------------------------------------------------------------- |
+| 本地 bookmark | blue   | `bookmark.remote` 为空                                                                         |
+| 远端 bookmark | purple | `bookmark.remote` 非空；**已跟踪**的远端 bookmark 会被 jj 折叠进本地项，只有未跟踪的才独立显示 |
+| tag           | green  | `tags[]` 每项                                                                                  |
+| 工作副本      | yellow | `working_copies[]` 每项（`name@`）                                                             |
+
+Commit Details 的状态 chip 顺序：Immutable → Empty → Conflicted → bookmarks → tags。
+
+---
 
 ## 3. 配置项
 
@@ -223,7 +261,7 @@ git config core.autocrlf false   # 仅本仓库
 | `jj-view.maxMutableAncestors`          | `10`    | 快照里抓取的祖先数量，影响单次刷新耗时                  |
 | `jj-view.autoRepositoryDetection`      | `true`  | 设为 `subFolders` / `openEditors` 可减少被监控仓库数    |
 | `jj-view.binaryPath`                   | `""`    | jj 可执行文件绝对路径                                   |
-| `jj-view.remoteLogDepth`               | `10`    | JJ Log 显示的远端提交数                                 |
+| `jj-view.remoteLogDepth`               | `10`    | JJ Log 在本地提交下方显示的远端提交数，`0` = 不显示     |
 | `jj-view.logLimit`                     | `200`   | JJ Log 总行数上限（`jj log -n`），`0` = 不限            |
 | `jj-view.lineBlame.enabled`            | `true`  | 行级 blame 开关                                         |
 | `jj-view.lineBlame.delay`              | `150`   | 光标移动后注解的防抖（ms）                              |
@@ -238,30 +276,34 @@ git config core.autocrlf false   # 仅本仓库
 
 ### 新增
 
-| 文件                                                      | 职责                                                                                                                 |
-| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `src/vscode/providers/vscode-changes-webview-provider.ts` | `repos` / `changes` 双模式 provider：聚合各仓库 `ScmModel` 快照、消息路由、用 `createJjResourceState()` 重建命令参数 |
-| `src/core/webview/changes/index.ts`                       | webview 入口（`initBridge` + `mount`）                                                                               |
-| `src/core/webview/changes/ChangesApp.svelte`              | 按 `mode` 渲染仓库列表或聚焦仓库的 `ScmPane`，含自绘右键菜单                                                         |
-| `web/src/scm/file-tree.ts`                                | 扁平变更列表 → 目录树（含单链折叠）                                                                                  |
-| `web/src/scm/ScmTreeItem.svelte`                          | 目录树递归渲染                                                                                                       |
-| `media/jj-view-container.svg`                             | 活动栏容器图标（24×24 单色）                                                                                         |
+| 文件                                                                  | 职责                                                                                                                                                                                                                                                       |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/vscode/providers/vscode-changes-webview-provider.ts`             | `repos` / `changes` 双模式 provider：聚合各仓库 `ScmModel` 快照、消息路由、用 `createJjResourceState()` 重建命令参数；`draft` → `setDraft()`，提交/设置描述后 `clearDraft()`；`jj-view.revealChangesGroup` 通过一次性 `revealChangeId` 让 webview 展开新组 |
+| `src/core/blame/line-map.ts`                                          | 提交版本全文与编辑器 buffer 的行号映射（先 `stripCarriageReturn`，再 `diffArrays`），供行级 blame 的 diff 定位                                                                                                                                             |
+| `src/vscode/register-commands.ts` 的 `registerViewCommandWithPayload` | 视图级命令包装：按**聚焦仓库**解析仓库并用该仓库的草稿做 payload，`jj-view.commit` / `commitPrompt` / `setDescription` 用它                                                                                                                                |
+| `design.md`                                                           | chip 类型、渲染条件、顺序与配色规则                                                                                                                                                                                                                        |
+| `src/core/webview/changes/index.ts`                                   | webview 入口（`initBridge` + `mount`）                                                                                                                                                                                                                     |
+| `src/core/webview/changes/ChangesApp.svelte`                          | 按 `mode` 渲染仓库列表或聚焦仓库的 `ScmPane`，含自绘右键菜单                                                                                                                                                                                               |
+| `web/src/scm/file-tree.ts`                                            | 扁平变更列表 → 目录树（含单链折叠）                                                                                                                                                                                                                        |
+| `web/src/scm/ScmTreeItem.svelte`                                      | 目录树递归渲染                                                                                                                                                                                                                                             |
+| `media/jj-view-container.svg`                                         | 活动栏容器图标（24×24 单色）                                                                                                                                                                                                                               |
 
 ### 主要修改
 
-| 文件                                                             | 改动                                                                                                          |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `web/src/scm/ScmPane.svelte`                                     | 新增 `showHeader` / `compactInput` / `viewMode` / `expandAncestors` / `onDescriptionChange`，默认值保持原行为 |
-| `web/src/scm/ScmInputBox.svelte`                                 | 新增 `compact` 模式（单行自适应、不拦截 Ctrl+Enter）                                                          |
-| `web/src/scm/ScmResourceGroup.svelte` / `ScmResourceItem.svelte` | tree/list 切换、隐藏目录后缀                                                                                  |
-| `src/vscode/vscode-webview-html.ts`                              | 内联自定义图标字体                                                                                            |
-| `src/vscode/providers/vscode-scm-provider.ts`                    | 支持跳过原生 SCM、`setInputBoxValue()` 回退                                                                   |
-| `src/core/code-forge-service.ts`                                 | `enabled` 开关与各入口短路                                                                                    |
-| `src/core/change-detection-manager.ts`                           | 聚焦刷新、自产 op_heads 抑制、gitignore 逐层剪枝、实例化参数                                                  |
-| `src/core/directory-watcher.ts`                                  | 事件去重 + 实例号日志                                                                                         |
-| `src/core/jj-repository.ts` / `jj-repository-manager.ts`         | 焦点标志、仓库实例去重与回收                                                                                  |
-| `esbuild.js` / `package.json`                                    | 单平台构建、Changes webview 入口、视图与菜单、新配置项                                                        |
-| `src/vscode/extension.ts`                                        | 注册两个容器 provider、条件注册 code forge provider、配置变更提示                                             |
+| 文件                             | 改动                                                                                                                                      |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `web/src/scm/ScmPane.svelte`     | 新增 `showHeader` / `compactInput` / `viewMode` / `expandAncestors` / `onDescriptionChange` / `revealedChangeId`，默认值保持原行为        |
+| `web/src/scm/ScmInputBox.svelte` | `compact` 模式（单行自适应、不拦截 Ctrl+Enter）；**只有真实 input 事件**才 `onValueChange`，挂载/属性同步只重算高度（否则空值会覆盖草稿） |
+
+| `web/src/scm/ScmResourceGroup.svelte` / `ScmResourceItem.svelte` | tree/list 切换、隐藏目录后缀；组头 `data-change-id` + `expanded` 变 true 时强制展开（不反向折叠） |
+| `src/vscode/vscode-webview-html.ts` | 内联自定义图标字体 |
+| `src/vscode/providers/vscode-scm-provider.ts` | 支持跳过原生 SCM；草稿 `setDraft()` / `clearDraft()` + dirty 标记，`renderSnapshot` 不覆盖脏草稿 |
+| `src/core/code-forge-service.ts` | `enabled` 开关与各入口短路 |
+| `src/core/change-detection-manager.ts` | 聚焦刷新、自产 op_heads 抑制、gitignore 逐层剪枝、实例化参数 |
+| `src/core/directory-watcher.ts` | 事件去重 + 实例号日志 |
+| `src/core/jj-repository.ts` / `jj-repository-manager.ts` | 焦点标志、仓库实例去重与回收 |
+| `esbuild.js` / `package.json` | 单平台构建、Changes webview 入口、视图与菜单、新配置项 |
+| `src/vscode/extension.ts` | 注册两个容器 provider、条件注册 code forge provider、配置变更提示 |
 
 ### 数据流
 
@@ -293,7 +335,7 @@ pnpm build              # 主题 + 图标 + 类型 + lint + esbuild
 | 层级           | 命令                            | 覆盖                                                        |
 | -------------- | ------------------------------- | ----------------------------------------------------------- |
 | 静态检查       | `pnpm lint`、`pnpm check-types` | biome + core isolation + fsPath + local-only；两套 tsconfig |
-| 单元测试（快） | `pnpm test:unit`                | 纯逻辑 / 纯 mock，约 670 个用例，4–5 秒                     |
+| 单元测试（快） | `pnpm test:unit`                | 纯逻辑 / 纯 mock，约 735 个用例，4–5 秒                     |
 | 仓库级测试     | `pnpm test:repo`                | `*.repo.test.ts`：真实 `jj`/`git` 工作副本，分钟级          |
 | 按变更执行     | `pnpm test:changed`             | 以 git HEAD 为基线，只跑受影响文件                          |
 | 激活测试       | `pnpm test:activation`          | 真实 VS Code 激活 + 命令注册                                |
@@ -305,6 +347,10 @@ e2e 注意事项：
 
 - `src/test/e2e/vscode-fixture.ts` 的路径比较已做 Windows 归一化（VS Code 返回小写盘符 `c:\`），否则所有用例 15s 超时
 - `DEFAULT_SETTINGS` 不再注入已删除的 `nativeScm.enabled` / `codeForge.enabled`；依赖原生 SCM 与 GitHub/GitLab/Gerrit 的 e2e 已随之删除
+- 多项目用例用 `openWorkspace({ path: parent, waitForRepository: false }, { 'jj-view.autoRepositoryDetection': true })`：根目录不是仓库，fixture 改为等"任意仓库被发现"；单目录用例行为不变
+- fixture 校验 `jj-view.*` 设置是否注册时，按**扩展贡献的配置项**查找（扩展 ID 曾从 `jj-view` 改为 `jj-view-local`，按 ID 查找会把合法设置判成非法）
+- 现有 e2e 套件：`changes-view`（8）、`jj-log`（17）、`multi-repo`（2）、`line-blame`（11）、`squash`（5）、`arbitrary-diff` / `commit-details` / `context-menu` / `divergent` / `hidden-commits` / `view-file` / `workspace`
+- 不跑 integration 的场景：日常改动以 `test:unit` + 相关 e2e 为准；integration 只在提交前/CI 跑（启动真实 VS Code 宿主，分钟级）
 
 ---
 
@@ -315,3 +361,6 @@ e2e 注意事项：
 - gutter quick diff 随原生 SCM 集成一并移除，不可再用
 - 冲突解决（三方合并编辑器）已移除，冲突文件只能按普通差异查看/手工编辑
 - 点击 Changes 中的 commit 定位 JJ Log 的联动（原 P3）未做
+- JJ Log 只显示本地上下文：非本地的远端分叉、旧 tag 线不渲染；本地落后远端时看不到远端新增提交（`remoteLogDepth` 只作用于本地最早提交下方的窗口）
+- 聚焦仓库**不跟随**活动编辑器（多项目下浏览别的项目不会切走视图）；切仓只能点击 Repositories 行，或 `new` / `edit` 类命令
+- 拆分为新提交只支持**单个文件**（`path`，非 `paths`）；多文件拆分未做
