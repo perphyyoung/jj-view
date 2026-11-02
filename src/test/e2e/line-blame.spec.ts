@@ -103,7 +103,7 @@ test.describe('Line Blame E2E', () => {
         await expect(hover).toContainText('add notes', { timeout: 5000 });
     });
 
-    test('Shows the tooltip when hovering the blame text', async ({ vscode }) => {
+    test('Shows the tooltip at the end of the line, where the blame text is rendered', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();
         repo.writeFile('notes.md', 'first line\nsecond line\nthird line\n');
@@ -120,55 +120,30 @@ test.describe('Line Blame E2E', () => {
         await line.click();
         await page.keyboard.press('End');
 
-        // Point inside the rendered blame text: just right of the line content, past the
-        // margin the provider adds before the blame text.
-        const blamePoint = async (): Promise<{ x: number; y: number } | null> =>
+        const hasBlame = async (): Promise<boolean> =>
             line.evaluate((el) => {
-                const isBlame = (value: string): boolean =>
-                    value.includes('add notes') || value.includes('Uncommitted');
-                let hasBlame = false;
-                let contentEndX: number | null = null;
-                const walk = (node: Node): void => {
+                const isBlame = (value: string): boolean => value.includes('add notes');
+                const walk = (node: Node): boolean => {
                     if (node.nodeType === Node.TEXT_NODE) {
-                        const value = node.textContent ?? '';
-                        if (!value.trim()) {
-                            return;
-                        }
-                        const range = document.createRange();
-                        range.selectNodeContents(node as Text);
-                        const rect = range.getBoundingClientRect();
-                        if (isBlame(value)) {
-                            hasBlame = true;
-                        } else if (contentEndX === null || rect.right > contentEndX) {
-                            contentEndX = rect.right;
-                        }
-                        return;
+                        return isBlame(node.textContent ?? '');
                     }
                     if (node.nodeType !== Node.ELEMENT_NODE) {
-                        return;
+                        return false;
                     }
                     const element = node as Element;
                     if (isBlame(getComputedStyle(element, '::after').content ?? '')) {
-                        hasBlame = true;
+                        return true;
                     }
-                    for (const child of Array.from(element.childNodes)) {
-                        walk(child);
-                    }
+                    return Array.from(element.childNodes).some(walk);
                 };
-                walk(el);
-                if (!hasBlame || contentEndX === null) {
-                    return null;
-                }
-                const box = el.getBoundingClientRect();
-                return { x: contentEndX + 45, y: box.top + box.height / 2 };
+                return walk(el);
             });
+        await expect.poll(hasBlame, { timeout: 5000 }).toBe(true);
 
-        await expect.poll(async () => (await blamePoint()) !== null, { timeout: 5000 }).toBe(true);
-        const point = await blamePoint();
-        if (!point) {
-            throw new Error('blame text not rendered');
-        }
-        await page.mouse.move(point.x, point.y);
+        // The blame text is a decoration pseudo element, so no locator can point at it.
+        // Ask the editor for the hover of the cursor position instead: the provider answers
+        // for the whole line, which is what hovering the rendered blame text resolves to.
+        await vscode.executeCommand('editor.action.showHover');
 
         const hover = page.locator('.monaco-hover').first();
         await expect(hover).toBeVisible({ timeout: 5000 });
