@@ -155,48 +155,82 @@ git config core.autocrlf false   # 仅本仓库
 
 1. 没有用户命令时**零网络请求**（激活、刷新、渲染、切换仓库都不联网）
 2. 唯一的远端写入口是 `Upload` / `Upload Stack`（`jj git push`）
-3. 远端状态只在显式开启 `jj-view.codeForge.enabled` 后读取
+3. 远端状态读取入口已整体移除（Code Forge 见 2.4，无残留开关）
 
 为此做了：
 
 - `package.json` 的 `configurationDefaults` 关闭 VS Code 内置 Git 扩展的自动行为：`git.autofetch=false`（真正的联网）、`git.autorefresh=false`（与 jj 重复的本地 `git status`）
-- Code Forge 默认关闭（见 2.4）：provider 不注册、轮询/认证/状态刷新全部短路
-- 5s 文件轮询与 60s CodeForge 轮询默认都不启动（前者 `watch` 模式，后者关闭）
+- Code Forge 已移除（见 2.4）：不再注册 provider、轮询/认证/状态刷新全部不存在
+- 5s 文件轮询默认不启动（`watch` 模式；watcher 启动失败才回退 `polling`）
 - `git config --get core.excludesFile` 与 `watchman` 探测改为**进程级缓存**，避免每个仓库重复 spawn
 - 新增 `tooling/lint-local-only.ts`（挂在 `pnpm lint`）：扫描 `src/core` + `src/vscode`，除 upload 命令与终端命令检测外，禁止出现 `git push/fetch/clone`
 
-| 仍会联网的操作        | 触发方式                           |
-| --------------------- | ---------------------------------- |
-| Upload / Upload Stack | 用户显式执行命令                   |
-| Manage Auth           | 仅 `codeForge.enabled=true` 时出现 |
-| 帮助/文档链接         | 用户点击                           |
+| 仍会联网的操作        | 触发方式         |
+| --------------------- | ---------------- |
+| Upload / Upload Stack | 用户显式执行命令 |
+| 帮助/文档链接         | 用户点击         |
 
 ### 2.8 行级 blame（current line blame）
 
-点击/移动光标到某一行时，在该行末尾用灰色斜体显示「最后一次改动该行的提交」：`作者 · 相对时间 · 提交摘要`（如 `py · 1 day ago · feat: …`，超长截断），行为对齐 GitLens 的 current line blame。悬停该行时用 Markdown 气泡显示多行详情：第一行 `作者 · 相对时间`，空行后为完整提交描述（不显示邮箱与 commit id）。
+点击/移动光标到某一行时，在该行末尾用灰色斜体显示「最后一次改动该行的提交」：`作者 · 相对时间 · 提交摘要`（如 `py · 1 day ago · feat: …`，超长截断），行为对齐 GitLens 的 current line blame。悬停整行（含行尾的 blame 文本区域）用 Markdown 气泡显示：`作者 · 相对时间` → 行级 diff 代码块 → 完整提交描述（不显示邮箱与 commit id）。
 
-- 数据来源：`jj file annotate -r @ -T '…'`，模板使用 `commit.commit_id()` / `commit.author().name()` / `commit.description().first_line()`（注意 annotate 模板的关键字是 `commit`，不是 `commit_id`）
-- 触发：`onDidChangeTextEditorSelection`，仅单光标空选区；默认 150ms 防抖，换行即更新，不做 toggle
-- 缓存：按 `仓库根|文件路径|文档版本` 缓存整文件注解，最多 64 个文件；文本变更时失效
-- 未提交行：该行属于工作副本提交（`@`）时，行末显示 `Uncommitted`；悬停显示 `**Uncommitted changes**` + 该行在 `@-` 的 `作者 · 相对时间` 与完整提交信息（新增行没有该段）
-- 悬停的完整描述优先用 `jj log --no-graph -r <commit> -T description`（`JjService.getCommitDescription`），失败回退日志 JSON 解析，最后回退行末摘要；解析失败会写 Output 通道
-- 悬停包含该行的行级 diff：`jj diff --git -r <commit> -- <path>` + `patch-helper.parseDiff`，再由 `pickLineChange()` 按新文件行号取 `-/+`，放在作者行与提交信息之间；`lineBlame.showLineDiff` 可关闭
-- 限制：仅 `file` scheme、仓库内文件；超过 `maxFileLines`（默认 5000）不注解；未跟踪/二进制文件静默不显示
-- 配置：`jj-view.lineBlame.enabled`（默认 `true`）、`jj-view.lineBlame.delay`（150）、`jj-view.lineBlame.maxFileLines`（5000）
-- 结构：纯逻辑在 `src/core/blame/line-blame.ts`（解析/格式化/缓存键，可单测），渲染在 `src/vscode/providers/vscode-line-blame-provider.ts`
+#### 渲染与触发
+
+- 数据来源：`jj file annotate -r @ -T '…'`，模板使用 `commit.commit_id()` / `commit.author().name()` / `commit.description().first_line()`（annotate 模板的关键字是 `commit`，不是 `commit_id`）
+- 触发：`onDidChangeTextEditorSelection`，仅单光标空选区；选区变化防抖 `delay`（150ms）；同一行内移动列不重启调度
+- 编辑中不显示：文档变更时立即清掉装饰，`documentDelay`（400ms）后按**新的行尾**重算 —— 避免 blame 被画到行中途；主装饰 `rangeBehavior: ClosedClosed`，每次贴之前按 `document.lineAt(line).text.length` 重算 range，`expectedVersion` 不匹配则丢弃
+- 窗口化注解：文件超过 **2001 行**时只注解光标 ±1000 行（`ANNOTATION_WINDOW_LINES`），模板用 `if(line_number >= from && line_number <= to, record, "")` 过滤；缓存 key 带窗口范围，窗口内移动复用。实测 1638 行文件：全量 219ms / 240KB / 1638 条 → 窗口 187ms / **1.6KB / 11 条**；jj 侧仍 blame 全文件，收益是输出体积与解析量不再随文件大小线性增长
+- 缓存：注解按 `仓库根|文件|内容签名(mtime:size)[#窗口]`（未保存编辑不会失效），最多 64 个；`@` 的 commit id 单独缓存 1s；行级 diff 与提交详情按 commit 缓存
+- 仓库忙避让：仅在**缓存未命中、真要调 jj** 时判断 `repo.activeRefresh` / `await jj.whenIdle()`（超时 300ms），忙则 400ms 后重试；缓存命中直接渲染
+
+#### 悬停
+
+- 由 `registerHoverProvider`（整行 range）统一应答，主装饰不再挂 `hoverMessage`：blame 是 `renderOptions.after` 渲染的伪元素，不在装饰 range 内，Monaco 不会为它派发 hover
+- 首屏 tooltip 只用注解生成摘要（0 次 jj）；悬停时按需异步解析完整 markdown（`Promise.all` 并行取行级 diff + 完整描述；未提交行再加 `@-` 注解，父提交详情依赖父注解仍串行），最多等 800ms（`HOVER_WAIT_MS`），超时回退摘要；结果写回 `_hoverByUri` 复用
+- 不显示 `_Resolving commit details…_` 之类占位文案：VS Code 不会重新渲染已经显示的 tooltip，占位会一直挂着直到鼠标移动
+
+#### 行级 diff 的正确行号
+
+- `jj diff -r <commit>` 的 hunk 使用「该提交时文件的行号」；后续提交在上方插入/删除行后，用当前行号查 hunk 会 miss；若该提交新增/重写了整个文件，hunk 覆盖全部行，则任何行号都会"命中"，结果是**别的行**的内容
+- 解法（`src/core/blame/line-map.ts`）：`jj file show -r <commit>` 取提交版本全文（按 commit+path 缓存），与编辑器 buffer 文本用 `diff`（jsdiff `diffArrays`）建「buffer 行 → 提交行」映射，再 `pickLineChange()` 查 hunk；一律先映射，不保留"直接查"快路径。用 buffer 文本映射，未保存的编辑也正确；映射不到（该行被改写）则不显示 diff
+- `pickLineChange()` 的删除行只与**同一连续块**内的新增行配对（遇到上下文行清空 pending），避免 `-` 侧取到别处内容
+
+#### 未提交行
+
+- 行末显示 `Uncommitted`；悬停为 `**Uncommitted changes**` + 该行在 `@` 的行级 diff + `@-` 的作者/相对时间/完整描述（新增行没有最后一段）
+
+#### 限制与配置
+
+- 仅 `file` scheme、仓库内文件；超过 `maxFileLines`（5000）不注解；未跟踪/二进制文件静默不显示
+- `jj-view.lineBlame.enabled`（`true`）、`delay`（150）、`documentDelay`（400）、`maxFileLines`（5000）、`showHover`（`true`）、`showLineDiff`（`true`）
+
+#### 结构与测试
+
+- `src/core/blame/line-blame.ts`：解析 / 格式化 / 缓存键 / `pickLineChange`（纯逻辑，可单测）
+- `src/core/blame/line-map.ts`：buffer 行 → 提交行映射（`buildBufferToCommitLineMap`）
+- `src/vscode/providers/vscode-line-blame-provider.ts`：渲染、调度、缓存、HoverProvider、诊断日志
+- 诊断日志：`[LineBlame] update <file> | wcId=… | annotate(cached)=… | total=…`、`[LineBlame] hover resolved in …ms`、`[LineBlame] repository busy, deferring update (…)`
+- 单测：注解解析、hover markdown（含 diff 段）、`pickLineChange` 配对、`line-map` 插入/删除/改写/追加/空文件
+- e2e（`src/test/e2e/line-blame.spec.ts`，6 个）：首次悬停即完整内容（无占位）、光标行 tooltip、行尾语义触发（`editor.action.showHover`，不用像素坐标）、上方插入后仍显示本行 diff、整文件新增的提交不错行、编辑时 blame 不夹在行中间
 
 ## 3. 配置项
 
 | 设置                                   | 默认    | 说明                                                    |
 | -------------------------------------- | ------- | ------------------------------------------------------- |
-| `jj-view.nativeScm.enabled`            | `false` | 是否注册到原生 SCM 视图                                 |
-| `jj-view.codeForge.enabled`            | `false` | 是否读取远端 PR/CI/评论                                 |
 | `jj-view.fileWatcherMode`              | `watch` | 事件驱动；watcher 启动失败自动回退 `polling`（5s/仓库） |
 | `jj-view.refreshDebounceMillis`        | `100`   | 文件事件防抖                                            |
 | `jj-view.refreshDebounceMaxMultiplier` | `4`     | 持续事件时的最大放大倍数                                |
 | `jj-view.maxMutableAncestors`          | `10`    | 快照里抓取的祖先数量，影响单次刷新耗时                  |
 | `jj-view.autoRepositoryDetection`      | `true`  | 设为 `subFolders` / `openEditors` 可减少被监控仓库数    |
 | `jj-view.binaryPath`                   | `""`    | jj 可执行文件绝对路径                                   |
+| `jj-view.remoteLogDepth`               | `10`    | JJ Log 远端窗口：`ancestors(immutable_heads(), N)`      |
+| `jj-view.logLimit`                     | `200`   | JJ Log 总行数上限（`jj log -n`），`0` = 不限            |
+| `jj-view.lineBlame.enabled`            | `true`  | 行级 blame 开关                                         |
+| `jj-view.lineBlame.delay`              | `150`   | 光标移动后注解的防抖（ms）                              |
+| `jj-view.lineBlame.documentDelay`      | `400`   | 文档变更后重新注解的防抖（ms）                          |
+| `jj-view.lineBlame.maxFileLines`       | `5000`  | 超过则不注解                                            |
+| `jj-view.lineBlame.showHover`          | `true`  | 是否注册行级 hover tooltip                              |
+| `jj-view.lineBlame.showLineDiff`       | `true`  | tooltip 是否包含行级 diff                               |
 
 ---
 
@@ -231,7 +265,7 @@ git config core.autocrlf false   # 仅本仓库
 
 ### 数据流
 
-```
+```flow
 repositoryManager (扫描/聚焦)
    └─ JjRepository → ScmModel (jj status/log 快照)
         ├─ VsCodeScmProvider        → 原生 SCM（可关闭）
@@ -256,14 +290,14 @@ pnpm build              # 主题 + 图标 + 类型 + lint + esbuild
 
 ### 测试
 
-| 层级           | 命令                          | 覆盖                                                          |
-| -------------- | ----------------------------- | ------------------------------------------------------------- |
-| 静态检查       | `pnpm lint`、`pnpm check-types` | biome + core isolation + fsPath + local-only；两套 tsconfig    |
-| 单元测试（快） | `pnpm test:unit`              | 纯逻辑 / 纯 mock，约 670 个用例，4–5 秒                        |
-| 仓库级测试     | `pnpm test:repo`              | `*.repo.test.ts`：真实 `jj`/`git` 工作副本，分钟级             |
-| 按变更执行     | `pnpm test:changed`           | 以 git HEAD 为基线，只跑受影响文件                             |
-| 激活测试       | `pnpm test:activation`        | 真实 VS Code 激活 + 命令注册                                   |
-| 容器 e2e       | `pnpm test:e2e changes-view`  | Changes 渲染/树切换、Repositories 徽标                         |
+| 层级           | 命令                            | 覆盖                                                        |
+| -------------- | ------------------------------- | ----------------------------------------------------------- |
+| 静态检查       | `pnpm lint`、`pnpm check-types` | biome + core isolation + fsPath + local-only；两套 tsconfig |
+| 单元测试（快） | `pnpm test:unit`                | 纯逻辑 / 纯 mock，约 670 个用例，4–5 秒                     |
+| 仓库级测试     | `pnpm test:repo`                | `*.repo.test.ts`：真实 `jj`/`git` 工作副本，分钟级          |
+| 按变更执行     | `pnpm test:changed`             | 以 git HEAD 为基线，只跑受影响文件                          |
+| 激活测试       | `pnpm test:activation`          | 真实 VS Code 激活 + 命令注册                                |
+| 容器 e2e       | `pnpm test:e2e changes-view`    | Changes 渲染/树切换、Repositories 徽标                      |
 
 单测分层约定：`*.test.ts` 必须是纯逻辑（不建仓库、不启子进程）；需要真实 jj 仓库的用 `*.repo.test.ts`，需要真实 VS Code 的用 `*.integration.test.ts`。
 
