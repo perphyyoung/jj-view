@@ -46,6 +46,37 @@ describe('buildBufferToCommitLineMap', () => {
         expect(map.size).toBe(0);
     });
 
+    it('maps lines when the buffer uses CRLF and the commit stores LF', () => {
+        const commitLines = ['a', 'b', 'c'];
+        const bufferLines = ['a\r', 'b\r', 'c\r'];
+        const map = buildBufferToCommitLineMap(commitLines, bufferLines);
+        expect(map.size).toBe(3);
+        expect(map.get(1)).toBe(1);
+    });
+
+    it('maps lines when the buffer uses LF and the commit stores CRLF', () => {
+        const commitLines = ['a\r', 'b\r', 'c\r'];
+        const bufferLines = ['a', 'b', 'c'];
+        const map = buildBufferToCommitLineMap(commitLines, bufferLines);
+        expect(map.size).toBe(3);
+        expect(map.get(1)).toBe(1);
+    });
+
+    it('maps unchanged lines in a file with mixed line endings', () => {
+        const commitLines = ['a', 'b', 'c', 'd'];
+        const bufferLines = ['a', 'b\r', 'c', 'd\r'];
+        const map = buildBufferToCommitLineMap(commitLines, bufferLines);
+        expect(map.size).toBe(4);
+        expect(map.get(3)).toBe(3);
+    });
+
+    it('maps lines when only one side ends with a newline', () => {
+        const commitLines = ['a', 'b', ''];
+        const bufferLines = ['a', 'b'];
+        const map = buildBufferToCommitLineMap(commitLines, bufferLines);
+        expect(map.get(1)).toBe(1);
+    });
+
     it('maps identical files one to one', () => {
         const lines = ['a', 'b', 'c', 'd'];
         const map = buildBufferToCommitLineMap(lines, lines);

@@ -251,6 +251,60 @@ test.describe('Line Blame E2E', () => {
         await expect(hover).toContainText('+ L5', { timeout: 5000 });
     });
 
+    // Any line-ending combination must still resolve the hovered line's diff.
+    const EOL_VARIANTS = [
+        { name: 'LF', content: 'a\nb\nc\n' },
+        { name: 'CRLF', content: 'a\r\nb\r\nc\r\n' },
+        { name: 'mixed LF and CRLF', content: 'a\r\nb\nc\r\n' },
+        { name: 'no trailing newline', content: 'a\nb\nc' },
+        { name: 'CRLF without trailing newline', content: 'a\r\nb\r\nc' },
+    ];
+
+    for (const variant of EOL_VARIANTS) {
+        test(`Shows the hovered line's diff for a file with ${variant.name}`, async ({ vscode }) => {
+            const repo = new TestRepo();
+            repo.init();
+            repo.writeFile('notes.md', variant.content);
+            repo.describe('add notes');
+            repo.new();
+
+            const { page } = await vscode.openWorkspace(repo);
+            await openFileInEditor(vscode, page, 'notes.md');
+
+            const editor = page.locator('.editor-instance .monaco-editor').first();
+            const target = editor.locator('.view-line').filter({ hasText: 'b' }).first();
+            await expect(target).toBeVisible({ timeout: 5000 });
+
+            await target.click();
+            await page.keyboard.press('End');
+
+            const hasBlame = async (): Promise<boolean> =>
+                target.evaluate((el) => {
+                    const isBlame = (value: string): boolean => value.includes('add notes');
+                    const walk = (node: Node): boolean => {
+                        if (node.nodeType === Node.TEXT_NODE) {
+                            return isBlame(node.textContent ?? '');
+                        }
+                        if (node.nodeType !== Node.ELEMENT_NODE) {
+                            return false;
+                        }
+                        const element = node as Element;
+                        if (isBlame(getComputedStyle(element, '::after').content ?? '')) {
+                            return true;
+                        }
+                        return Array.from(element.childNodes).some(walk);
+                    };
+                    return walk(el);
+                });
+            await expect.poll(hasBlame, { timeout: 5000 }).toBe(true);
+
+            await target.hover();
+            const hover = page.locator('.monaco-hover').first();
+            await expect(hover).toBeVisible({ timeout: 5000 });
+            await expect(hover).toContainText('+ b', { timeout: 5000 });
+        });
+    }
+
     test('Keeps the blame text at the end of the line while editing', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();

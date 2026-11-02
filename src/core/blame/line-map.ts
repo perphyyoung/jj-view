@@ -19,14 +19,20 @@ import { diffArrays } from 'diff';
  * @param bufferLines lines of the buffer being annotated
  * @returns buffer line (0-based) to commit line (0-based)
  */
+function stripCarriageReturn(line: string): string {
+    return line.endsWith('\r') ? line.slice(0, -1) : line;
+}
+
 export function buildBufferToCommitLineMap(
     commitLines: readonly string[],
     bufferLines: readonly string[],
 ): Map<number, number> {
     const map = new Map<number, number>();
     // Comparing line arrays avoids the trailing-newline mismatch that `diffLines` has when
-    // one side ends with a newline and the other does not.
-    const changes = diffArrays([...commitLines], [...bufferLines]);
+    // one side ends with a newline and the other does not. Trailing CRs are stripped because
+    // a git checkout (`core.autocrlf`) or an editor can leave the buffer on CRLF while the
+    // commit blob is stored as LF; without this every line looks modified and nothing maps.
+    const changes = diffArrays(commitLines.map(stripCarriageReturn), bufferLines.map(stripCarriageReturn));
 
     let commitLine = 0;
     let bufferLine = 0;
