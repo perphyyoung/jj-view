@@ -5,7 +5,7 @@
 
 import { expect } from '@playwright/test';
 import { TestRepo } from '../test-repo';
-import { focusJJLog, test } from './e2e-helpers';
+import { focusJJViewLocal, test } from './e2e-helpers';
 
 test.describe('E2E Utilities', () => {
     test('Output channel logs capture works', async ({ vscode }) => {
@@ -15,7 +15,7 @@ test.describe('E2E Utilities', () => {
             const { page } = await vscode.openWorkspace(repo);
 
             // Focus log to trigger extension activation and JJ commands
-            await focusJJLog(page);
+            await focusJJViewLocal(page);
 
             // Retrieve output channel logs
             let logs = '';

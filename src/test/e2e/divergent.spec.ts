@@ -7,7 +7,7 @@ import { expect, type Page } from '@playwright/test';
 import { TestRepo } from '../test-repo';
 import {
     clickLogAction,
-    focusJJLog,
+    focusJJViewLocal,
     getDetailsWebview,
     test,
     triggerRefresh,
@@ -37,7 +37,7 @@ test.describe('Divergent Commits E2E', () => {
         const setup = await vscode.openWorkspace(repo);
         page = setup.page;
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
     });
 
     test.afterEach(async () => {
@@ -98,7 +98,7 @@ test.describe('Divergent Commits E2E', () => {
         expect(desc2).toBe('updated A v2 message');
 
         // 4. Abandon the "zombie" commit (A v1) to resolve divergence
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         await clickLogAction(page, 'commit A v1', 'Abandon');
 

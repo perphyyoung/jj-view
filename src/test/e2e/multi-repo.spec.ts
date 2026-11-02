@@ -9,8 +9,8 @@ import { expect, type Page } from '@playwright/test';
 import { buildGraph, type CommitId, TestRepo } from '../test-repo';
 import {
     clickScmAction,
-    focusJJLog,
-    focusSCM,
+    focusJJViewLocal,
+    focusNativeScm,
     openFileInEditor,
     SCM_ACTIONS,
     test,
@@ -92,7 +92,7 @@ test.describe('Multi-Repo Switching E2E', () => {
         const secondRepoFolderName = path.basename(secondRepo.path);
 
         // Verify initial focused repository is main repo by checking log view
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         await expect(page.locator('.pane-header', { hasText: `JJ Log (${mainRepoFolderName})` }).first()).toBeVisible({
             timeout: 5000,
         });
@@ -102,7 +102,7 @@ test.describe('Multi-Repo Switching E2E', () => {
         await openFileInEditor(vscode, page, 'second_file.txt');
 
         // Verify repository manager automatically switched focus to the second repo
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         await expect(page.locator('.pane-header', { hasText: `JJ Log (${secondRepoFolderName})` }).first()).toBeVisible(
             { timeout: 5000 },
         );
@@ -112,7 +112,7 @@ test.describe('Multi-Repo Switching E2E', () => {
         await openFileInEditor(vscode, page, 'main_file.txt');
 
         // Verify focus switched back to main repo
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         await expect(page.locator('.pane-header', { hasText: `JJ Log (${mainRepoFolderName})` }).first()).toBeVisible({
             timeout: 5000,
         });
@@ -123,7 +123,7 @@ test.describe('Multi-Repo Switching E2E', () => {
         // ----------------------------------------------------
 
         // Open main commit details (from mainRepo)
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         const mainBaseRow = await waitForLogCommitRow(page, 'main base commit');
         await mainBaseRow.click();
         const mainShortId = mainCommits['main-base'].changeId.substring(0, 3);
@@ -134,7 +134,7 @@ test.describe('Multi-Repo Switching E2E', () => {
         await secondFileTab.click();
 
         // Verify active repo switched to secondRepo
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         await waitForLogCommitRow(page, 'second base commit');
 
         // Click Commit details tab (from mainRepo) to switch back to mainRepo
@@ -142,14 +142,14 @@ test.describe('Multi-Repo Switching E2E', () => {
         await mainCommitTab.click();
 
         // Verify active repo switched to mainRepo
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         await waitForLogCommitRow(page, 'main base commit');
 
         // Click second_file.txt tab again to switch back to secondRepo
         await secondFileTab.click();
 
         // Verify active repo switched to secondRepo
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         await waitForLogCommitRow(page, 'second base commit');
     });
 
@@ -158,32 +158,32 @@ test.describe('Multi-Repo Switching E2E', () => {
         const secondRepoFolderName = path.basename(secondRepo.path);
 
         // Verify initial focused repository is main repo by checking log view
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         await expect(page.locator('.pane-header', { hasText: `JJ Log (${mainRepoFolderName})` }).first()).toBeVisible({
             timeout: 5000,
         });
         await waitForLogCommitRow(page, 'main base commit');
 
         // Open SCM view
-        await focusSCM(page);
+        await focusNativeScm(page);
 
         const secondRepoRowName = new RegExp(`Jujutsu \\(${secondRepoFolderName}\\)`);
         await clickScmAction(page, secondRepoRowName, SCM_ACTIONS.FocusRepository);
 
         // Verify repository manager automatically switched focus to the second repo by checking log view
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         await expect(page.locator('.pane-header', { hasText: `JJ Log (${secondRepoFolderName})` }).first()).toBeVisible(
             { timeout: 5000 },
         );
         await waitForLogCommitRow(page, 'second base commit');
 
         // Click focus inline action button on the main repo's row
-        await focusSCM(page);
+        await focusNativeScm(page);
         const mainRepoRowName = new RegExp(`Jujutsu \\(${mainRepoFolderName}\\)`);
         await clickScmAction(page, mainRepoRowName, SCM_ACTIONS.FocusRepository);
 
         // Verify repository manager automatically switched focus back to the main repo by checking log view
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         await expect(page.locator('.pane-header', { hasText: `JJ Log (${mainRepoFolderName})` }).first()).toBeVisible({
             timeout: 5000,
         });

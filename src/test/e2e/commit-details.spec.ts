@@ -7,7 +7,7 @@ import { expect, type Page } from '@playwright/test';
 import { buildGraph, type CommitId, TestRepo } from '../test-repo';
 import {
     expectSettingsOpen,
-    focusJJLog,
+    focusJJViewLocal,
     getDetailsWebview,
     getLogWebview,
     redo,
@@ -73,7 +73,7 @@ test.describe('Commit Details E2E', () => {
             const setup = await vscode.openWorkspace(repo, {}, {}, true);
             page = setup.page;
 
-            await focusJJLog(page);
+            await focusJJViewLocal(page);
         });
 
         test('Opens with correct ID, description, and file list', async () => {
@@ -223,7 +223,7 @@ test.describe('Commit Details E2E', () => {
             const newCommitId = repo.getChangeId('@');
 
             // Refresh the webview by focusing it to pick up graph updates
-            await focusJJLog(page);
+            await focusJJViewLocal(page);
 
             // The new commit should be visible and have (no description)
             const emptyRow = await waitForLogCommitRow(page, { changeId: newCommitId });
@@ -319,7 +319,7 @@ test.describe('Commit Details E2E', () => {
 
             // Now click 'feature' — panel should update in-place (same webview, new content)
             // Need to focus the JJ Log webview again first
-            await focusJJLog(page);
+            await focusJJViewLocal(page);
             // Re-get the webview after focus since frames can be invalidated
             const webview2 = await getLogWebview(page);
             const featureRow = webview2.locator('.commit-row', { hasText: 'add feature' });
@@ -448,7 +448,7 @@ test.describe('Commit Details E2E', () => {
             await vscode.executeCommand('jj-view.refresh');
 
             // Refresh the webview by focusing it to pick up graph updates
-            await focusJJLog(page);
+            await focusJJViewLocal(page);
 
             // 1. Check Empty and Tag pill, Author, Committer
             // Use a robust retry loop to find the row, re-fetching the webview frame if it reloads.
@@ -471,7 +471,7 @@ test.describe('Commit Details E2E', () => {
             const featureRow = await waitForLogCommitRow(page, 'add feature');
             await featureRow.click();
 
-            await focusJJLog(page);
+            await focusJJViewLocal(page);
 
             const initialRow = await waitForLogCommitRow(page, 'initial setup');
             // Click once to open the panel
@@ -531,7 +531,7 @@ test.describe('Commit Details E2E', () => {
             // Configure 'initial' to be immutable
             repo.config('revset-aliases."immutable_heads()"', `commit_id("${nodes.initial.commitId}")`);
             await vscode.executeCommand('jj-view.refresh');
-            await focusJJLog(page);
+            await focusJJViewLocal(page);
 
             const initialRow = await waitForLogCommitRow(page, 'initial setup');
 
@@ -667,7 +667,7 @@ test.describe('Commit Details E2E', () => {
             const setup = await vscode.openWorkspace(repo, extraSettings);
             page = setup.page;
 
-            await focusJJLog(page);
+            await focusJJViewLocal(page);
         });
 
         test('Format on save works from the commit details page', async () => {

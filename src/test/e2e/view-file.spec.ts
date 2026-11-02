@@ -6,7 +6,7 @@
 import { expect, type Page } from '@playwright/test';
 import { buildGraph, TestRepo } from '../test-repo';
 import {
-    focusSCM,
+    focusNativeScm,
     openFileInEditor,
     openQuickInputWithShortcut,
     openScmDiff,
@@ -126,7 +126,7 @@ test.describe('View File at Revision E2E', () => {
     });
 
     test('Open File in Working Copy from Diff Tab Context Menu', async () => {
-        await focusSCM(page);
+        await focusNativeScm(page);
         await openScmDiff(page, 'f.txt', /commit1/);
 
         const diffTab = page.getByRole('tab', { name: /f\.txt \(/, selected: true });

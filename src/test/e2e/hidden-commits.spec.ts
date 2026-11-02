@@ -5,7 +5,7 @@
 
 import { expect } from '@playwright/test';
 import { TestRepo } from '../test-repo';
-import { focusJJLog, getLogWebview, test } from './e2e-helpers';
+import { focusJJViewLocal, getLogWebview, test } from './e2e-helpers';
 
 test.describe('Hidden Commits', () => {
     let repo: TestRepo;
@@ -32,7 +32,7 @@ test.describe('Hidden Commits', () => {
 
         const { page } = await vscode.openWorkspace(repo);
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         const webview = await getLogWebview(page);
 
         // 4. Verify the hidden commit is in the log text (to ensure it's loaded)

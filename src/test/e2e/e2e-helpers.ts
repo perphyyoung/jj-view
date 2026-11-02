@@ -116,7 +116,7 @@ export async function ensureSidebarWide(page: Page) {
 /**
  * Ensures the SCM view is open and focused.
  */
-export async function focusSCM(page: Page) {
+export async function focusNativeScm(page: Page) {
     const start = Date.now();
     const scmTitle = page.locator('.pane-header', { hasText: 'Source Control' }).first();
     const scmInput = page.getByRole('treeitem', { name: 'Source Control Input' }).first();
@@ -141,13 +141,13 @@ export async function focusSCM(page: Page) {
         // Click the SCM input row to ensure the provider context is active
         await scmInput.click();
     }).toPass({ timeout: 5000 });
-    logPerf('focusSCM', start);
+    logPerf('focusNativeScm', start);
 }
 
 /**
  * Ensures the JJ Log pane is open and focused.
  */
-export async function focusJJLog(page: Page) {
+export async function focusJJViewLocal(page: Page) {
     const start = Date.now();
     const paneLocator = page.locator('.pane-header', { hasText: 'JJ Log' }).first();
     await ensureViewVisible(page, paneLocator, 'Control+Alt+l');
@@ -164,7 +164,7 @@ export async function focusJJLog(page: Page) {
     // Ensure the sidebar is wide enough
     await ensureSidebarWide(page);
 
-    logPerf('focusJJLog', start);
+    logPerf('focusJJViewLocal', start);
 }
 
 /**
@@ -1161,7 +1161,7 @@ async function openScmItem(
     let row: Locator | undefined;
     await expect(
         async () => {
-            await focusSCM(page);
+            await focusNativeScm(page);
 
             row = await getScmItemLocator(page, fileName, groupName);
 

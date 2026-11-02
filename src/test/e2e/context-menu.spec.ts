@@ -7,7 +7,7 @@ import { expect, type Page } from '@playwright/test';
 import { buildGraph, type CommitId, ROOT_ID, TestRepo } from '../test-repo';
 import {
     expectModifiedFiles,
-    focusJJLog,
+    focusJJViewLocal,
     getLogWebview,
     rightClickAndSelect,
     selectCommits,
@@ -49,7 +49,7 @@ test.describe('JJ Log Context Menu E2E', () => {
         const setup = await vscode.openWorkspace(repo, {}, {}, true);
         page = setup.page;
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
     });
 
     test.afterEach(async () => {

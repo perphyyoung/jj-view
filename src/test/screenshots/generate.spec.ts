@@ -9,8 +9,8 @@ import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import {
     ensureSidebarWide,
-    focusJJLog,
-    focusSCM,
+    focusJJViewLocal,
+    focusNativeScm,
     getLogWebview,
     test,
     type VSCodeFixture,
@@ -273,8 +273,8 @@ export class TargetingGuidance {
 
     await vscode.openFileInEditor(path.join(repo.path, 'src/targeting/death-star-computer.ts'));
     await waitForTab(page, /death-star-computer\.ts/);
-    await focusSCM(page);
-    await focusJJLog(page);
+    await focusNativeScm(page);
+    await focusJJViewLocal(page);
     await ensureSidebarWide(page);
     await splitSCMPane(page);
     await focusDocument(page, vscode);
@@ -445,8 +445,8 @@ export class LightsaberWand {
 
     await vscode.openFileInEditor(path.join(repo.path, 'src/spells/lightsaber-wand.ts'));
     await waitForTab(page, /lightsaber-wand\.ts/);
-    await focusSCM(page);
-    await focusJJLog(page);
+    await focusNativeScm(page);
+    await focusJJViewLocal(page);
     await ensureSidebarWide(page);
     await splitSCMPane(page);
     await focusDocument(page, vscode);
@@ -629,8 +629,8 @@ export function canWithstandProtonTorpedo(): boolean {
     await page.setViewportSize({ width: 1280, height: 800 });
     await closeSecondarySidebar(vscode);
 
-    await focusSCM(page);
-    await focusJJLog(page);
+    await focusNativeScm(page);
+    await focusJJViewLocal(page);
     await ensureSidebarWide(page);
     await splitSCMPane(page);
 
@@ -819,8 +819,8 @@ export class GuidanceSystem {
     await page.setViewportSize({ width: 1280, height: 800 });
     await closeSecondarySidebar(vscode);
 
-    await focusSCM(page);
-    await focusJJLog(page);
+    await focusNativeScm(page);
+    await focusJJViewLocal(page);
     await ensureSidebarWide(page);
     await splitSCMPane(page);
 

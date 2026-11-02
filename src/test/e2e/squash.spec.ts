@@ -5,7 +5,7 @@
 
 import { expect, type Page } from '@playwright/test';
 import { buildGraph, type CommitId, TestRepo } from '../test-repo';
-import { clearActiveEditor, clickScmAction, focusSCM, SCM_ACTIONS, test, waitForTab } from './e2e-helpers';
+import { clearActiveEditor, clickLogAction, focusJJViewLocal, test, waitForTab } from './e2e-helpers';
 
 test.describe('Squash E2E', () => {
     let repo: TestRepo;
@@ -31,10 +31,10 @@ test.describe('Squash E2E', () => {
     });
 
     test('Squash: Save and Close', async ({ vscode }) => {
-        await focusSCM(page);
+        await focusJJViewLocal(page);
 
         // Trigger squash. Since both have descriptions, it should open the editor.
-        await clickScmAction(page, /child description/, SCM_ACTIONS.SquashRevisionIntoParent);
+        await clickLogAction(page, { changeId: ids.child.changeId }, 'Squash');
 
         // Wait for SQUASH_MSG tab to open
         await waitForTab(page, 'SQUASH_MSG');
@@ -65,10 +65,10 @@ test.describe('Squash E2E', () => {
     });
 
     test('Squash: Finalize via checkmark button', async () => {
-        await focusSCM(page);
+        await focusJJViewLocal(page);
 
         // Trigger squash
-        await clickScmAction(page, /child description/, SCM_ACTIONS.SquashRevisionIntoParent);
+        await clickLogAction(page, { changeId: ids.child.changeId }, 'Squash');
 
         // Wait for SQUASH_MSG tab to open
         await waitForTab(page, 'SQUASH_MSG');
@@ -97,10 +97,10 @@ test.describe('Squash E2E', () => {
     });
 
     test('Squash: Close without saving (unmodified)', async ({ vscode }) => {
-        await focusSCM(page);
+        await focusJJViewLocal(page);
 
         // Trigger squash
-        await clickScmAction(page, /child description/, SCM_ACTIONS.SquashRevisionIntoParent);
+        await clickLogAction(page, { changeId: ids.child.changeId }, 'Squash');
 
         // Wait for SQUASH_MSG tab to open
         await waitForTab(page, 'SQUASH_MSG');
@@ -125,10 +125,10 @@ test.describe('Squash E2E', () => {
     });
 
     test("Squash: Close without saving (modified, click Don't Save)", async ({ vscode }) => {
-        await focusSCM(page);
+        await focusJJViewLocal(page);
 
         // Trigger squash
-        await clickScmAction(page, /child description/, SCM_ACTIONS.SquashRevisionIntoParent);
+        await clickLogAction(page, { changeId: ids.child.changeId }, 'Squash');
 
         // Wait for SQUASH_MSG tab to open
         await waitForTab(page, 'SQUASH_MSG');
@@ -159,10 +159,10 @@ test.describe('Squash E2E', () => {
     });
 
     test('Squash: Close without saving (modified, click Cancel)', async ({ vscode }) => {
-        await focusSCM(page);
+        await focusJJViewLocal(page);
 
         // Trigger squash
-        await clickScmAction(page, /child description/, SCM_ACTIONS.SquashRevisionIntoParent);
+        await clickLogAction(page, { changeId: ids.child.changeId }, 'Squash');
 
         // Wait for SQUASH_MSG tab to open
         await waitForTab(page, 'SQUASH_MSG');

@@ -10,7 +10,7 @@ import { buildGraph, ROOT_ID, TestRepo } from '../test-repo';
 import {
     clickLogAction,
     dragAndDrop,
-    focusJJLog,
+    focusJJViewLocal,
     getLogWebview,
     pickQuickPickItem,
     test,
@@ -46,7 +46,7 @@ test.describe('JJ Log Pane E2E', () => {
 
         const { page } = await vscode.openWorkspace(repo);
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         const webview = await getLogWebview(page);
 
         // Assert all commit descriptions are present
@@ -80,7 +80,7 @@ test.describe('JJ Log Pane E2E', () => {
 
         const { page } = await vscode.openWorkspace(repo);
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         // 1. New Merge Change (Requires Multi-select)
         const sideBranchRow = await waitForLogCommitRow(page, { changeId: nodes.side_branch.changeId });
         const wcRow = await waitForLogCommitRow(page, { changeId: nodes.wc.changeId });
@@ -156,7 +156,7 @@ test.describe('JJ Log Pane E2E', () => {
 
         const { page } = await vscode.openWorkspace(repo);
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         // 1. New Child
         const branchId = nodes.branch.changeId;
@@ -244,7 +244,7 @@ test.describe('JJ Log Pane E2E', () => {
 
         const { page } = await vscode.openWorkspace(repo);
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         const sourceRow = await waitForLogCommitRow(page, { changeId: nodes.source.changeId });
         const targetRow = await waitForLogCommitRow(page, { changeId: nodes.target.changeId });
@@ -274,7 +274,7 @@ test.describe('JJ Log Pane E2E', () => {
         ]);
 
         const { page } = await vscode.openWorkspace(repo);
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         const rowC = await waitForLogCommitRow(page, { changeId: nodes.c.changeId });
         const rowA = await waitForLogCommitRow(page, { changeId: nodes.a.changeId });
@@ -303,7 +303,7 @@ test.describe('JJ Log Pane E2E', () => {
         ]);
 
         const { page } = await vscode.openWorkspace(repo);
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         const rowC = await waitForLogCommitRow(page, { changeId: nodes.c.changeId });
         const rowB = await waitForLogCommitRow(page, { changeId: nodes.b.changeId });
@@ -336,7 +336,7 @@ test.describe('JJ Log Pane E2E', () => {
         ]);
 
         const { page } = await vscode.openWorkspace(repo);
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         const sourceRow = await waitForLogCommitRow(page, { changeId: nodes.source.changeId });
         const targetRow = await waitForLogCommitRow(page, { changeId: nodes.target.changeId });
@@ -370,7 +370,7 @@ test.describe('JJ Log Pane E2E', () => {
         ]);
 
         const { page } = await vscode.openWorkspace(repo);
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         const sourceRow = await waitForLogCommitRow(page, { changeId: nodes.source.changeId });
         const targetRow = await waitForLogCommitRow(page, { changeId: nodes.target.changeId });
@@ -410,7 +410,7 @@ test.describe('JJ Log Pane E2E', () => {
         ]);
 
         const { page } = await vscode.openWorkspace(repo);
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         const sourceRow = await waitForLogCommitRow(page, { changeId: nodes.source.changeId });
         const targetRow = await waitForLogCommitRow(page, { changeId: nodes.target.changeId });
@@ -460,7 +460,7 @@ test.describe('JJ Log Pane E2E', () => {
 
         const { page } = await vscode.openWorkspace(repo);
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         await triggerRefresh(page);
 
         // 2. Verify bookmark pill is visible
@@ -496,7 +496,7 @@ test.describe('JJ Log Pane E2E', () => {
 
         const { page } = await vscode.openWorkspace(repo);
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         // 2. Locate the draggable bookmark pill and target commit row (move forward)
         const bookmarkPill = await waitForLogPill(page, 'drag-bookmark', 'bookmark');
@@ -533,7 +533,7 @@ test.describe('JJ Log Pane E2E', () => {
         ]);
 
         const { page } = await vscode.openWorkspace(repo);
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         const webview = await getLogWebview(page);
 
         const featureRow = await waitForLogCommitRow(page, { changeId: nodes.feature.changeId });
@@ -561,7 +561,7 @@ test.describe('JJ Log Pane E2E', () => {
         ]);
 
         const { page } = await vscode.openWorkspace(repo);
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         const featureRow = await waitForLogCommitRow(page, { changeId: nodes.feature.changeId });
         const featureDesc = featureRow.locator('.commit-desc');
@@ -620,7 +620,7 @@ test.describe('JJ Log Pane E2E', () => {
         repo.gitPush('main');
 
         const { page } = await vscode.openWorkspace(repo);
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         // jj's built-in log revset only exposes the two newest remote commits,
         // the log view must show the whole recent remote history.
@@ -660,7 +660,7 @@ test.describe('JJ Log Pane E2E', () => {
         ]);
 
         const { page } = await vscode.openWorkspace(repo);
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         const expected = [
             'new local commit 1',

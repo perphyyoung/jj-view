@@ -7,7 +7,7 @@ import type { Page } from '@playwright/test';
 import { buildGraph, type CommitId, TestRepo } from '../test-repo';
 import {
     expectModifiedFiles,
-    focusJJLog,
+    focusJJViewLocal,
     openFileInEditor,
     openQuickInputWithShortcut,
     pickQuickPickItem,
@@ -63,7 +63,7 @@ test.describe('Arbitrary Diff E2E', () => {
         const setup = await vscode.openWorkspace(repo);
         page = setup.page;
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
     });
 
     test.afterEach(async () => {

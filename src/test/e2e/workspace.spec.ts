@@ -11,7 +11,7 @@ import {
     clickLogTitleButton,
     clickNotificationButton,
     expectWindowTitle,
-    focusJJLog,
+    focusJJViewLocal,
     getLogWebview,
     rightClickAndSelect,
     test,
@@ -82,7 +82,7 @@ test.describe('Workspace Management E2E', () => {
 
         const { page } = await vscode.openWorkspace(repo);
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
         const webview = await getLogWebview(page);
 
         // The default workspace label is 'default@'
@@ -110,7 +110,7 @@ test.describe('Workspace Management E2E', () => {
         // Enable notifications for this test so we can click "Open Workspace"
         const { app, page } = await vscode.openWorkspace(repo, {}, {}, /* showNotifications= */ true);
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         // 1. Click Add Workspace and input name
         await expect(async () => {
@@ -161,7 +161,7 @@ test.describe('Workspace Management E2E', () => {
 
         const { page } = await vscode.openWorkspace(repo, {}, {}, /* showNotifications= */ true);
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         // 1. Forget Workspace
         const forgetPill = await waitForLogPill(page, forgetWs, 'workspace');
@@ -214,7 +214,7 @@ test.describe('Workspace Management E2E', () => {
 
         const { page } = await vscode.openWorkspace(repo);
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         const openPill = await waitForLogPill(page, openWs, 'workspace');
 
@@ -234,7 +234,7 @@ test.describe('Workspace Management E2E', () => {
 
         const { app, page } = await vscode.openWorkspace(repo, {}, {}, /* showNotifications= */ true);
 
-        await focusJJLog(page);
+        await focusJJViewLocal(page);
 
         const openPill = await waitForLogPill(page, openWs, 'workspace');
 
