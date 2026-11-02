@@ -23,6 +23,8 @@ export class VsCodeScmProvider implements vscode.Disposable {
     private _disposed = false;
     private readonly disposables: vscode.Disposable[] = [];
     private _inputBoxFallback = '';
+    /** True while `_inputBoxFallback` holds text the user typed and has not committed yet. */
+    private _draftDirty = false;
     private _lastKnownDescription = '';
     private _lastKnownCommitId = '';
     private readonly _diffTabCleaner: DiffTabCleaner;
@@ -114,11 +116,20 @@ export class VsCodeScmProvider implements vscode.Disposable {
     }
 
     /**
-     * Updates the working copy description used by `jj-view.commit` / `jj-view.setDescription`.
-     * The value is kept in memory because this build has no native Source Control input box.
+     * Records what the user typed in the changes view. A draft stays authoritative until it is
+     * committed or cleared: a refresh must never overwrite it with the (empty) description of
+     * the working-copy commit.
      */
-    public setInputBoxValue(value: string): void {
+    public setDraft(value: string): void {
         this._inputBoxFallback = value;
+        this._draftDirty = value.length > 0;
+    }
+
+    /** Drops the draft after it was committed or applied as the working-copy description. */
+    public clearDraft(): void {
+        this._inputBoxFallback = '';
+        this._draftDirty = false;
+        this._lastKnownDescription = '';
     }
 
     private async renderSnapshot(snapshot: ScmSnapshot): Promise<void> {
@@ -129,7 +140,7 @@ export class VsCodeScmProvider implements vscode.Disposable {
         const openDiffOnClick = this.repo.host.config.get<boolean>('openDiffOnClick', true) ?? true;
         const currentEntry = snapshot.currentEntry;
 
-        if (currentEntry) {
+        if (currentEntry && !this._draftDirty) {
             const desc = snapshot.description;
             const commitId = currentEntry.commit_id;
             const currentValue = this._inputBoxFallback;
@@ -139,7 +150,7 @@ export class VsCodeScmProvider implements vscode.Disposable {
                 this._lastKnownCommitId !== commitId ||
                 currentValue === this._lastKnownDescription
             ) {
-                this.setInputBoxValue(desc);
+                this._inputBoxFallback = desc;
                 this._lastKnownDescription = desc;
                 this._lastKnownCommitId = commitId;
             }

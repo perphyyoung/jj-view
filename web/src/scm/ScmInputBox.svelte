@@ -55,13 +55,13 @@ $effect(() => {
         previousChangeId = changeId;
         previousValue = value;
         description = value;
-        setTimeout(() => handleInput(), 0);
+        setTimeout(() => resize(), 0);
         return;
     }
     if (value !== previousValue) {
         previousValue = value;
         description = value;
-        setTimeout(() => handleInput(), 0);
+        setTimeout(() => resize(), 0);
     }
 });
 
@@ -97,7 +97,7 @@ function handleKeyDown(e: KeyboardEvent): void {
     }
 }
 
-function handleInput(): void {
+function resize(): void {
     if (!textareaEl) {
         return;
     }
@@ -108,6 +108,14 @@ function handleInput(): void {
     } else {
         textareaEl.style.height = `${Math.max(68, textareaEl.scrollHeight)}px`;
     }
+}
+
+/**
+ * Only real user input reports a draft. Reporting on mount or on a prop sync would push the
+ * (empty) value of the freshly rendered pane and clobber a draft typed for another project.
+ */
+function handleInput(): void {
+    resize();
     onValueChange?.(description);
 }
 
@@ -121,7 +129,7 @@ async function handleDraftWithAgent(): Promise<void> {
         if (text) {
             description = text;
             onValueChange?.(text);
-            setTimeout(() => handleInput(), 0);
+            setTimeout(() => resize(), 0);
         }
     } finally {
         isDrafting = false;
@@ -129,7 +137,7 @@ async function handleDraftWithAgent(): Promise<void> {
 }
 
 onMount(() => {
-    handleInput();
+    resize();
 });
 </script>
 

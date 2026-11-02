@@ -469,7 +469,7 @@ suite('JJ SCM Provider Integration Test', () => {
 
         // Verify changing description via command
         // We need to simulate the user typing in the box and running command
-        scmProvider.setInputBoxValue('updated description');
+        scmProvider.setDraft('updated description');
 
         await setDescriptionCommand(
             createIntegrationCommandContext(scmProvider),

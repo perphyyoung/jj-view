@@ -198,6 +198,85 @@ test.describe('JJ View Container E2E', () => {
         });
     });
 
+    test('Commits the typed description after switching the open document', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('a.txt', 'a\n');
+        repo.writeFile('b.txt', 'b\n');
+
+        const { page } = await vscode.openWorkspace(repo);
+        await vscode.executeCommand('jj-view.changesView.focus');
+        const frame = await getWebviewFrame(page, 'jj-changes-root');
+
+        const input = frame.locator('[data-testid="scm-input-textarea"]');
+        await expect(input).toBeVisible({ timeout: 5000 });
+        await input.fill('draft message');
+
+        // Switching the open document triggers a refresh (and a state push) before committing.
+        await openFileInEditor(vscode, page, 'b.txt');
+        await page.waitForTimeout(500);
+
+        // Same command the view title bar's commit button runs.
+        await vscode.executeCommand('jj-view.commit');
+
+        await expect.poll(() => repo.getLog('@-', 'description'), { timeout: 5000 }).toContain('draft message');
+    });
+
+    test('Commits the typed description after switching to another project', async ({ vscode }) => {
+        const parent = mkdtempSync(path.join(os.tmpdir(), 'jj-view-draft-'));
+        const alpha = new TestRepo(path.join(parent, 'alpha'));
+        const beta = new TestRepo(path.join(parent, 'beta'));
+
+        alpha.init();
+        alpha.writeFile('a.txt', 'a\n');
+        alpha.describe('alpha base');
+        alpha.new();
+        alpha.writeFile('a.txt', 'a2\n');
+
+        beta.init();
+        beta.writeFile('b.txt', 'b1\n');
+        beta.describe('beta base');
+        beta.new();
+
+        const { page } = await vscode.openWorkspace(
+            { path: parent, waitForRepository: false },
+            { 'jj-view.autoRepositoryDetection': true },
+        );
+
+        await vscode.executeCommand('jj-view.reposView.focus');
+        const reposFrame = await getWebviewFrame(page, 'jj-repos-root');
+        await expect.poll(() => reposFrame.locator('[data-testid="jj-repo-row"]').count(), { timeout: 5000 }).toBe(2);
+        await reposFrame
+            .locator('[data-testid="jj-repo-row"]', { hasText: 'alpha' })
+            .first()
+            .locator('button')
+            .first()
+            .click();
+
+        await vscode.executeCommand('jj-view.changesView.focus');
+        const frame = await getWebviewFrame(page, 'jj-changes-root');
+        const input = frame.locator('[data-testid="scm-input-textarea"]');
+        await expect(input).toBeVisible({ timeout: 5000 });
+        await input.fill('draft in alpha');
+
+        // Open a document from the other project before committing.
+        await openFileInEditor(vscode, page, 'b.txt');
+        await page.waitForTimeout(500);
+
+        await vscode.executeCommand('jj-view.commit');
+
+        await expect.poll(() => alpha.getLog('@-', 'description'), { timeout: 5000 }).toContain('draft in alpha');
+
+        // A committed draft must not be reused by the next commit.
+        await input.fill('second draft');
+        await openFileInEditor(vscode, page, 'a.txt');
+        await page.waitForTimeout(300);
+        alpha.writeFile('a.txt', 'a3\n');
+        await vscode.executeCommand('jj-view.commit');
+
+        await expect.poll(() => alpha.getLog('@-', 'description'), { timeout: 5000 }).toContain('second draft');
+    });
+
     test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();

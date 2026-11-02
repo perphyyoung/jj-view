@@ -389,7 +389,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 // (jj-view.commit) picks up the text typed in the changes webview.
                 const scm = this._scmProviders.get(message.payload.root);
                 if (scm) {
-                    scm.setInputBoxValue(message.payload.description);
+                    scm.setDraft(message.payload.description);
                 }
                 return;
             }
@@ -420,17 +420,21 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 this._focus(root);
                 const scm = this._scmProviders.get(root);
                 if (scm) {
-                    // Mirror the webview input into the SCM input box so `jj-view.commit`
-                    // (which reads SourceControl.inputBox) commits the right description.
-                    scm.setInputBoxValue(description);
+                    // Mirror the webview input into the draft so `jj-view.commit` (which reads
+                    // the draft) commits the right description.
+                    scm.setDraft(description);
                 }
                 await vscode.commands.executeCommand('jj-view.setDescription', description);
                 await vscode.commands.executeCommand('jj-view.commit');
+                // The text is in the commit now: drop it so the next commit cannot reuse it.
+                this._scmProviders.get(root)?.clearDraft();
                 return;
             }
             case 'setDescription': {
                 this._focus(message.payload.root);
                 await vscode.commands.executeCommand('jj-view.setDescription', message.payload.description);
+                // The text now lives on the working-copy commit, so it is no longer a draft.
+                this._scmProviders.get(message.payload.root)?.clearDraft();
                 return;
             }
             default:
