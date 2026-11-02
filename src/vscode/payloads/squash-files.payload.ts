@@ -10,6 +10,7 @@ import {
     extractRevision,
 } from '../../core/commands/command-utils';
 import type {
+    SplitFileIntoCommitPayload,
     SquashFilesIntoAncestorPayload,
     SquashFilesIntoChildPayload,
     SquashFilesIntoParentPayload,
@@ -29,6 +30,14 @@ export function createSquashFilesIntoAncestorPayload(args: unknown[]): SquashFil
     const revision = extractRevision(args) || '@';
     const ancestorRevision = extractAncestorRevision(args, revision);
     return { paths, revision, ancestorRevision };
+}
+
+export function createSplitFileIntoCommitPayload(args: unknown[]): SplitFileIntoCommitPayload {
+    // Splitting always targets a single file, so only the first selected resource counts.
+    const [resourceState] = collectResourceStates(args);
+    const path = resourceState ? getFsPathFromUri(resourceState.resourceUri) : '';
+    const revision = extractRevision(args) || '@';
+    return { path, revision };
 }
 
 export function createSquashFilesIntoChildPayload(args: unknown[]): SquashFilesIntoChildPayload {

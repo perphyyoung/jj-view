@@ -30,6 +30,8 @@ import { redoCommand } from '../core/commands/redo';
 import { refreshCommand } from '../core/commands/refresh';
 import { restoreCommand } from '../core/commands/restore';
 import {
+    splitFileIntoCommitAboveCommand,
+    splitFileIntoCommitBelowCommand,
     squashFilesIntoAncestorCommand,
     squashFilesIntoChildCommand,
     squashFilesIntoParentCommand,
@@ -79,6 +81,7 @@ import { createOpenFilePayload } from './payloads/open-file.payload';
 import { createRebaseOntoSelectedPayload } from './payloads/rebase.payload';
 import { createRestorePayload } from './payloads/restore.payload';
 import {
+    createSplitFileIntoCommitPayload,
     createSquashFilesIntoAncestorPayload,
     createSquashFilesIntoChildPayload,
     createSquashFilesIntoParentPayload,
@@ -327,6 +330,16 @@ export function registerCommands(options: RegisterCommandsOptions): void {
             'jj-view.squashFilesIntoChild',
             createSquashFilesIntoChildPayload,
             squashFilesIntoChildCommand,
+        ),
+        registerCommandWithPayload(
+            'jj-view.splitFileIntoCommitAbove',
+            createSplitFileIntoCommitPayload,
+            splitFileIntoCommitAboveCommand,
+        ),
+        registerCommandWithPayload(
+            'jj-view.splitFileIntoCommitBelow',
+            createSplitFileIntoCommitPayload,
+            splitFileIntoCommitBelowCommand,
         ),
     );
 

@@ -3,7 +3,7 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.2.4",
+    "version": "3.3.0",
     "license": "Apache-2.0",
     "author": "perphyyoung",
     "repository": {
@@ -480,6 +480,16 @@
                 "icon": "$(arrow-down)"
             },
             {
+                "command": "jj-view.splitFileIntoCommitAbove",
+                "title": "Split File into New Commit Above",
+                "category": "JJ View Local"
+            },
+            {
+                "command": "jj-view.splitFileIntoCommitBelow",
+                "title": "Split File into New Commit Below",
+                "category": "JJ View Local"
+            },
+            {
                 "command": "jj-view.squashFilesIntoAncestor",
                 "title": "Squash File(s) into Ancestor...",
                 "category": "JJ View Local",
@@ -691,6 +701,14 @@
                     "when": "false"
                 },
                 {
+                    "command": "jj-view.splitFileIntoCommitAbove",
+                    "when": "false"
+                },
+                {
+                    "command": "jj-view.splitFileIntoCommitBelow",
+                    "when": "false"
+                },
+                {
                     "command": "jj-view.completeSquashRevision",
                     "when": "false"
                 },
@@ -882,6 +900,16 @@
                     "command": "jj-view.squashFilesIntoChild",
                     "group": "inline@5",
                     "when": "scmResourceState =~ /\\bjj\\.resource\\.allowSquashIntoChild\\b/"
+                },
+                {
+                    "command": "jj-view.splitFileIntoCommitAbove",
+                    "group": "3_split@1",
+                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowSplitCommit\\b/"
+                },
+                {
+                    "command": "jj-view.splitFileIntoCommitBelow",
+                    "group": "3_split@2",
+                    "when": "scmResourceState =~ /\\bjj\\.resource\\.allowSplitCommit\\b/"
                 }
             ],
             "webview/context": [

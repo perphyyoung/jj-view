@@ -23,6 +23,44 @@ export interface SquashFilesIntoChildPayload {
     childRevision?: string;
 }
 
+export interface SplitFileIntoCommitPayload {
+    path: string;
+    revision?: string;
+}
+
+/**
+ * Moves a single file out of `revision` into a brand-new empty commit placed directly
+ * above or below it (`jj squash --from <rev> -A|-B <rev>`). The source commit is kept even
+ * when it becomes empty, so the user never loses it by surprise.
+ */
+async function splitFileIntoNewCommit(
+    ctx: CommandContext,
+    payload: SplitFileIntoCommitPayload | undefined,
+    placement: 'above' | 'below',
+): Promise<void> {
+    const path = payload?.path;
+    if (!path) {
+        return;
+    }
+
+    const revision = payload?.revision || '@';
+    const label = `Splitting file into a new commit ${placement}...`;
+
+    try {
+        await ctx.host.ui.withProgress(label, () =>
+            ctx.repo.jj.squashRevision({
+                paths: [path],
+                revision,
+                ...(placement === 'above' ? { insertAfterRevision: revision } : { insertBeforeRevision: revision }),
+                keepEmptied: true,
+            }),
+        );
+        await ctx.repo.refresh({ reason: `after split file into a new commit ${placement}` });
+    } catch (e: unknown) {
+        await showJjError(ctx.host.ui, e, `Error splitting file into a new commit ${placement}`, ctx.repo.jj, ctx.log);
+    }
+}
+
 export async function squashFilesIntoParentCommand(
     ctx: CommandContext,
     payload?: SquashFilesIntoParentPayload,
@@ -81,6 +119,20 @@ export async function squashFilesIntoAncestorCommand(
     } catch (e: unknown) {
         await showJjError(ctx.host.ui, e, 'Error squashing file(s) into ancestor', ctx.repo.jj, ctx.log);
     }
+}
+
+export async function splitFileIntoCommitAboveCommand(
+    ctx: CommandContext,
+    payload?: SplitFileIntoCommitPayload,
+): Promise<void> {
+    return splitFileIntoNewCommit(ctx, payload, 'above');
+}
+
+export async function splitFileIntoCommitBelowCommand(
+    ctx: CommandContext,
+    payload?: SplitFileIntoCommitPayload,
+): Promise<void> {
+    return splitFileIntoNewCommit(ctx, payload, 'below');
 }
 
 export async function squashFilesIntoChildCommand(

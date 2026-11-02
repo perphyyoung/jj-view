@@ -66,6 +66,39 @@ test.describe('JJ View Container E2E', () => {
         await expect(frame.locator('.scm-resource-item')).toHaveCount(1);
     });
 
+    test('Splits a file into a new commit above from the file context menu', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('base.txt', 'base\n');
+        repo.describe('base');
+        repo.new();
+        repo.writeFile('a.txt', 'a\n');
+        repo.writeFile('b.txt', 'b\n');
+
+        const { page } = await vscode.openWorkspace(repo);
+
+        await vscode.executeCommand('jj-view.changesView.focus');
+        const frame = await getWebviewFrame(page, 'jj-changes-root');
+
+        const row = frame.locator('.scm-resource-item', { hasText: 'a.txt' }).first();
+        await expect(row).toBeVisible({ timeout: 5000 });
+        await row.click({ button: 'right' });
+
+        const splitAbove = frame.locator('button.menu-item', { hasText: 'Split File into New Commit Above' });
+        const splitBelow = frame.locator('button.menu-item', { hasText: 'Split File into New Commit Below' });
+        await expect(splitAbove).toBeVisible({ timeout: 5000 });
+        await expect(splitBelow).toBeVisible({ timeout: 5000 });
+        await splitAbove.click();
+
+        // A new empty commit is inserted above the working copy and owns the file change.
+        await expect.poll(() => repo.getChildren(repo.getChangeId('@')).length, { timeout: 5000 }).toBe(1);
+        const [splitId] = repo.getChildren(repo.getChangeId('@'));
+        expect(repo.getFileContent(splitId, 'a.txt')).toBe('a\n');
+
+        // The working copy keeps the other file.
+        expect(repo.getFileContent('@', 'b.txt')).toBe('b\n');
+    });
+
     test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();

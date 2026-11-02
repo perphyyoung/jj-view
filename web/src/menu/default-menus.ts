@@ -194,6 +194,16 @@ export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
             icon: '$(arrow-down)',
         },
         {
+            command: 'jj-view.splitFileIntoCommitAbove',
+            title: 'Split File into New Commit Above',
+            category: 'JJ View',
+        },
+        {
+            command: 'jj-view.splitFileIntoCommitBelow',
+            title: 'Split File into New Commit Below',
+            category: 'JJ View',
+        },
+        {
             command: 'jj-view.squashFilesIntoAncestor',
             title: 'Squash File(s) into Ancestor...',
             category: 'JJ View',
@@ -494,6 +504,14 @@ export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
                 when: 'false',
             },
             {
+                command: 'jj-view.splitFileIntoCommitAbove',
+                when: 'false',
+            },
+            {
+                command: 'jj-view.splitFileIntoCommitBelow',
+                when: 'false',
+            },
+            {
                 command: 'jj-view.completeSquashRevision',
                 when: 'false',
             },
@@ -668,6 +686,16 @@ export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
                 command: 'jj-view.squashFilesIntoChild',
                 group: 'inline@5',
                 when: 'scmResourceState =~ /\\bjj\\.resource\\.allowSquashIntoChild\\b/',
+            },
+            {
+                command: 'jj-view.splitFileIntoCommitAbove',
+                group: '3_split@1',
+                when: 'scmResourceState =~ /\\bjj\\.resource\\.allowSplitCommit\\b/',
+            },
+            {
+                command: 'jj-view.splitFileIntoCommitBelow',
+                group: '3_split@2',
+                when: 'scmResourceState =~ /\\bjj\\.resource\\.allowSplitCommit\\b/',
             },
         ],
         'webview/context': [

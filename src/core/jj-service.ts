@@ -1002,13 +1002,32 @@ export class JjService {
             revision?: string;
             intoRevision?: string;
             ontoRevision?: string;
+            /** Insert the newly created commit after this revision (`-A`), i.e. directly above it. */
+            insertAfterRevision?: string;
+            /** Insert the newly created commit before this revision (`-B`), i.e. directly below it. */
+            insertBeforeRevision?: string;
+            /** Keep the source revision when it becomes empty (`-k`). */
+            keepEmptied?: boolean;
             message?: string;
             useDestinationMessage?: boolean;
         } = {},
     ): Promise<void> {
-        const { paths = [], revision, intoRevision, ontoRevision, message, useDestinationMessage } = options;
-        if (intoRevision && ontoRevision) {
-            throw new Error('Cannot specify both intoRevision and ontoRevision.');
+        const {
+            paths = [],
+            revision,
+            intoRevision,
+            ontoRevision,
+            insertAfterRevision,
+            insertBeforeRevision,
+            keepEmptied,
+            message,
+            useDestinationMessage,
+        } = options;
+        const destinations = [intoRevision, ontoRevision, insertAfterRevision, insertBeforeRevision].filter(
+            (value): value is string => !!value,
+        );
+        if (destinations.length > 1) {
+            throw new Error('Cannot apply more than one of into, onto, insertAfter and insertBefore.');
         }
         if (revision && (revision === intoRevision || revision === ontoRevision)) {
             throw new Error('Cannot squash revision into or onto itself.');
@@ -1028,9 +1047,22 @@ export class JjService {
                 args.push('--from', revision);
             }
             args.push('--into', intoRevision);
+        } else if (insertAfterRevision || insertBeforeRevision) {
+            // Create a new commit next to the source revision and move the paths into it.
+            if (revision) {
+                args.push('--from', revision);
+            }
+            if (insertAfterRevision) {
+                args.push('--insert-after', insertAfterRevision);
+            } else if (insertBeforeRevision) {
+                args.push('--insert-before', insertBeforeRevision);
+            }
         } else if (revision) {
             // Squash this revision into its parent
             args.push('-r', revision);
+        }
+        if (keepEmptied) {
+            args.push('--keep-emptied');
         }
         if (useDestinationMessage) {
             args.push('-u');

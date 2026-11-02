@@ -74,6 +74,8 @@ export function createJjResourceState(
     flags.push(ScmContextValue.ResourceAllowOpen);
     if (options.squashable) {
         flags.push(ScmContextValue.ResourceAllowSquashIntoParent);
+        // Splitting rewrites the owning commit, so it needs the same mutability as squashing.
+        flags.push(ScmContextValue.ResourceAllowSplitCommit);
         if (options.multipleAncestors) {
             flags.push(ScmContextValue.ResourceAllowSquashIntoAncestor);
         }

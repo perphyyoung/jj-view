@@ -5,6 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+    splitFileIntoCommitAboveCommand,
+    splitFileIntoCommitBelowCommand,
     squashFilesIntoAncestorCommand,
     squashFilesIntoChildCommand,
     squashFilesIntoParentCommand,
@@ -68,6 +70,69 @@ describe('squash-files commands', () => {
 
             const parentOther = repo.getFileContent('@-', 'other.txt');
             expect(parentOther).toBe('other original');
+        });
+    });
+
+    describe('splitFileIntoCommit commands', () => {
+        const buildStack = () =>
+            buildGraph(repo, [
+                { label: 'base', description: 'base', files: { 'a.txt': 'base a', 'keep.txt': 'keep' } },
+                {
+                    label: 'target',
+                    parents: ['base'],
+                    description: 'target',
+                    files: { 'a.txt': 'target a' },
+                },
+                { label: 'wc', parents: ['target'], description: 'wc', isCurrentWorkingCopy: true },
+            ]);
+
+        test('splits a file into a new commit above the source commit', async () => {
+            const ids = await buildStack();
+
+            await splitFileIntoCommitAboveCommand(ctx, { path: 'a.txt', revision: ids.target.changeId });
+
+            const children = repo.getChildren(ids.target.changeId);
+            expect(children).toHaveLength(1);
+            const splitId = children[0];
+
+            // The moved change lives in the new commit, and the former child hangs off it.
+            expect(repo.getFileContent(splitId, 'a.txt')).toBe('target a');
+            expect(repo.getChildren(splitId).some((id) => id.startsWith(ids.wc.changeId))).toBe(true);
+
+            // The source commit keeps its identity and loses only the split file's change.
+            expect(repo.getDescription(ids.target.changeId)).toBe('target');
+            expect(repo.getFileContent(ids.target.changeId, 'a.txt')).toBe('base a');
+        });
+
+        test('splits a file into a new commit below the source commit', async () => {
+            const ids = await buildStack();
+
+            await splitFileIntoCommitBelowCommand(ctx, { path: 'a.txt', revision: ids.target.changeId });
+
+            const children = repo.getChildren(ids.base.changeId);
+            expect(children).toHaveLength(1);
+            const splitId = children[0];
+
+            expect(repo.getFileContent(splitId, 'a.txt')).toBe('target a');
+            expect(repo.getChildren(splitId).some((id) => id.startsWith(ids.target.changeId))).toBe(true);
+            expect(repo.getDescription(ids.target.changeId)).toBe('target');
+            expect(repo.getFileContent(ids.target.changeId, 'a.txt')).toBe('target a');
+        });
+
+        test('keeps the source commit when splitting empties it', async () => {
+            const ids = await buildGraph(repo, [
+                { label: 'base', description: 'base', files: { 'a.txt': 'base a' } },
+                { label: 'target', parents: ['base'], description: 'target', files: { 'a.txt': 'target a' } },
+                { label: 'wc', parents: ['target'], description: 'wc', isCurrentWorkingCopy: true },
+            ]);
+
+            await splitFileIntoCommitAboveCommand(ctx, { path: 'a.txt', revision: ids.target.changeId });
+
+            // `--keep-emptied` keeps the now empty source commit instead of abandoning it.
+            expect(repo.getDescription(ids.target.changeId)).toBe('target');
+            const children = repo.getChildren(ids.target.changeId);
+            expect(children).toHaveLength(1);
+            expect(repo.getFileContent(children[0], 'a.txt')).toBe('target a');
         });
     });
 

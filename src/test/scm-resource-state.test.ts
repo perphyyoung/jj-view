@@ -208,6 +208,14 @@ describe('createJjResourceState', () => {
             expect(flags).not.toContain('jj.resource.allowSquashIntoAncestor');
         });
 
+        it('sets split-commit only when squashable is true', () => {
+            const withFlag = createJjResourceState(entry, 'rev123', root, { squashable: true });
+            expect(withFlag.contextValue?.split(' ')).toContain('jj.resource.allowSplitCommit');
+
+            const without = createJjResourceState(entry, 'rev123', root);
+            expect(without.contextValue?.split(' ')).not.toContain('jj.resource.allowSplitCommit');
+        });
+
         it('sets squash-into-ancestor only when both squashable and multipleAncestors are true', () => {
             const state = createJjResourceState(entry, 'rev123', root, {
                 squashable: true,
