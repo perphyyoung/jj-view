@@ -347,27 +347,6 @@ suite('JjRepositoryManager Integration Test', () => {
         assert.deepStrictEqual(roots, [repo1Path, repo2Path].sort());
     });
 
-    test('tryAutoSwitch changes focused repository', async () => {
-        using otherRepo = new ScopedTestRepo();
-        otherRepo.init();
-
-        await using _workspace = await setWorkspaceFolders([Uri.file(mainRepo.path), Uri.file(otherRepo.path)]);
-
-        await manager.scanForRepositories();
-        const initialFocus = manager.focusedRepository?.rootUri.fsPath;
-        assert.ok(
-            initialFocus === mainRepo.path || initialFocus === otherRepo.path,
-            'Should focus one of the registered repositories',
-        );
-
-        const targetPath = initialFocus === mainRepo.path ? otherRepo.path : mainRepo.path;
-
-        const fileUri = Uri.file(path.join(targetPath, 'file.ts'));
-        manager.tryAutoSwitch(fileUri);
-
-        assert.strictEqual(manager.focusedRepository?.rootUri.fsPath, targetPath);
-    });
-
     test('getRepositoryForUri matches files through symbolic links', async () => {
         // Create a symlink to the main repository
         const symlinkPath = `${mainRepo.path}-symlink`;

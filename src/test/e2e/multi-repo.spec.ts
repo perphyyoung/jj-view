@@ -85,8 +85,6 @@ test.describe('Multi-Repo Switching E2E', () => {
 
         const setup = await vscode.openWorkspace(fakeRepo, {
             'workbench.editor.enablePreview': false,
-            // This suite covers the opt-in behaviour where opening an editor switches repos.
-            'jj-view.followActiveEditor': true,
         });
         page = setup.page;
     });
@@ -98,7 +96,7 @@ test.describe('Multi-Repo Switching E2E', () => {
         }
     });
 
-    test('automatic repository switching when focusing different editor types', async ({ vscode }) => {
+    test('opening another project file keeps the current repository', async ({ vscode }) => {
         const mainRepoFolderName = path.basename(mainRepo.path);
         const secondRepoFolderName = path.basename(secondRepo.path);
 
@@ -109,59 +107,30 @@ test.describe('Multi-Repo Switching E2E', () => {
         });
         await waitForLogCommitRow(page, 'main base commit');
 
-        // Open second_file.txt from Explorer to trigger switch
+        // Opening a file from the other project must not steal the focused repository.
         await openFileInEditor(vscode, page, 'second_file.txt');
-
-        // Verify repository manager automatically switched focus to the second repo
-        await focusJJViewLocal(page);
-        await expect(page.locator('.pane-header', { hasText: `JJ Log (${secondRepoFolderName})` }).first()).toBeVisible(
-            { timeout: 5000 },
-        );
-        await waitForLogCommitRow(page, 'second base commit');
-
-        // Now open main_file.txt from Explorer to switch back
-        await openFileInEditor(vscode, page, 'main_file.txt');
-
-        // Verify focus switched back to main repo
+        await page.waitForTimeout(500);
         await focusJJViewLocal(page);
         await expect(page.locator('.pane-header', { hasText: `JJ Log (${mainRepoFolderName})` }).first()).toBeVisible({
             timeout: 5000,
         });
+        await expect(page.locator('.pane-header', { hasText: `JJ Log (${secondRepoFolderName})` }).first()).toHaveCount(
+            0,
+        );
         await waitForLogCommitRow(page, 'main base commit');
 
-        // ----------------------------------------------------
-        // 2. Switching using Commit Details custom editors
-        // ----------------------------------------------------
-
-        // Open main commit details (from mainRepo)
-        await focusJJViewLocal(page);
+        // Same for commit-details editors belonging to the other project.
         const mainBaseRow = await waitForLogCommitRow(page, 'main base commit');
         await mainBaseRow.click();
         const mainShortId = mainCommits['main-base'].changeId.substring(0, 3);
         await waitForTab(page, new RegExp(`^Commit: ${mainShortId}`));
 
-        // Click second_file.txt tab (from secondRepo) to switch active repo to secondRepo
-        const secondFileTab = page.getByRole('tab', { name: 'second_file.txt' });
-        await secondFileTab.click();
-
-        // Verify active repo switched to secondRepo
+        await page.getByRole('tab', { name: 'second_file.txt' }).click();
         await focusJJViewLocal(page);
-        await waitForLogCommitRow(page, 'second base commit');
-
-        // Click Commit details tab (from mainRepo) to switch back to mainRepo
-        const mainCommitTab = page.getByRole('tab', { name: new RegExp(`^Commit: ${mainShortId}`) });
-        await mainCommitTab.click();
-
-        // Verify active repo switched to mainRepo
-        await focusJJViewLocal(page);
+        await expect(page.locator('.pane-header', { hasText: `JJ Log (${mainRepoFolderName})` }).first()).toBeVisible({
+            timeout: 5000,
+        });
         await waitForLogCommitRow(page, 'main base commit');
-
-        // Click second_file.txt tab again to switch back to secondRepo
-        await secondFileTab.click();
-
-        // Verify active repo switched to secondRepo
-        await focusJJViewLocal(page);
-        await waitForLogCommitRow(page, 'second base commit');
     });
 
     test('repository switching from the Repositories view', async ({ vscode }) => {

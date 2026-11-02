@@ -68,53 +68,33 @@ export class JjRepositoryManager implements HostDisposable {
         // 1. Scan and register open editors at startup (only if configured to detect from open editors)
         if (this.shouldDetectFromOpenEditors()) {
             for (const uri of this.getOpenEditorUris()) {
-                this.maybeRegisterRepositoryContainingUri(uri)
-                    .then(() => {
-                        const activeUriNow = this._host.documents.getActiveDocumentUri?.();
-                        if (activeUriNow && activeUriNow.toString() === uri.toString()) {
-                            this.tryAutoSwitch(uri);
-                        }
-                    })
-                    .catch((err) => {
-                        this._outputChannel.error(
-                            '[RepositoryManager] Error checking open editor URI at start',
-                            toError(err),
-                        );
-                    });
+                this.maybeRegisterRepositoryContainingUri(uri).catch((err) => {
+                    this._outputChannel.error(
+                        '[RepositoryManager] Error checking open editor URI at start',
+                        toError(err),
+                    );
+                });
             }
         }
 
-        // 2. Track active document changes
+        // 2. Register repositories from documents opened later. The focused repository is
+        //    never changed here: opening a file (possibly from another project) must not
+        //    steal the views. Switching is explicit (Repositories view) or via new/edit.
         if (this._host.documents.onDidChangeActiveDocument) {
             this._disposables.push(
                 this._host.documents.onDidChangeActiveDocument((uri) => {
                     if (!uri) {
                         return;
                     }
-                    // Opening a file from another project must not steal the focus of the
-                    // views unless the user opted in (or nothing is focused yet).
-                    if (!this.shouldFollowActiveDocument()) {
-                        return;
-                    }
-                    if (this.tryAutoSwitch(uri)) {
-                        return;
-                    }
                     if (!this.shouldDetectFromOpenEditors()) {
                         return;
                     }
-                    this.maybeRegisterRepositoryContainingUri(uri)
-                        .then(() => {
-                            const activeUriNow = this._host.documents.getActiveDocumentUri?.();
-                            if (activeUriNow && activeUriNow.toString() === uri.toString()) {
-                                this.tryAutoSwitch(uri);
-                            }
-                        })
-                        .catch((err) => {
-                            this._outputChannel.error(
-                                '[RepositoryManager] Error checking active document URI',
-                                toError(err),
-                            );
-                        });
+                    this.maybeRegisterRepositoryContainingUri(uri).catch((err) => {
+                        this._outputChannel.error(
+                            '[RepositoryManager] Error checking active document URI',
+                            toError(err),
+                        );
+                    });
                 }),
             );
         }
@@ -519,11 +499,7 @@ export class JjRepositoryManager implements HostDisposable {
                     this.isSamePath(r.rootUri.fsPath, this._focusedRepository?.rootUri.fsPath),
                 )
             ) {
-                const activeUri = this.shouldFollowActiveDocument()
-                    ? this._host.documents.getActiveDocumentUri?.()
-                    : undefined;
-                const matched = activeUri ? this.getRepositoryForUri(activeUri) : undefined;
-                this.setFocusedRepository(matched ?? this._repositories[0]);
+                this.setFocusedRepository(this._repositories[0]);
             }
         } else {
             this.setFocusedRepository(undefined);
@@ -1092,33 +1068,6 @@ export class JjRepositoryManager implements HostDisposable {
                 this._ignoredAbsolutePaths.add(this.normalizePath(abs));
             }
         }
-    }
-
-    /**
-     * Whether opening an editor should move the focused repository. Off by default in a
-     * multi-project workspace: opening another project's file must not steal the views.
-     * With nothing focused yet, following the first opened document is still helpful.
-     */
-    private shouldFollowActiveDocument(): boolean {
-        if (!this._focusedRepository) {
-            return true;
-        }
-        return this._host.config.get<boolean>('followActiveEditor', false) === true;
-    }
-
-    /**
-     * Attempt to switch active repository based on a file URI.
-     */
-    tryAutoSwitch(uri: Uri): boolean {
-        const repo = this.getRepositoryForUri(uri);
-        if (
-            repo &&
-            (!this._focusedRepository || !this.isSamePath(repo.rootUri.fsPath, this._focusedRepository.rootUri.fsPath))
-        ) {
-            this.setFocusedRepository(repo);
-            return true;
-        }
-        return false;
     }
 
     /**

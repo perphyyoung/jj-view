@@ -3,7 +3,7 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.3.6",
+    "version": "3.3.7",
     "license": "Apache-2.0",
     "author": "perphyyoung",
     "repository": {
@@ -245,11 +245,6 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Controls whether the diff editor should be opened when clicking a change. Otherwise the regular editor will be opened."
-                },
-                "jj-view.followActiveEditor": {
-                    "type": "boolean",
-                    "default": false,
-                    "markdownDescription": "Whether opening a file from another project switches the focused repository (Repositories / Changes / JJ Log). Off by default so browsing another project's code does not steal the views; with nothing focused yet the first opened document still selects the repository."
                 },
                 "jj-view.autoRepositoryDetection": {
                     "type": [
