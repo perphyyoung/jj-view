@@ -562,14 +562,11 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             return undefined;
         }
 
-        const direct = pickLineChange(chunks, zeroBasedLine + 1);
-        if (direct) {
-            return direct;
-        }
-
-        // The hunks use the line numbers of the file at that commit, so later inserts above
-        // the line make the direct lookup miss. Map the buffer line onto the committed
-        // version and retry; the mapping uses the buffer text, so unsaved edits are fine too.
+        // The hunks use the line numbers of the file at that commit. Looking the buffer line
+        // up directly is not enough: a commit that added/rewrote the whole file produces a
+        // hunk spanning every line, so an unrelated line of that commit answers. Always map
+        // the buffer line onto the committed version first (the mapping uses the buffer text,
+        // so unsaved edits are fine too).
         const commitLines = await this._getCommitContent(repo, revision, relativePath);
         if (!commitLines) {
             return undefined;
@@ -580,9 +577,6 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             this._outputChannel?.debug?.(`[LineBlame] diff miss ${relativePath}:${zeroBasedLine + 1} (rewritten line)`);
             return undefined;
         }
-        this._outputChannel?.debug?.(
-            `[LineBlame] diff remapped ${relativePath}:${zeroBasedLine + 1} -> ${commitLine + 1}`,
-        );
         return pickLineChange(chunks, commitLine + 1);
     }
 

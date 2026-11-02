@@ -224,6 +224,21 @@ describe('pickLineChange', () => {
         expect(pickLineChange([addedChunk], 2)).toEqual({ before: undefined, after: 'b' });
     });
 
+    it('does not pair a deletion from an earlier block with a later addition', () => {
+        const mixedChunk = {
+            oldStart: 1,
+            newStart: 1,
+            changes: [
+                { type: 'del', content: '-old line' },
+                { type: 'normal', content: ' context' },
+                { type: 'add', content: '+added line' },
+            ],
+        };
+
+        // Line 2 is the addition; the deletion above belongs to another block.
+        expect(pickLineChange([mixedChunk], 2)).toEqual({ before: undefined, after: 'added line' });
+    });
+
     it('returns undefined for an unchanged (context) line', () => {
         expect(pickLineChange([replacementChunk], 5)).toBeUndefined();
         expect(pickLineChange([replacementChunk], 7)).toBeUndefined();

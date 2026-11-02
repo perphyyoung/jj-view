@@ -200,6 +200,57 @@ test.describe('Line Blame E2E', () => {
         await expect(hover).toContainText('+ second line', { timeout: 5000 });
     });
 
+    test('Shows the diff of the hovered line when the commit added the whole file', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        const lines = Array.from({ length: 10 }, (_, i) => `L${i + 1}`);
+        repo.writeFile('notes.md', `${lines.join('\n')}\n`);
+        repo.describe('add notes');
+        repo.new();
+
+        // A later commit prepends three lines. The blamed commit's hunk spans the whole file,
+        // so looking the line up by its current number would hit an unrelated line of it.
+        repo.writeFile('notes.md', `P1\nP2\nP3\n${lines.join('\n')}\n`);
+        repo.describe('prepend lines');
+        repo.new();
+
+        const { page } = await vscode.openWorkspace(repo);
+        await openFileInEditor(vscode, page, 'notes.md');
+
+        const editor = page.locator('.editor-instance .monaco-editor').first();
+        await expect(editor.locator('.view-line').first()).toBeVisible({ timeout: 5000 });
+
+        const target = editor.locator('.view-line').filter({ hasText: 'L5' }).first();
+        await expect(target).toBeVisible({ timeout: 5000 });
+        await target.click();
+        await page.keyboard.press('End');
+
+        const hasBlame = async (): Promise<boolean> =>
+            target.evaluate((el) => {
+                const isBlame = (value: string): boolean => value.includes('add notes');
+                const walk = (node: Node): boolean => {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        return isBlame(node.textContent ?? '');
+                    }
+                    if (node.nodeType !== Node.ELEMENT_NODE) {
+                        return false;
+                    }
+                    const element = node as Element;
+                    if (isBlame(getComputedStyle(element, '::after').content ?? '')) {
+                        return true;
+                    }
+                    return Array.from(element.childNodes).some(walk);
+                };
+                return walk(el);
+            });
+        await expect.poll(hasBlame, { timeout: 5000 }).toBe(true);
+
+        await target.hover();
+        const hover = page.locator('.monaco-hover').first();
+        await expect(hover).toBeVisible({ timeout: 5000 });
+        await expect(hover).toContainText('+ L5', { timeout: 5000 });
+    });
+
     test('Keeps the blame text at the end of the line while editing', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();

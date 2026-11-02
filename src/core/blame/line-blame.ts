@@ -143,7 +143,9 @@ export interface LineChange {
 export function pickLineChange(chunks: readonly DiffChunkLike[], newLine: number): LineChange | undefined {
     for (const chunk of chunks) {
         let newLineNo = chunk.newStart;
-        const pendingBefore: string[] = [];
+        // Deletions are only paired with the additions of the same contiguous block: a `del`
+        // from an earlier block must not end up as the "-" side of a later `+` line.
+        let pendingBefore: string[] = [];
         for (const change of chunk.changes) {
             const content = change.content.slice(1);
             if (change.type === 'del') {
@@ -158,6 +160,7 @@ export function pickLineChange(chunks: readonly DiffChunkLike[], newLine: number
                 newLineNo++;
                 continue;
             }
+            pendingBefore = [];
             if (newLineNo === newLine) {
                 return undefined;
             }
