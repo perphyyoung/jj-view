@@ -185,6 +185,22 @@ export function registerCommands(options: RegisterCommandsOptions): void {
         });
     }
 
+    /**
+     * Registers a command whose payload is derived from the focused repository's SCM input
+     * box instead of the active editor's repository.
+     */
+    function registerViewCommandWithPayload<TPayload, TReturn = unknown>(
+        commandId: string,
+        payloadCreator: (args: unknown[], scm?: VsCodeScmProvider) => TPayload,
+        handler: (ctx: CommandContext, payload: TPayload) => Promise<TReturn>,
+    ): vscode.Disposable {
+        return registerCommand(
+            commandId,
+            async (ctx, ...args) => handler(ctx, payloadCreator(args, scmProviders.get(ctx.repo.rootUri.fsPath))),
+            { preserveFocus: true },
+        );
+    }
+
     function registerCommand<TReturn = unknown>(
         commandId: string,
         handler: (ctx: CommandContext, ...args: unknown[]) => Promise<TReturn>,
@@ -222,8 +238,10 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     context.subscriptions.push(
         registerCommandWithPayload('jj-view.new', createNewPayload, newCommand),
         registerCommandWithPayload('jj-view.newMergeChange', createNewMergeChangePayload, newMergeChangeCommand),
-        registerCommandWithPayload('jj-view.commit', createCommitPayload, commitCommand),
-        registerCommandWithPayload('jj-view.commitPrompt', createCommitPromptPayload, commitPromptCommand),
+        // Committing and setting the description act on the repository the Changes view shows,
+        // not on the repository that happens to own the active editor (multi-project layout).
+        registerViewCommandWithPayload('jj-view.commit', createCommitPayload, commitCommand),
+        registerViewCommandWithPayload('jj-view.commitPrompt', createCommitPromptPayload, commitPromptCommand),
         registerCommandWithPayload('jj-view.describePrompt', createDescribePromptPayload, describePromptCommand),
     );
 
@@ -245,7 +263,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
             createCompleteSquashRevisionPayload,
             completeSquashRevisionCommand,
         ),
-        registerCommandWithPayload('jj-view.setDescription', createSetDescriptionPayload, setDescriptionCommand),
+        registerViewCommandWithPayload('jj-view.setDescription', createSetDescriptionPayload, setDescriptionCommand),
         registerCommandWithPayload(
             'jj-view.squashSelectionIntoParent',
             () => createSquashSelectionIntoParentPayload(vscode.window.activeTextEditor),

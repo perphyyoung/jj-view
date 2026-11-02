@@ -3,10 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { mkdtempSync } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import type { Frame, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { TestRepo } from '../test-repo';
-import { test } from './e2e-helpers';
+import { openFileInEditor, test } from './e2e-helpers';
 
 async function getWebviewFrame(page: Page, testId: string, timeout = 20000): Promise<Frame> {
     const deadline = Date.now() + timeout;
@@ -135,6 +138,58 @@ test.describe('JJ View Container E2E', () => {
         await expect(newHeader).toBeVisible({ timeout: 5000 });
         await expect(newHeader.locator('.codicon-chevron-down')).toBeVisible();
         await expect(frame.locator('.scm-resource-item', { hasText: 'a.txt' })).toHaveCount(1);
+    });
+
+    test('Commits to the repository shown in Changes when another repo file is open', async ({ vscode }) => {
+        // One parent folder, two jj repos inside it, opened as a single workspace folder.
+        const parent = mkdtempSync(path.join(os.tmpdir(), 'jj-view-parent-'));
+        const alpha = new TestRepo(path.join(parent, 'alpha'));
+        const beta = new TestRepo(path.join(parent, 'beta'));
+
+        alpha.init();
+        alpha.writeFile('a.txt', 'a1\n');
+        alpha.describe('alpha base');
+        alpha.new();
+        alpha.writeFile('a.txt', 'a2\n');
+
+        beta.init();
+        beta.writeFile('b.txt', 'b1\n');
+        beta.describe('beta base');
+        beta.new();
+
+        const betaHeadBefore = beta.getChangeId('@-');
+
+        // The workspace root is a plain folder holding two repos: enable subfolder detection
+        // (the e2e defaults disable it) and wait for any discovered repository.
+        const { page } = await vscode.openWorkspace(
+            { path: parent, waitForRepository: false },
+            { 'jj-view.autoRepositoryDetection': true },
+        );
+
+        // The active editor belongs to beta while the Changes view targets alpha.
+        await openFileInEditor(vscode, page, 'b.txt');
+        await vscode.executeCommand('jj-view.reposView.focus');
+        const reposFrame = await getWebviewFrame(page, 'jj-repos-root');
+        await expect.poll(() => reposFrame.locator('[data-testid="jj-repo-row"]').count(), { timeout: 5000 }).toBe(2);
+
+        const alphaRow = reposFrame.locator('[data-testid="jj-repo-row"]', { hasText: 'alpha' }).first();
+        await expect(alphaRow).toBeVisible({ timeout: 5000 });
+        await alphaRow.locator('button').first().click();
+
+        await vscode.executeCommand('jj-view.changesView.focus');
+        const frame = await getWebviewFrame(page, 'jj-changes-root');
+        await frame.locator('[data-testid="scm-input-textarea"]').fill('commit to alpha');
+        // The Changes view commits through the view title button, which runs this command.
+        await vscode.executeCommand('jj-view.commit');
+
+        // beta must stay exactly as it was: no commit may land in the repository that merely
+        // owns the active editor.
+        expect(beta.getLog('@-', 'description')).toBe('beta base');
+        expect(beta.getChangeId('@-')).toBe(betaHeadBefore);
+
+        // alpha must receive the commit.
+        expect(alpha.getLog('@-', 'description')).toContain('commit to alpha');
+        expect(alpha.getFileContent('@-', 'a.txt')).toBe('a2\n');
     });
 
     test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {

@@ -87,7 +87,13 @@ export interface VSCodeFixture {
     userDataDir: string;
     requestReset(): void;
     openWorkspace(
-        repo: { path: string },
+        /**
+         * `path` is the workspace root. Set `waitForRepository: false` for the
+         * multi-project layout: the root is a plain folder and the repositories live in
+         * subfolders, so the fixture waits for any discovered repository instead of the
+         * root one.
+         */
+        repo: { path: string; waitForRepository?: boolean },
         extraSettings?: Record<string, unknown>,
         extraEnv?: Record<string, string | undefined>,
         showNotifications?: boolean,
@@ -821,9 +827,14 @@ export class VSCodeWorker {
                     const settings = settingsVal as Record<string, unknown>;
                     const defaultSettings = defaultSettingsVal as Record<string, unknown>;
 
-                    // Validate that all extension-specific settings are registered in package.json
-                    const extension = vscode.extensions.all.find(
-                        (e) => e.id.endsWith('.jj-view') || e.id === 'jj-view',
+                    // Validate that all extension-specific settings are registered in package.json.
+                    // Find the extension by its contributed settings instead of a hardcoded id:
+                    // the id changed once already (`jj-view` -> `jj-view-local`), and looking it
+                    // up by id made every `jj-view.*` setting look unregistered.
+                    const extension = vscode.extensions.all.find((e) =>
+                        Object.keys(e.packageJSON?.contributes?.configuration?.properties ?? {}).some((key) =>
+                            key.startsWith('jj-view.'),
+                        ),
                     );
                     const properties = extension?.packageJSON?.contributes?.configuration?.properties || {};
                     const registered = new Set(Object.keys(properties));
@@ -1067,8 +1078,15 @@ export class VSCodeFixtureImpl implements VSCodeFixture {
         return isClean;
     }
 
+    /**
+     * @param repo.path workspace root. It may be a plain folder when `waitForRepository`
+     *   is false — the multi-project case, where the repositories live in subfolders and
+     *   the root itself is not a repository.
+     * @param repo.waitForRepository set to false to wait for any discovered repository
+     *   instead of the root repository (default: wait for the root).
+     */
     async openWorkspace(
-        repo: { path: string },
+        repo: { path: string; waitForRepository?: boolean },
         extraSettings: Record<string, unknown> = {},
         extraEnv: Record<string, string | undefined> = {},
         showNotifications = false,
@@ -1095,6 +1113,14 @@ export class VSCodeFixtureImpl implements VSCodeFixture {
             await this.dismissActiveUI();
         }
         logPerf('openWorkspace: dismiss UI', dismissStart);
+
+        if (repo.waitForRepository === false) {
+            // Parent-folder workspace: the root is not a repository, so wait until the
+            // extension has discovered (and activated for) the repositories below it.
+            await this.waitForAnyRepository(repo.path);
+            logPerf('openWorkspace: total', start);
+            return this.activeContext;
+        }
 
         if (skipRepoSync) {
             logPerf('openWorkspace: total', start);
@@ -1200,6 +1226,22 @@ export class VSCodeFixtureImpl implements VSCodeFixture {
 
         logPerf('openWorkspace: total', start);
         return this.activeContext;
+    }
+
+    /** Waits until the repository manager reports at least one discovered repository. */
+    private async waitForAnyRepository(rootPath: string): Promise<void> {
+        const start = Date.now();
+        await this.evaluate(async (_vscode, api, targetPath) => {
+            const deadline = Date.now() + 15000;
+            while (Date.now() < deadline) {
+                if ((api.repositoryManager.repositories?.length ?? 0) > 0) {
+                    return;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+            throw new Error(`Timeout waiting for a repository to be discovered under ${targetPath}.`);
+        }, rootPath);
+        logPerf('openWorkspace: any repository', start);
     }
 
     requestReset(): void {
