@@ -75,6 +75,13 @@
 
 ### 结论（已解决）
 
+- **diff 段缺失（行号错位）**：`jj diff -r <commit>` 的 hunk 用"该提交时文件的行号"，
+  后续提交在上方插入行后，用当前行号去查必然 miss。
+  已实现**方案 C（本地行映射）**：`jj file show -r <commit>` 取提交版本全文（按 commit+file 缓存），
+  与编辑器 buffer 文本用 `diff`（jsdiff `diffArrays`）建"buffer 行 → 提交行"映射，
+  再查 hunk。用 buffer 文本映射，所以未保存的编辑也正确；映射不到的改写行不显示 diff。
+  新增 `src/core/blame/line-map.ts` + 6 个单测 + e2e（后续提交插入 5 行后仍显示 `+ second line`）。
+
 - **H2 生效**：`registerHoverProvider` + 整行 range 已经让"悬停 blame 文本"正常出 tooltip。
 - 之前误判"死区"的原因：e2e 的悬停坐标算错了 —— 伪元素宿主可能是整行容器，`getBoundingClientRect().right`
   是编辑区右边界而不是 blame 文本起点；改为"行文本末端 + 45px"后用例通过。

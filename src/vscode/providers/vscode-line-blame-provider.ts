@@ -16,6 +16,7 @@ import {
     lineBlameCacheKey,
     pickLineChange,
 } from '../../core/blame/line-blame';
+import { buildBufferToCommitLineMap } from '../../core/blame/line-map';
 import type { JjRepository } from '../../core/jj-repository';
 import type { JjRepositoryManager } from '../../core/jj-repository-manager';
 import { parseDiff } from '../../core/patch-helper';
@@ -53,6 +54,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
     private readonly _detailsCache = new Map<string, CommitDetails | undefined>();
     private readonly _parentCache = new Map<string, LineAnnotation[] | undefined>();
     private readonly _diffCache = new Map<string, readonly DiffChunkLike[] | undefined>();
+    private readonly _contentCache = new Map<string, string[] | undefined>();
     private _timer: ReturnType<typeof setTimeout> | undefined;
     private _disposed = false;
     private _requestId = 0;
@@ -313,6 +315,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
                               contentSignature,
                               window,
                               line,
+                              document,
                           ),
                   }
                 : undefined,
@@ -403,6 +406,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         contentSignature: string,
         window: { from: number; to: number } | undefined,
         line: number,
+        document: vscode.TextDocument,
     ): Promise<string> {
         const start = Date.now();
         const config = vscode.workspace.getConfiguration('jj-view');
@@ -410,7 +414,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         let markdown: string;
         if (uncommitted) {
             const [diff, parentAnnotations] = await Promise.all([
-                showDiff ? this._getLineChange(repo, annotation.commitId, relativePath, line) : undefined,
+                showDiff ? this._getLineChange(repo, annotation.commitId, relativePath, line, document) : undefined,
                 this._getParentAnnotations(repo, root, contentSignature, relativePath, workingCopyCommitId, window),
             ]);
             const parentAnnotation = findAnnotation(parentAnnotations, line);
@@ -420,7 +424,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             markdown = formatUncommittedHoverMarkdown(parentAnnotation, parentDetails, diff);
         } else {
             const [diff, details] = await Promise.all([
-                showDiff ? this._getLineChange(repo, annotation.commitId, relativePath, line) : undefined,
+                showDiff ? this._getLineChange(repo, annotation.commitId, relativePath, line, document) : undefined,
                 this._getCommitDetails(repo, annotation.commitId),
             ]);
             markdown = formatHoverMarkdown(annotation, details, diff);
@@ -551,7 +555,42 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         revision: string,
         relativePath: string,
         zeroBasedLine: number,
+        document: vscode.TextDocument,
     ): Promise<LineChange | undefined> {
+        const chunks = await this._getDiffChunks(repo, revision, relativePath);
+        if (!chunks) {
+            return undefined;
+        }
+
+        const direct = pickLineChange(chunks, zeroBasedLine + 1);
+        if (direct) {
+            return direct;
+        }
+
+        // The hunks use the line numbers of the file at that commit, so later inserts above
+        // the line make the direct lookup miss. Map the buffer line onto the committed
+        // version and retry; the mapping uses the buffer text, so unsaved edits are fine too.
+        const commitLines = await this._getCommitContent(repo, revision, relativePath);
+        if (!commitLines) {
+            return undefined;
+        }
+        const bufferToCommit = buildBufferToCommitLineMap(commitLines, document.getText().split('\n'));
+        const commitLine = bufferToCommit.get(zeroBasedLine);
+        if (commitLine === undefined) {
+            this._outputChannel?.debug?.(`[LineBlame] diff miss ${relativePath}:${zeroBasedLine + 1} (rewritten line)`);
+            return undefined;
+        }
+        this._outputChannel?.debug?.(
+            `[LineBlame] diff remapped ${relativePath}:${zeroBasedLine + 1} -> ${commitLine + 1}`,
+        );
+        return pickLineChange(chunks, commitLine + 1);
+    }
+
+    private async _getDiffChunks(
+        repo: JjRepository,
+        revision: string,
+        relativePath: string,
+    ): Promise<readonly DiffChunkLike[] | undefined> {
         const key = `${revision}|${relativePath}`;
         if (!this._diffCache.has(key)) {
             let chunks: readonly DiffChunkLike[] | undefined;
@@ -565,9 +604,30 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             this._diffCache.set(key, chunks);
             this._trimMap(this._diffCache);
         }
+        return this._diffCache.get(key);
+    }
 
-        const chunks = this._diffCache.get(key);
-        return chunks ? pickLineChange(chunks, zeroBasedLine + 1) : undefined;
+    /** File content at a commit, cached: a commit never changes once it is created. */
+    private async _getCommitContent(
+        repo: JjRepository,
+        revision: string,
+        relativePath: string,
+    ): Promise<string[] | undefined> {
+        const key = `${revision}|${relativePath}`;
+        if (this._contentCache.has(key)) {
+            return this._contentCache.get(key);
+        }
+        let lines: string[] | undefined;
+        try {
+            const content = await repo.jj.cat(relativePath, revision);
+            lines = content.split('\n');
+        } catch (error: unknown) {
+            lines = undefined;
+            this._outputChannel?.debug?.(`[LineBlame] content lookup failed for ${relativePath}: ${String(error)}`);
+        }
+        this._contentCache.set(key, lines);
+        this._trimMap(this._contentCache);
+        return lines;
     }
 
     private _trimMap<T>(map: Map<string, T>): void {

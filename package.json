@@ -3,7 +3,7 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.2.3",
+    "version": "3.2.4",
     "license": "Apache-2.0",
     "author": "perphyyoung",
     "repository": {
@@ -94,7 +94,6 @@
                     "default": 400,
                     "description": "Delay (ms) after an edit before the line blame is recomputed. The blame is hidden while editing."
                 },
-
                 "jj-view.lineBlame.maxFileLines": {
                     "type": "number",
                     "default": 5000,
@@ -1229,6 +1228,7 @@
         "@parcel/watcher": "^2.5.6",
         "@vscode-elements/elements": "^2.4.0",
         "@vscode/codicons": "^0.0.45",
+        "diff": "^9.0.0",
         "parse-diff": "^0.11.1",
         "pathe": "^2.0.3",
         "prettier": "^3.8.1",
