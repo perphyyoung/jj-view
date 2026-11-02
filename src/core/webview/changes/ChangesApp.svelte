@@ -37,6 +37,8 @@ interface StatePayload {
     focusedRoot?: string;
     snapshot?: WireSnapshot;
     viewMode?: 'list' | 'tree';
+    /** Change whose group must be expanded and scrolled into view (one shot). */
+    revealChangeId?: string;
 }
 
 interface InitPayload extends StatePayload {
@@ -89,12 +91,28 @@ function hydrate(wire: WireSnapshot | undefined): ScmSnapshot | undefined {
     return { ...(wire as unknown as ScmSnapshot), workingCopyStatuses: new Map() };
 }
 
+let revealedChangeId = $state<string | undefined>(undefined);
+
 function applyState(payload: StatePayload): void {
     repos = payload.repos ?? [];
     focusedRoot = payload.focusedRoot;
     snapshot = hydrate(payload.snapshot);
     viewMode = payload.viewMode ?? viewMode;
+    if (payload.revealChangeId) {
+        revealedChangeId = payload.revealChangeId;
+    }
 }
+
+$effect(() => {
+    const changeId = revealedChangeId;
+    if (!changeId) {
+        return;
+    }
+    requestAnimationFrame(() => {
+        const header = document.querySelector<HTMLElement>(`[data-change-id="${CSS.escape(changeId)}"]`);
+        header?.scrollIntoView({ block: 'nearest' });
+    });
+});
 
 useMessageListener<Record<string, unknown>>((raw) => {
     const type = raw?.type;
@@ -293,6 +311,7 @@ $effect(() => {
                 compactInput
                 {viewMode}
                 expandAncestors={false}
+                {revealedChangeId}
                 onOpenResource={(state) => openResource(state)}
                 onDescriptionChange={(message) =>
                     post({ type: 'draft', payload: { root: focusedRoot, description: message } })}

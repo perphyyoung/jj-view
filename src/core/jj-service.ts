@@ -1161,6 +1161,17 @@ export class JjService {
             .filter((line) => line.length > 0);
     }
 
+    async getParents(revision: string = '@'): Promise<string[]> {
+        const output = await this.run('log', ['-r', `parents(${revision})`, '--no-graph', '-T', 'change_id ++ "\\n"'], {
+            useCachedSnapshot: true,
+            label: 'getParents',
+        });
+        return output
+            .trim()
+            .split('\n')
+            .filter((line) => line.length > 0);
+    }
+
     /**
      * Checks which of the provided paths are tracked by jj.
      * @param paths An array of workspace-relative paths to check.

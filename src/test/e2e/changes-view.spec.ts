@@ -99,6 +99,44 @@ test.describe('JJ View Container E2E', () => {
         expect(repo.getFileContent('@', 'b.txt')).toBe('b\n');
     });
 
+    test('Expands the group of a commit created by splitting an ancestor file', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('base.txt', 'base\n');
+        repo.describe('base');
+        repo.new();
+        repo.writeFile('a.txt', 'a\n');
+        repo.describe('target');
+        repo.new();
+
+        const targetId = repo.getChangeId('@-');
+        const baseId = repo.getChangeId('@--');
+
+        const { page } = await vscode.openWorkspace(repo);
+
+        await vscode.executeCommand('jj-view.changesView.focus');
+        const frame = await getWebviewFrame(page, 'jj-changes-root');
+
+        // Ancestor groups start collapsed: expand the one that owns the file. Click the
+        // chevron: the header centre is covered by the inline action buttons.
+        const targetHeader = frame.locator(`[data-change-id="${targetId}"]`);
+        await expect(targetHeader).toBeVisible({ timeout: 5000 });
+        await targetHeader.locator('.chevron-icon').click();
+
+        const row = frame.locator('.scm-resource-item', { hasText: 'a.txt' }).first();
+        await expect(row).toBeVisible({ timeout: 5000 });
+        await row.click({ button: 'right' });
+        await frame.locator('button.menu-item', { hasText: 'Split File into New Commit Below' }).click();
+
+        // The new commit lands between base and target and must be shown expanded.
+        await expect.poll(() => repo.getChildren(baseId).length, { timeout: 5000 }).toBe(1);
+        const [newId] = repo.getChildren(baseId);
+        const newHeader = frame.locator(`[data-change-id="${newId}"]`);
+        await expect(newHeader).toBeVisible({ timeout: 5000 });
+        await expect(newHeader.locator('.codicon-chevron-down')).toBeVisible();
+        await expect(frame.locator('.scm-resource-item', { hasText: 'a.txt' })).toHaveCount(1);
+    });
+
     test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();

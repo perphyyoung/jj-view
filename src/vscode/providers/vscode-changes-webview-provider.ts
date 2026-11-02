@@ -67,6 +67,8 @@ type HostMessage =
 export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
     private _view?: vscode.WebviewView;
     private _disposed = false;
+    /** One-shot change id the webview must expand and scroll to on the next state push. */
+    private _revealChangeId: string | undefined;
     private readonly _disposables: vscode.Disposable[] = [];
     private _viewDisposables: vscode.Disposable[] = [];
     private readonly _snapshotSubscriptions = new Map<string, { dispose(): void }>();
@@ -114,8 +116,27 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
             this._disposables.push(
                 vscode.commands.registerCommand('jj-view.changesAsTree', () => this._setViewMode('tree')),
                 vscode.commands.registerCommand('jj-view.changesAsList', () => this._setViewMode('list')),
+                vscode.commands.registerCommand('jj-view.revealChangesGroup', (args: unknown) =>
+                    this._revealChangesGroup(args),
+                ),
             );
         }
+    }
+
+    /**
+     * Expands (and scrolls to) the changes group of the given change. Used after a split so
+     * the newly created commit is not hidden inside a collapsed ancestor group.
+     */
+    private _revealChangesGroup(args: unknown): void {
+        const payload = (args ?? {}) as { root?: string; changeId?: string };
+        if (!payload.changeId) {
+            return;
+        }
+        if (payload.root) {
+            this._focus(payload.root);
+        }
+        this._revealChangeId = payload.changeId;
+        this._postState();
     }
 
     private get _viewMode(): 'list' | 'tree' {
@@ -307,6 +328,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         focusedRoot: string | undefined;
         snapshot: ChangesWireSnapshot | undefined;
         viewMode: 'list' | 'tree';
+        revealChangeId: string | undefined;
     } {
         const repos = this._repositoryManager.repositories.map((repo) => {
             const root = repo.rootUri.fsPath;
@@ -322,11 +344,16 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         const focusedRoot = this._repositoryManager.focusedRepository?.rootUri.fsPath;
         const focusedSnapshot = focusedRoot ? this._scmProviders.get(focusedRoot)?.scmModel.snapshot : undefined;
 
+        // One-shot: the webview consumes it and the next push must not re-expand.
+        const revealChangeId = this._revealChangeId;
+        this._revealChangeId = undefined;
+
         return {
             repos,
             focusedRoot,
             snapshot: this._mode === 'changes' && focusedSnapshot ? toWireSnapshot(focusedSnapshot) : undefined,
             viewMode: this._viewMode,
+            revealChangeId,
         };
     }
 

@@ -45,8 +45,14 @@ async function splitFileIntoNewCommit(
 
     const revision = payload?.revision || '@';
     const label = `Splitting file into a new commit ${placement}...`;
+    const neighbourOf = (rev: string) =>
+        placement === 'above' ? ctx.repo.jj.getChildren(rev) : ctx.repo.jj.getParents(rev);
 
     try {
+        // The new commit has no id we know upfront: it is whatever neighbour appears
+        // around the source revision after the operation.
+        const before = await neighbourOf(revision).catch(() => [] as string[]);
+
         await ctx.host.ui.withProgress(label, () =>
             ctx.repo.jj.squashRevision({
                 paths: [path],
@@ -56,6 +62,15 @@ async function splitFileIntoNewCommit(
             }),
         );
         await ctx.repo.refresh({ reason: `after split file into a new commit ${placement}` });
+
+        const after = await neighbourOf(revision).catch(() => [] as string[]);
+        const newChangeId = after.find((id) => !before.includes(id));
+        if (newChangeId) {
+            await ctx.host.commands.executeCommand('jj-view.revealChangesGroup', {
+                root: ctx.repo.rootUri.fsPath,
+                changeId: newChangeId,
+            });
+        }
     } catch (e: unknown) {
         await showJjError(ctx.host.ui, e, `Error splitting file into a new commit ${placement}`, ctx.repo.jj, ctx.log);
     }

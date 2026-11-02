@@ -54,6 +54,14 @@ let {
 
 // svelte-ignore state_referenced_locally
 let isExpanded = $state(expanded);
+
+// A reveal request can arrive after mount (e.g. the commit created by a split), so honour
+// a later `expanded` flip without ever collapsing the group behind the user's back.
+$effect(() => {
+    if (expanded) {
+        isExpanded = true;
+    }
+});
 const groupContext = $derived(
     rootContext.createScoped({
         scmResourceGroupState: contextValue,
@@ -103,6 +111,7 @@ const groupVsCodeContext = $derived(
     <div
         class="group-header"
         data-testid={`scm-group-header-${id}`}
+        data-change-id={changeId}
         data-vscode-context={groupVsCodeContext}
         role="button"
         tabindex="0"
