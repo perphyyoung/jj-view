@@ -5,8 +5,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { expect, type Locator } from '@playwright/test';
-import type { Frame, Page } from 'playwright';
+import { expect, type Frame, type Locator, type Page } from '@playwright/test';
 import { type ExpectedTreeItem, expectTree, type TestRepo } from '../test-repo';
 
 export type { ExpectedTreeItem, TestRepo, TreeEntrySpec } from '../test-repo';

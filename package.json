@@ -3,12 +3,12 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.3.9",
+    "version": "3.3.10",
     "license": "Apache-2.0",
     "author": "perphyyoung",
     "repository": {
         "type": "git",
-        "url": "https://github.com/perphyyoung/jj-view-local"
+        "url": "https://github.com/perphyyoung/jj-view"
     },
     "icon": "media/icon.png",
     "engines": {
@@ -1229,7 +1229,7 @@
     "devDependencies": {
         "@biomejs/biome": "^2.4.12",
         "@playwright/test": "^1.58.0",
-        "@sveltejs/vite-plugin-svelte": "^7.3.0",
+        "@sveltejs/vite-plugin-svelte": "7.3.0",
         "@types/adm-zip": "^0.5.8",
         "@types/mocha": "^10.0.10",
         "@types/node": "22.x",
@@ -1247,14 +1247,14 @@
         "jsonc-parser": "^3.3.1",
         "npm-run-all": "^4.1.5",
         "ovsx": "^0.10.8",
-        "playwright": "^1.58.0",
+        "playwright": "1.58.0",
         "rimraf": "^6.1.2",
         "sinon": "^21.0.1",
-        "svelte-check": "^4.7.6",
         "svgtofont": "^6.5.1",
         "typescript": "^5.9.3",
-        "vite": "^7.3.0",
-        "vitest": "^4.0.16"
+        "vite": "7.3.0",
+        "vitest": "^4.0.16",
+        "which": "^7.0.0"
     },
     "dependencies": {
         "@parcel/watcher": "^2.5.6",
@@ -1268,7 +1268,6 @@
         "svelte": "^5.57.0",
         "ts-pattern": "^5.9.0",
         "vscode-uri": "^3.1.0",
-        "which": "^7.0.0",
         "zod": "^4.4.3"
     }
 }

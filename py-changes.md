@@ -7,12 +7,12 @@
 
 ## 0. 定位
 
-| 维度    | 选择                                                                               |
-| ------- | ---------------------------------------------------------------------------------- |
-| 平台    | 只支持 **Windows 11 x64**，不再产出跨平台包                                        |
-| 网络    | **完全本地化**：不读取远端状态（PR/MR、CI、评论），仅保留手动上传（`jj git push`） |
-| UI 入口 | 活动栏 **JJ View** 容器（Repositories / Changes / JJ Log），原生 SCM 默认不注册    |
-| 发布    | 仅本地 VSIX，不上传 Marketplace / OpenVSX                                          |
+| 维度    | 选择                                                                                                                             |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| 平台    | 只支持 **Windows 11 x64**，不再产出跨平台包                                                                                      |
+| 网络    | **完全本地化**：不读取远端状态（PR/MR、CI、评论），仅保留手动上传（`jj git push`）                                               |
+| UI 入口 | 活动栏 **JJ View** 容器（Repositories / Changes / JJ Log），原生 SCM 默认不注册                                                  |
+| 发布    | 当前只产出本地 VSIX（`pnpm package`）；`release` / `ovsx` / `release:*` 脚本与依赖**保留**，后续可能发布到 Marketplace / OpenVSX |
 
 核心思路：**扩展命令层与数据层不变，新增一个活动栏容器作为主要 UI，原生 SCM 与 Code Forge 降级为可选开关。**
 
@@ -26,7 +26,7 @@
 | `name` / `publisher` | `jj-view-local` / `perphyyoung`                              |
 | `displayName`        | `JJ View Local (unofficial fork)`                            |
 | `license` / `author` | `Apache-2.0` / `perphyyoung`                                 |
-| `repository`         | `https://github.com/perphyyoung/jj-view-local`               |
+| `repository`         | `https://github.com/perphyyoung/jj-view`                     |
 | 图标                 | 沿用上游 `media/icon.png`（Apache-2.0），README 已声明非官方 |
 
 Apache-2.0 合规要点：
