@@ -300,9 +300,13 @@ test.describe('JJ View Container E2E', () => {
         const rows = frame.locator('[data-testid="jj-repo-row"]');
         await expect.poll(() => rows.count(), { timeout: 5000 }).toBe(2);
 
+        const header = page.locator('.pane-header', { hasText: 'Repositories' }).first();
+        await expect(header).toContainText('Workspace', { timeout: 5000 });
+
         // Two changes in alpha, none in beta.
         await vscode.executeCommand('jj-view.reposSort', 'changeCount');
         await expect(rows.first()).toContainText('alpha');
+        await expect(header).toContainText('Changes', { timeout: 5000 });
 
         await vscode.executeCommand('jj-view.reposSort', 'nameDesc');
         await expect(rows.first()).toContainText('beta');

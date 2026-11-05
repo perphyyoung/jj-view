@@ -14,6 +14,7 @@ import {
     isRepoSortKey,
     REPO_SORT_KEYS,
     REPO_SORT_LABELS,
+    REPO_SORT_SHORT_LABELS,
     type RepoSortKey,
     sortRepos,
 } from '../../core/repos/sort-repos';
@@ -169,7 +170,8 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         const current = this._repoSortKey;
         const items = REPO_SORT_KEYS.map((key) => ({
             label: REPO_SORT_LABELS[key],
-            description: key === current ? 'current' : undefined,
+            iconPath: key === current ? new vscode.ThemeIcon('check') : undefined,
+            picked: key === current,
             key,
         }));
         const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Sort repositories by…' });
@@ -295,6 +297,9 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         }
         if (this._mode === 'repos') {
             this._view.title = 'Repositories';
+            // Dimmed text next to the title: the ordering currently in effect, so the button's
+            // state is visible without opening the picker.
+            this._view.description = REPO_SORT_SHORT_LABELS[this._repoSortKey];
             return;
         }
         const focused = this._repositoryManager.focusedRepository;

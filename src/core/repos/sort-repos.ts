@@ -35,6 +35,17 @@ export const REPO_SORT_LABELS: Record<RepoSortKey, string> = {
     conflicts: 'Conflicts First',
 };
 
+/** Compact labels for the view title bar, where space is limited. */
+export const REPO_SORT_SHORT_LABELS: Record<RepoSortKey, string> = {
+    workspace: 'Workspace',
+    name: 'Name A→Z',
+    nameDesc: 'Name Z→A',
+    recentCommit: 'Recent commit',
+    recentUsed: 'Recently used',
+    changeCount: 'Changes',
+    conflicts: 'Conflicts',
+};
+
 export const DEFAULT_REPO_SORT: RepoSortKey = 'workspace';
 
 export function isRepoSortKey(value: unknown): value is RepoSortKey {

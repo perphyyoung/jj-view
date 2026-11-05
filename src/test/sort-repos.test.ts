@@ -4,7 +4,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { isRepoSortKey, REPO_SORT_KEYS, type RepoSortEntry, sortRepos } from '../core/repos/sort-repos';
+import {
+    isRepoSortKey,
+    REPO_SORT_KEYS,
+    REPO_SORT_SHORT_LABELS,
+    type RepoSortEntry,
+    sortRepos,
+} from '../core/repos/sort-repos';
 
 const entry = (name: string, overrides: Partial<RepoSortEntry> = {}): RepoSortEntry => ({
     name,
@@ -70,5 +76,12 @@ describe('sortRepos', () => {
         expect(isRepoSortKey('conflicts')).toBe(true);
         expect(isRepoSortKey('nope')).toBe(false);
         expect(REPO_SORT_KEYS).toContain('recentCommit');
+    });
+
+    it('provides a compact title-bar label for every sort key', () => {
+        for (const key of REPO_SORT_KEYS) {
+            expect(REPO_SORT_SHORT_LABELS[key]?.length ?? 0).toBeGreaterThan(0);
+            expect(REPO_SORT_SHORT_LABELS[key].length).toBeLessThanOrEqual(14);
+        }
     });
 });
