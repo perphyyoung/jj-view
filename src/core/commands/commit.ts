@@ -17,7 +17,11 @@ export async function commitCommand(ctx: CommandContext, payload?: CommitPayload
     }
     try {
         await ctx.host.ui.withProgress('Committing...', () => ctx.repo.jj.commit(description));
-        await ctx.repo.refresh({ reason: 'after commit' });
+        // Force a snapshot: a plain refresh inside the debounce/self-op window can leave the
+        // Changes view showing the pre-commit state until something else forces a refresh.
+        // Force a snapshot: a plain refresh inside the debounce/self-op window can leave the
+        // Changes view showing the pre-commit state until something else forces a refresh.
+        await ctx.repo.refresh({ forceSnapshot: true, reason: 'after commit' });
     } catch (err: unknown) {
         await showJjError(ctx.host.ui, err, 'Error committing change', ctx.repo.jj, ctx.log);
     }

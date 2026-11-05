@@ -94,6 +94,12 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         private readonly _context: vscode.ExtensionContext,
         private readonly _mode: ChangesViewMode,
         private readonly _outputChannel?: LoggerChannel,
+        /**
+         * Creates the SCM provider for a repository when it does not exist yet. The view can
+         * resolve before providers are registered (cold start), and without this the snapshot
+         * subscription would silently never attach, leaving the view stale after a commit.
+         */
+        private readonly _ensureScmProvider?: (repo: JjRepository) => VsCodeScmProvider | undefined,
     ) {
         this._disposables.push(
             this._repositoryManager.onDidChangeRepositories(() =>
@@ -311,7 +317,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 continue;
             }
 
-            const scm = this._scmProviders.get(root);
+            const scm = this._scmProviders.get(root) ?? this._ensureScmProvider?.(repo);
             if (!scm) {
                 continue;
             }
@@ -370,6 +376,9 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         if (this._disposed || !this._view) {
             return;
         }
+        // Self-heal: a provider registered after the last sync would otherwise never be
+        // subscribed, so snapshot events would not reach the webview.
+        this._syncSnapshotSubscriptions();
         this._updateTitle();
         this._post({ type: 'state', payload: this._statePayload() });
     }

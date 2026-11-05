@@ -266,6 +266,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         context,
         'changes',
         outputChannel,
+        // Lazy closure: `ensureScmProvider` is declared below, this only runs on demand.
+        (repo) => ensureScmProvider(repo),
     );
     context.subscriptions.push(
         reposWebviewProvider,

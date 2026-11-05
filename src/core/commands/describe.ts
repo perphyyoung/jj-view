@@ -21,7 +21,7 @@ export async function setDescriptionCommand(
 
     try {
         await ctx.host.ui.withProgress('Setting description...', () => ctx.repo.jj.describe(description, revision));
-        await ctx.repo.refresh({ reason: 'after describe' });
+        await ctx.repo.refresh({ forceSnapshot: true, reason: 'after describe' });
         return description;
     } catch (e: unknown) {
         await showJjError(ctx.host.ui, e, 'Error setting description', ctx.repo.jj, ctx.log);

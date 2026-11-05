@@ -312,6 +312,26 @@ test.describe('JJ View Container E2E', () => {
         await expect(rows.first()).toContainText('alpha');
     });
 
+    test('Clears the Changes view right after committing', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('a.txt', 'a\n');
+
+        const { page } = await vscode.openWorkspace(repo);
+        await vscode.executeCommand('jj-view.changesView.focus');
+        const frame = await getWebviewFrame(page, 'jj-changes-root');
+
+        const row = frame.locator('.scm-resource-item', { hasText: 'a.txt' });
+        await expect(row).toBeVisible({ timeout: 5000 });
+
+        await frame.locator('[data-testid="scm-input-textarea"]').fill('commit it');
+        await vscode.executeCommand('jj-view.commit');
+
+        // No repository switch: the view itself must pick up the post-commit snapshot.
+        await expect(row).toHaveCount(0, { timeout: 5000 });
+        expect(repo.getLog('@-', 'description')).toContain('commit it');
+    });
+
     test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();
