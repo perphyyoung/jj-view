@@ -220,7 +220,15 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     ): vscode.Disposable {
         return registerCommand(
             commandId,
-            async (ctx, ...args) => handler(ctx, payloadCreator(args, scmProviders.get(ctx.repo.rootUri.fsPath))),
+            async (ctx, ...args) => {
+                const result = await handler(ctx, payloadCreator(args, scmProviders.get(ctx.repo.rootUri.fsPath)));
+                if (commandId === 'jj-view.commit' && (result as { committed?: boolean } | undefined)?.committed) {
+                    // The description now lives in the commit; keeping the draft would make the
+                    // next click commit an empty change with the same message.
+                    scmProviders.get(ctx.repo.rootUri.fsPath)?.clearDraft();
+                }
+                return result;
+            },
             { preserveFocus: true },
         );
     }

@@ -172,7 +172,9 @@ $effect(() => {
         />
 
         {#if snapshot?.ancestors}
-            {#each snapshot.ancestors as ancestor, idx (ancestor.prefix)}
+            <!-- Key by the commit, not by its position: a new commit shifts every prefix and
+                 position-keyed rows would keep rendering the previous commit's content. -->
+            {#each snapshot.ancestors as ancestor, idx (`${ancestor.entry.change_id}:${ancestor.prefix}`)}
                 {@const remainingAncestors = snapshot.ancestors.length - 1 - idx}
                 {@const ancestorItems = ancestor.changes.map((c) =>
                     createJjResourceState(c, ancestor.entry.change_id, workspaceRoot, {

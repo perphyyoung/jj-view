@@ -483,6 +483,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         ensureScmProvider(repo);
     }
 
+    // Activation barrier: after a VSIX upgrade the views can resolve before the watchers are
+    // ready, and the first snapshot would then miss later operations. Wait for the watchers,
+    // then force one version-checked snapshot per restored repository.
+    void (async () => {
+        for (const repo of repositoryManager.repositories) {
+            try {
+                await repo.awaitWatchersReady();
+            } catch (err: unknown) {
+                outputChannel.error('[Extension] Watcher readiness check failed', toError(err));
+            }
+        }
+        await Promise.all(
+            repositoryManager.repositories.map(async (repo) => {
+                try {
+                    await repo.refresh({ forceSnapshot: true, checkVersion: true, reason: 'activation barrier' });
+                } catch (err: unknown) {
+                    outputChannel.error('[Extension] Activation refresh failed', toError(err));
+                }
+            }),
+        );
+    })();
+
     // Trigger initial scan (non-blocking)
     if (!resolvedBinaryPath) {
         updateBinaryPath()

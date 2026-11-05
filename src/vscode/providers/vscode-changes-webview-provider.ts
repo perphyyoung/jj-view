@@ -5,6 +5,7 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import type { CommitResult } from '../../core/commands/commit';
 import { ScmContextValue } from '../../core/jj-context-keys';
 import type { JjRepository } from '../../core/jj-repository';
 import type { JjRepositoryManager } from '../../core/jj-repository-manager';
@@ -463,7 +464,11 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         this._syncSnapshotSubscriptions();
         this._requestFocusedSnapshot();
         this._updateTitle();
-        this._post({ type: 'state', payload: this._statePayload() });
+        const payload = this._statePayload();
+        this._post({ type: 'state', payload });
+        this._outputChannel?.info?.(
+            `[Changes] push ${this._mode} epoch=${payload.revision} version=${payload.snapshot?.version?.slice(0, 8) ?? '-'} wc=${payload.snapshot?.workingCopyCount ?? '-'} ancestors=${payload.snapshot?.ancestors.length ?? '-'} first=${payload.snapshot?.ancestors[0]?.entry.change_id ?? '-'}`,
+        );
         this._verifyConsistency();
     }
 
@@ -576,10 +581,14 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                     // the draft) commits the right description.
                     scm.setDraft(description);
                 }
-                await vscode.commands.executeCommand('jj-view.setDescription', description);
-                await vscode.commands.executeCommand('jj-view.commit');
-                // The text is in the commit now: drop it so the next commit cannot reuse it.
-                this._scmProviders.get(root)?.clearDraft();
+                const result = await vscode.commands.executeCommand<CommitResult>('jj-view.commit');
+                if (result?.committed) {
+                    // The text is in the commit now: drop it so the next commit cannot reuse it.
+                    this._scmProviders.get(root)?.clearDraft();
+                }
+                // Push the post-commit state explicitly: the commit already refreshed the
+                // snapshot, so the Changes view must show it even if no event arrives.
+                this._postState();
                 return;
             }
             case 'setDescription': {

@@ -74,7 +74,11 @@ describe('commitCommand', () => {
     test('refreshes the repository after a successful commit', async () => {
         await commitCommand(ctx, { description: 'feat: repo refresh' });
 
-        expect(mockJjRepo.refresh).toHaveBeenCalledWith({ reason: 'after commit' });
+        expect(mockJjRepo.refresh).toHaveBeenCalledWith({
+            forceSnapshot: true,
+            checkVersion: true,
+            reason: 'after commit',
+        });
     });
 
     test('wraps commit execution in a progress UI', async () => {

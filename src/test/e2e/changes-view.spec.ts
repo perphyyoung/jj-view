@@ -325,7 +325,9 @@ test.describe('JJ View Container E2E', () => {
         await vscode.executeCommand('jj-view.changesView.focus');
         const frame = await getWebviewFrame(page, 'jj-changes-root');
 
-        const row = frame.locator('.scm-resource-item', { hasText: 'a.txt' });
+        // Scope to the Working Copy group: after the commit the same file appears in the
+        // (auto-expanded) commit group, which is not what this test asserts.
+        const row = frame.locator('[data-testid="scm-group-working-copy"] .scm-resource-item', { hasText: 'a.txt' });
         await expect(row).toBeVisible({ timeout: 5000 });
 
         await frame.locator('[data-testid="scm-input-textarea"]').fill('commit it');
@@ -383,6 +385,29 @@ test.describe('JJ View Container E2E', () => {
         const changesFrame = await getWebviewFrame(page, 'jj-changes-root');
         await expect(changesFrame.locator(`[data-change-id="${parentId}"]`)).toHaveCount(1, { timeout: 5000 });
         await expect(changesFrame.locator('.scm-resource-item', { hasText: 'b.txt' })).toBeVisible({ timeout: 5000 });
+    });
+
+    test('Committing twice does not create an empty second commit', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('a.txt', 'a\n');
+
+        const { page } = await vscode.openWorkspace(repo);
+        await vscode.executeCommand('jj-view.changesView.focus');
+        const frame = await getWebviewFrame(page, 'jj-changes-root');
+
+        await frame.locator('[data-testid="scm-input-textarea"]').fill('commit it');
+        await vscode.executeCommand('jj-view.commit');
+        await expect.poll(() => repo.getLog('@-', 'description'), { timeout: 5000 }).toContain('commit it');
+
+        const workingCopyAfterFirst = repo.getChangeId('@');
+        const headAfterFirst = repo.getChangeId('@-');
+
+        // Second click with nothing left to commit must be a no-op.
+        await vscode.executeCommand('jj-view.commit');
+
+        expect(repo.getChangeId('@')).toBe(workingCopyAfterFirst);
+        expect(repo.getChangeId('@-')).toBe(headAfterFirst);
     });
 
     test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {
