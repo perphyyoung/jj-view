@@ -163,6 +163,21 @@ export function registerCommands(options: RegisterCommandsOptions): void {
         return { repo, scm };
     }
 
+    /**
+     * After any command, confirm the snapshot matches the repository state. The version check
+     * makes read-only commands cheap: unchanged `op_heads` means the refresh is skipped.
+     */
+    async function refreshAfterCommand(repo: JjRepository, commandId: string): Promise<void> {
+        try {
+            await repo.refresh({ forceSnapshot: true, checkVersion: true, reason: `after ${commandId}` });
+        } catch (error: unknown) {
+            outputChannel.error(
+                `[Command Error] Post-command refresh failed: ${commandId}`,
+                error instanceof Error ? error : new Error(String(error)),
+            );
+        }
+    }
+
     function registerCommandWithPayload<TPayload, TReturn = unknown>(
         commandId: string,
         payloadCreator: (args: unknown[], scm?: VsCodeScmProvider) => TPayload,
@@ -182,7 +197,9 @@ export function registerCommands(options: RegisterCommandsOptions): void {
                 }
                 const cmdCtx = new VSCodeCommandContext(resolved.repo, host, outputChannel);
                 const payload = payloadCreator(args, resolved.scm);
-                return await handler(cmdCtx, payload);
+                const result = await handler(cmdCtx, payload);
+                await refreshAfterCommand(resolved.repo, commandId);
+                return result;
             } else {
                 const message = `[Command Error] Failed to resolve repository for command: ${commandId}`;
                 outputChannel.error(message);
@@ -232,7 +249,9 @@ export function registerCommands(options: RegisterCommandsOptions): void {
                     repositoryManager.setFocusedRepository(resolved.repo);
                 }
                 const cmdCtx = new VSCodeCommandContext(resolved.repo, host, outputChannel);
-                return await handler(cmdCtx, ...args);
+                const result = await handler(cmdCtx, ...args);
+                await refreshAfterCommand(resolved.repo, commandId);
+                return result;
             } else {
                 const message = `[Command Error] Failed to resolve repository for command: ${commandId}`;
                 outputChannel.error(message);

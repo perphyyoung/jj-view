@@ -38,6 +38,8 @@ export interface ScmSnapshot {
     workingCopyCount: number;
     /** Monotonic revision; the webview drops older pushes. */
     revision: number;
+    /** Repository state version this snapshot was computed from. */
+    version?: string;
 }
 
 export class ScmModel implements Disposable {
@@ -45,6 +47,8 @@ export class ScmModel implements Disposable {
     private disposables: Disposable[] = [];
     /** Monotonic revision used by the webview to drop out-of-order pushes. */
     private _revision = 0;
+    /** `op_heads` version the applied snapshot came from. */
+    private _publishedVersion = '';
     private _snapshot: ScmSnapshot | undefined;
     private _selectedCommitIds: string[] = [];
     private _workingCopyStatuses = new Map<string, JjStatusEntry>();
@@ -75,6 +79,11 @@ export class ScmModel implements Disposable {
 
     get snapshot(): ScmSnapshot | undefined {
         return this._snapshot;
+    }
+
+    /** `op_heads` version the current snapshot was computed from ('' when unknown). */
+    get publishedVersion(): string {
+        return this._publishedVersion;
     }
 
     get parentMutable(): boolean {
@@ -208,6 +217,7 @@ export class ScmModel implements Disposable {
                 }
             }
             this._revision += 1;
+            this._publishedVersion = event.version ?? '';
 
             this._snapshot = {
                 currentEntry,
@@ -222,6 +232,7 @@ export class ScmModel implements Disposable {
                 description: currentEntry?.description ? currentEntry.description.trim() : '',
                 workingCopyCount: workingCopyChanges.length,
                 revision: this._revision,
+                version: this._publishedVersion,
             };
 
             await this._onDidChangeSnapshot.fire(this._snapshot);

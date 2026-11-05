@@ -17,8 +17,8 @@ import type { Uri } from './uri-utils';
 interface RefreshPayload {
     forceSnapshot: boolean;
     reasons: Set<string>;
-    /** Repository state version the refresh was requested for. */
-    version?: string;
+    /** Skip the refresh when the repository version did not change since the last apply. */
+    checkVersion: boolean;
 }
 
 export class JjRepository implements Disposable {
@@ -57,6 +57,14 @@ export class JjRepository implements Disposable {
 
                 this._isValid = undefined;
                 try {
+                    // Stamp the state this refresh produces. Reading it here (not when the
+                    // request was queued) keeps the version aligned with the data.
+                    const version = await this.getOpHeadsVersion();
+                    if (options?.checkVersion && version && version === this._lastVersion) {
+                        this._outputChannel.info?.(`[Refresh] skip ${reason} (version unchanged)`);
+                        return;
+                    }
+
                     await this._jj.clearCache();
                     if (options?.forceSnapshot) {
                         await this._jj.status();
@@ -68,12 +76,12 @@ export class JjRepository implements Disposable {
                         `[timing] [Snapshot] refresh took ${duration.toFixed(0)}ms (reason: ${reason})`,
                     );
 
-                    if (options?.version) {
-                        this._lastVersion = options.version;
+                    if (version) {
+                        this._lastVersion = version;
                     }
 
                     if (!this._disposed) {
-                        await this._onDidStatusChange.fire({ reason, version: options?.version });
+                        await this._onDidStatusChange.fire({ reason, version });
                     }
                 } catch (err) {
                     if (!this._disposed) {
@@ -92,7 +100,7 @@ export class JjRepository implements Disposable {
                 mergePayloads: (prev, next) => ({
                     forceSnapshot: prev.forceSnapshot || next.forceSnapshot,
                     reasons: new Set([...prev.reasons, ...next.reasons]),
-                    version: next.version ?? prev.version,
+                    checkVersion: prev.checkVersion || next.checkVersion,
                 }),
                 logger: outputChannel,
             },
@@ -103,16 +111,12 @@ export class JjRepository implements Disposable {
             this._jj,
             outputChannel,
             async (options) => {
-                const version = options?.checkVersion ? await this.getOpHeadsVersion() : undefined;
-                if (version && version === this._lastVersion) {
-                    this._outputChannel.info?.(`[Refresh] skip ${options?.reason ?? 'unknown'} (version unchanged)`);
-                    return;
-                }
                 const payload: RefreshPayload = {
                     forceSnapshot: !!options?.forceSnapshot,
                     reasons: options?.reason ? new Set([options.reason]) : new Set(),
-                    // A version-checked event (op_heads) already carries the state it wants.
-                    version,
+                    // op_heads events carry a version check; the queue decides whether the
+                    // state really changed (the version is read when the refresh runs).
+                    checkVersion: !!options?.checkVersion,
                 };
                 try {
                     await this._refreshQueue.push(payload);
@@ -188,17 +192,12 @@ export class JjRepository implements Disposable {
         if (this._disposed) {
             return;
         }
-        const version = options.checkVersion ? await this.getOpHeadsVersion() : undefined;
-        if (version && version === this._lastVersion) {
-            // Nothing changed since the last applied snapshot (typically our own command,
-            // whose op_heads event arrives after the explicit refresh already ran).
-            this._outputChannel.info?.(`[Refresh] skip ${options.reason ?? 'unknown'} (version unchanged)`);
-            return;
-        }
         const payload: RefreshPayload = {
             forceSnapshot: !!options.forceSnapshot,
             reasons: options.reason ? new Set([options.reason]) : new Set(),
-            version,
+            // The version is read when the refresh runs, so the skip decision and the stamped
+            // version describe the same state.
+            checkVersion: !!options.checkVersion,
         };
         this._refreshQueue.push(payload);
         return this._refreshQueue.flush();

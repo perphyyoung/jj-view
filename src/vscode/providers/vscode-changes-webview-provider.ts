@@ -19,6 +19,7 @@ import {
     type RepoSortKey,
     sortRepos,
 } from '../../core/repos/sort-repos';
+import { StateCoordinator, type VerifiableState } from '../../core/repos/state-coordinator';
 import type { ScmSnapshot } from '../../core/scm-model';
 import { createJjResourceState, type JjResourceState } from '../../core/scm-resource-state';
 import type { Uri } from '../../core/uri-utils';
@@ -86,6 +87,15 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     private _viewDisposables: vscode.Disposable[] = [];
     private readonly _snapshotSubscriptions = new Map<string, { dispose(): void }>();
     private readonly _snapshotGuard: FocusedSnapshotGuard;
+    private readonly _stateCoordinator = new StateCoordinator({
+        onError: (message: string, error?: unknown) => {
+            if (error) {
+                this._outputChannel?.error(message, error instanceof Error ? error : new Error(String(error)));
+            } else {
+                this._outputChannel?.info?.(message);
+            }
+        },
+    });
 
     private static readonly VIEW_MODE_KEY = 'jj-view.changesViewMode';
     private static readonly REPO_SORT_KEY = 'jj-view.reposSortBy';
@@ -420,6 +430,30 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         this._snapshotGuard.run();
     }
 
+    /**
+     * Verifies that the data behind each view matches the repository truth and repairs the
+     * stale side. Runs from `_postState`, so it does not depend on a view being visible.
+     */
+    private _verifyConsistency(): void {
+        const repos = this._repositoryManager.repositories;
+        const targets = this._mode === 'changes' ? repos.filter((repo) => repo.isFocused) : repos;
+        const verifiable: VerifiableState[] = targets.map((repo) => ({
+            root: repo.rootUri.fsPath,
+            truth: () => repo.getOpHeadsVersion(),
+            snapshotVersion: () => this._scmProviders.get(repo.rootUri.fsPath)?.scmModel.publishedVersion,
+            repairSnapshot: async () => {
+                const scm = this._scmProviders.get(repo.rootUri.fsPath) ?? this._ensureScmProvider?.(repo);
+                await scm?.refresh({ forceSnapshot: true, reason: 'consistency repair' });
+            },
+        }));
+        void this._stateCoordinator.verifyAndRepair(verifiable, `${this._mode} view`).catch((error: unknown) => {
+            this._outputChannel?.error(
+                '[Consistency] Verification failed',
+                error instanceof Error ? error : new Error(String(error)),
+            );
+        });
+    }
+
     private _postState(): void {
         if (this._disposed || !this._view) {
             return;
@@ -430,6 +464,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         this._requestFocusedSnapshot();
         this._updateTitle();
         this._post({ type: 'state', payload: this._statePayload() });
+        this._verifyConsistency();
     }
 
     private _statePayload(): {

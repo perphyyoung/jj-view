@@ -49,6 +49,10 @@ export class LogViewController implements Disposable {
     private readonly _refreshQueue: CoalescingQueue;
 
     private _commits: readonly JjLogEntry[] = [];
+    /** `op_heads` version the current commits were queried from. */
+    private _commitsVersion = '';
+    /** Guards the one-shot retry when the repository moves during a log query. */
+    private _retryingVersionChange = false;
     private _selectedCommitIds: readonly string[] = [];
     private _highlightedCommitId: string | undefined = undefined;
     private _hiddenActions: readonly ToggleableCommitAction[] = [];
@@ -143,11 +147,17 @@ export class LogViewController implements Disposable {
     public getState(): LogViewPayload {
         return {
             commits: [...this._commits],
+            version: this._commitsVersion,
             minChangeIdLength: this._minChangeIdLength,
             theme: this._theme,
             graphLabelAlignment: this._graphLabelAlignment,
             hiddenActions: [...this._hiddenActions],
         };
+    }
+
+    /** `op_heads` version of the currently rendered commits ('' when unknown). */
+    public get commitsVersion(): string {
+        return this._commitsVersion;
     }
 
     public get repository(): JjRepository | undefined {
@@ -198,6 +208,7 @@ export class LogViewController implements Disposable {
             this._logger?.info?.(
                 `[LogViewController] ${this._repo ? this._repo.rootUri.fsPath : 'No repository'} is not valid. Clearing commits.`,
             );
+            this._commitsVersion = '';
             this.setCommits([]);
             return;
         }
@@ -209,6 +220,7 @@ export class LogViewController implements Disposable {
             const start = performance.now();
             const remoteDepth = this._host.config.get<number>('remoteLogDepth', DEFAULT_REMOTE_LOG_DEPTH);
             const logLimit = this._host.config.get<number>('logLimit', DEFAULT_LOG_LIMIT);
+            const versionBefore = await this._repo.getOpHeadsVersion();
             const revision = await this._resolveLogRevision(jj, remoteDepth);
             const commits = await jj.getLog({
                 omitChanges: true,
@@ -225,6 +237,22 @@ export class LogViewController implements Disposable {
                 return;
             }
 
+            // The repository moved while jj was running: these commits describe an older
+            // state, which is how the log and the Changes view ended up disagreeing.
+            const versionAfter = await this._repo.getOpHeadsVersion();
+            if (versionBefore && versionAfter && versionBefore !== versionAfter) {
+                this._logger?.info?.(
+                    `[LogViewController] Repository changed during fetch (${versionBefore.slice(0, 8)} -> ${versionAfter.slice(0, 8)}). Refetching once.`,
+                );
+                if (!this._retryingVersionChange) {
+                    this._retryingVersionChange = true;
+                    this.refresh('version changed during fetch');
+                    return;
+                }
+            }
+
+            this._retryingVersionChange = false;
+            this._commitsVersion = versionBefore;
             this.setCommits(commits);
 
             const duration = performance.now() - start;
