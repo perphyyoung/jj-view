@@ -32,16 +32,12 @@ export async function commitCommand(ctx: CommandContext, payload?: CommitPayload
     }
     try {
         const jj = ctx.repo.jj;
-        const [before, currentDescription] = await Promise.all([
-            jj.getLog({ revision: '@', limit: 1 }),
-            jj.getDescription('@'),
-        ]);
-        const pending = before[0]?.changes?.length ?? 0;
-        // Idempotent: a second click finds an empty working copy whose description already
-        // matches, and must not create another empty commit. An explicit new description on
-        // an empty working copy still commits (creating an empty commit is intentional then).
-        if (pending === 0 && currentDescription.trim() === description) {
-            ctx.log.info?.('[Commit] nothing to commit: the working copy is empty and the description is unchanged');
+        const before = await jj.getLog({ revision: '@', limit: 1 });
+        // No empty commits under any condition: a commit must carry changes. This also makes
+        // the button idempotent — a second click finds nothing to commit and does nothing.
+        if ((before[0]?.changes?.length ?? 0) === 0) {
+            ctx.log.info?.('[Commit] rejected: nothing to commit (empty working copy)');
+            await ctx.host.ui.showInformation('Empty commits are not allowed.');
             return { committed: false };
         }
 

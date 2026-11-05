@@ -34,6 +34,7 @@ describe('commitCommand', () => {
 
     test('commits change successfully with empty description', async () => {
         repo.new(undefined, 'initial');
+        repo.writeFile('a.txt', 'a\n');
         const initialId = repo.getChangeId('@');
 
         await commitCommand(ctx, { description: '   ' });
@@ -47,6 +48,7 @@ describe('commitCommand', () => {
 
     test('commits change successfully', async () => {
         repo.new(undefined, 'initial');
+        repo.writeFile('a.txt', 'a\n');
         const initialId = repo.getChangeId('@');
 
         await commitCommand(ctx, { description: 'feat: my change' });
@@ -71,7 +73,20 @@ describe('commitCommand', () => {
         expect(brokenCtx.host.ui.errorMessages[0]).toContain('Error committing change');
     });
 
+    test('refuses to create an empty commit and explains why', async () => {
+        repo.new(undefined, 'initial');
+        const before = repo.getChangeId('@');
+
+        const result = await commitCommand(ctx, { description: 'feat: empty' });
+
+        expect(result.committed).toBe(false);
+        expect(repo.getChangeId('@')).toBe(before);
+        expect(ctx.host.ui.infoMessages).toContain('Empty commits are not allowed.');
+    });
+
     test('refreshes the repository after a successful commit', async () => {
+        repo.writeFile('a.txt', 'a\n');
+
         await commitCommand(ctx, { description: 'feat: repo refresh' });
 
         expect(mockJjRepo.refresh).toHaveBeenCalledWith({
@@ -82,6 +97,7 @@ describe('commitCommand', () => {
     });
 
     test('wraps commit execution in a progress UI', async () => {
+        repo.writeFile('a.txt', 'a\n');
         const withProgressSpy = vi.spyOn(ctx.host.ui, 'withProgress');
 
         await commitCommand(ctx, { description: 'feat: progress test' });
@@ -94,6 +110,7 @@ describe('commitCommand', () => {
         ctx.host.config.set('commit.bodyWidthRuler', 20);
 
         repo.new(undefined, 'initial');
+        repo.writeFile('a.txt', 'a\n');
         const initialId = repo.getChangeId('@');
 
         const longMsg = 'Title\n\nThis is a long body description that should be wrapped.';
