@@ -22,7 +22,9 @@ describe('ChangeDetectionManager', () => {
     let host: FakeHostEnvironment;
     let changeManager: ChangeDetectionManager | undefined;
     let outputChannel: LoggerChannel;
-    let triggerRefreshSpy: Mock<(event: { forceSnapshot: boolean; reason: string }) => Promise<void>>;
+    let triggerRefreshSpy: Mock<
+        (event: { forceSnapshot: boolean; reason: string; checkVersion?: boolean }) => Promise<void>
+    >;
 
     beforeEach(async () => {
         repo = new TestRepo();
@@ -209,6 +211,7 @@ describe('ChangeDetectionManager', () => {
             expect(triggerRefreshSpy).toHaveBeenCalledWith({
                 forceSnapshot: true,
                 reason: 'deferred watcher event',
+                checkVersion: false,
             });
         });
 
@@ -289,6 +292,7 @@ describe('ChangeDetectionManager', () => {
                 expect(triggerRefreshSpy).toHaveBeenCalledWith({
                     forceSnapshot: false,
                     reason: 'op_heads watcher reconnected',
+                    checkVersion: true,
                 });
             });
         });
@@ -319,13 +323,14 @@ describe('ChangeDetectionManager', () => {
                     expect(triggerRefreshSpy).toHaveBeenCalledWith({
                         forceSnapshot: true,
                         reason: 'deferred watcher event',
+                        checkVersion: false,
                     });
                 },
                 { timeout: 2000, interval: 50 },
             );
         });
 
-        it('ignores op_heads changes produced by our own jj commands', async () => {
+        it('forwards self-produced op_heads changes with a version check', async () => {
             host.config.set('fileWatcherMode', 'watch');
             setPrivate(jj, '_lastWriteTime', Date.now());
             changeManager = new ChangeDetectionManager(repo.path, jj, outputChannel, triggerRefreshSpy, host);
@@ -335,8 +340,15 @@ describe('ChangeDetectionManager', () => {
             const headsDir = path.join(repo.path, '.jj', 'repo', 'op_heads', 'heads');
             await fs.writeFile(path.join(headsDir, 'self-produced-op'), 'op');
 
-            await new Promise((resolve) => setTimeout(resolve, 800));
-            expect(triggerRefreshSpy).not.toHaveBeenCalled();
+            // The manager no longer drops these by time: the repository compares the op_heads
+            // version and skips only when the state really did not change.
+            await vi.waitFor(
+                () => {
+                    const forwarded = triggerRefreshSpy.mock.calls.some((call) => call[0]?.checkVersion === true);
+                    expect(forwarded, 'self-produced op_heads event must reach the repository').toBe(true);
+                },
+                { timeout: 2000, interval: 50 },
+            );
         });
 
         it('refreshes on op_heads changes that are not self-produced', async () => {
@@ -354,6 +366,7 @@ describe('ChangeDetectionManager', () => {
                     expect(triggerRefreshSpy).toHaveBeenCalledWith({
                         forceSnapshot: false,
                         reason: 'jj operation',
+                        checkVersion: true,
                     });
                 },
                 { timeout: 5000, interval: 100 },
@@ -724,6 +737,7 @@ describe('ChangeDetectionManager', () => {
                     expect(triggerRefreshSpy).toHaveBeenCalledWith({
                         forceSnapshot: true,
                         reason: 'deferred watcher event',
+                        checkVersion: false,
                     });
                 },
                 { timeout: 2000, interval: 50 },

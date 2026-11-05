@@ -438,6 +438,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         snapshot: ChangesWireSnapshot | undefined;
         viewMode: 'list' | 'tree';
         revealChangeId: string | undefined;
+        revision: number;
     } {
         const rows = this._repositoryManager.repositories.map((repo) => {
             const root = repo.rootUri.fsPath;
@@ -468,6 +469,8 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
             snapshot: this._mode === 'changes' && focusedSnapshot ? toWireSnapshot(focusedSnapshot) : undefined,
             viewMode: this._viewMode,
             revealChangeId,
+            // Lets the webview drop a state that arrives after a newer one.
+            revision: focusedSnapshot?.revision ?? 0,
         };
     }
 
@@ -699,5 +702,6 @@ function toWireSnapshot(snapshot: ScmSnapshot): ChangesWireSnapshot {
         hasChild: snapshot.hasChild,
         description: snapshot.description,
         workingCopyCount: snapshot.workingCopyCount,
+        revision: snapshot.revision,
     };
 }

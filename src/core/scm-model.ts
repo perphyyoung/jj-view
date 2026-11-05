@@ -11,6 +11,7 @@ import { ScmContextValue } from './jj-context-keys';
 import type { JjRepository } from './jj-repository';
 import type { JjService } from './jj-service';
 import type { CommitParent, JjLogEntry, JjStatusEntry } from './jj-types';
+import { isStaleSnapshot } from './repos/op-heads-version';
 import { encodeJjViewQuery, getRepoRelativePath, getRevisionFromUri, Uri } from './uri-utils';
 
 export interface ScmAncestorEntry {
@@ -35,11 +36,15 @@ export interface ScmSnapshot {
     hasChild: boolean;
     description: string;
     workingCopyCount: number;
+    /** Monotonic revision; the webview drops older pushes. */
+    revision: number;
 }
 
 export class ScmModel implements Disposable {
     private _disposed = false;
     private disposables: Disposable[] = [];
+    /** Monotonic revision used by the webview to drop out-of-order pushes. */
+    private _revision = 0;
     private _snapshot: ScmSnapshot | undefined;
     private _selectedCommitIds: string[] = [];
     private _workingCopyStatuses = new Map<string, JjStatusEntry>();
@@ -136,7 +141,7 @@ export class ScmModel implements Disposable {
         });
     }
 
-    public async updateSnapshot(event: { reason: string }): Promise<void> {
+    public async updateSnapshot(event: { reason: string; version?: string }): Promise<void> {
         if (this._disposed) {
             return;
         }
@@ -189,6 +194,21 @@ export class ScmModel implements Disposable {
             const workingCopyChanges = currentEntry?.changes || [];
             this._workingCopyStatuses = this.buildWorkingCopyStatusMap(workingCopyChanges, conflictedPaths);
 
+            // The repository may have moved on while jj was running (a slow refresh started
+            // before a commit must not overwrite the fresher result). Compare the state
+            // version captured when the refresh started with the version now.
+            if (event.version) {
+                const current = await this.repo.getOpHeadsVersion();
+                if (isStaleSnapshot(event.version, current)) {
+                    this.outputChannel.info(
+                        `[SCM] Discarding stale snapshot (captured ${event.version.slice(0, 8)}, now ${current.slice(0, 8)})`,
+                    );
+                    void this.repo.refresh({ checkVersion: true, reason: 'snapshot superseded' });
+                    return;
+                }
+            }
+            this._revision += 1;
+
             this._snapshot = {
                 currentEntry,
                 workingCopyChanges,
@@ -201,6 +221,7 @@ export class ScmModel implements Disposable {
                 hasChild: this._hasChild,
                 description: currentEntry?.description ? currentEntry.description.trim() : '',
                 workingCopyCount: workingCopyChanges.length,
+                revision: this._revision,
             };
 
             await this._onDidChangeSnapshot.fire(this._snapshot);

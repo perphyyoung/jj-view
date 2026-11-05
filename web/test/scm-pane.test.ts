@@ -242,6 +242,7 @@ describe('Web SCM Components (SSR & Rendering)', () => {
                 hasChild: false,
                 description: 'feat: working copy changes',
                 workingCopyCount: 1,
+                revision: 1,
             };
 
             const result = render(ScmPane, {
@@ -301,6 +302,7 @@ describe('Web SCM Components (SSR & Rendering)', () => {
                 hasChild: false,
                 description: 'feat: test',
                 workingCopyCount: 2,
+                revision: 2,
             };
 
             const result = render(ScmPane, {

@@ -87,21 +87,6 @@ export class ChangeDetectionManager implements HostDisposable {
     public static readonly ACTIVE_REFRESH_THROTTLE_MS = 10000;
     public static readonly FOCUS_REFRESH_THROTTLE_MS = ChangeDetectionManager.ACTIVE_REFRESH_THROTTLE_MS;
 
-    /**
-     * Window after one of our own jj commands during which `op_heads` changes are treated
-     * as self-produced. jj snapshots the working copy (creating an operation) for every
-     * command, including read-only `jj status` / `jj log`, so reacting to our own op would
-     * schedule a redundant second refresh for a single edit.
-     */
-    public static readonly SELF_OP_SUPPRESS_MS = 1500;
-
-    /** True when an `op_heads` change was most likely written by a jj command we started. */
-    private isSelfProducedOpHeadsEvent(): boolean {
-        return (
-            this.jj.hasActiveWriteOps || Date.now() - this.jj.lastWriteTime < ChangeDetectionManager.SELF_OP_SUPPRESS_MS
-        );
-    }
-
     private async _runLifecycleTask(task: () => Promise<void>): Promise<void> {
         this._lifecyclePromise = this._lifecyclePromise
             .catch(() => {})
@@ -120,9 +105,12 @@ export class ChangeDetectionManager implements HostDisposable {
     }
 
     private _pendingForceSnapshot = false;
+    /** Deferred refresh came from op_heads, so it can be skipped when the version is unchanged. */
+    private _pendingCheckVersion = false;
 
-    private _scheduleDeferredRefresh(forceSnapshot = false) {
+    private _scheduleDeferredRefresh(forceSnapshot = false, checkVersion = false) {
         this._pendingForceSnapshot = this._pendingForceSnapshot || forceSnapshot;
+        this._pendingCheckVersion = this._pendingCheckVersion || checkVersion;
         if (this._deferredRefreshTimeout) {
             return;
         }
@@ -137,8 +125,10 @@ export class ChangeDetectionManager implements HostDisposable {
             } else {
                 this.lastExternalOpTime = Date.now();
                 const force = this._pendingForceSnapshot;
+                const checkVersion = this._pendingCheckVersion;
                 this._pendingForceSnapshot = false;
-                this.triggerRefresh({ forceSnapshot: force, reason: 'deferred watcher event' });
+                this._pendingCheckVersion = false;
+                this.triggerRefresh({ forceSnapshot: force, reason: 'deferred watcher event', checkVersion });
             }
         }, 500);
     }
@@ -147,7 +137,11 @@ export class ChangeDetectionManager implements HostDisposable {
         private workspaceRoot: string,
         private jj: JjService,
         private outputChannel: LoggerChannel,
-        private triggerRefresh: (event: { forceSnapshot: boolean; reason: string }) => Promise<void>,
+        private triggerRefresh: (event: {
+            forceSnapshot: boolean;
+            reason: string;
+            checkVersion?: boolean;
+        }) => Promise<void>,
         private readonly host: HostEnvironment,
         private readonly watcherBackend?: BackendType,
         /** Only the focused repository refreshes when the window becomes active. */
@@ -339,16 +333,16 @@ export class ChangeDetectionManager implements HostDisposable {
                         if (!this._isActive && !this.isFocused()) {
                             return;
                         }
-                        if (this.isSelfProducedOpHeadsEvent()) {
-                            return;
-                        }
+                        // No time-based suppression of our own commands any more: the repo
+                        // compares the op_heads version and skips only when it really is the
+                        // same state, so a missed explicit refresh can no longer lose an update.
                         const writes = this.hasActiveOrRecentWrites;
                         if (writes) {
-                            this._scheduleDeferredRefresh();
+                            this._scheduleDeferredRefresh(false, true);
                             return;
                         }
                         this.lastExternalOpTime = Date.now();
-                        this.triggerRefresh({ forceSnapshot: false, reason: 'jj operation' });
+                        this.triggerRefresh({ forceSnapshot: false, reason: 'jj operation', checkVersion: true });
                     },
                     this.outputChannel,
                     {
@@ -361,10 +355,14 @@ export class ChangeDetectionManager implements HostDisposable {
                             }
                             const writes = this.hasActiveOrRecentWrites;
                             if (writes) {
-                                this._scheduleDeferredRefresh();
+                                this._scheduleDeferredRefresh(false, true);
                                 return;
                             }
-                            this.triggerRefresh({ forceSnapshot: false, reason: 'op_heads watcher reconnected' });
+                            this.triggerRefresh({
+                                forceSnapshot: false,
+                                reason: 'op_heads watcher reconnected',
+                                checkVersion: true,
+                            });
                         },
                         onPermanentFailure: (err) => {
                             this.outputChannel.error(

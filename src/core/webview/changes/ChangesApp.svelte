@@ -40,6 +40,8 @@ interface StatePayload {
     viewMode?: 'list' | 'tree';
     /** Change whose group must be expanded and scrolled into view (one shot). */
     revealChangeId?: string;
+    /** Monotonic snapshot revision; older pushes are dropped. */
+    revision?: number;
 }
 
 interface InitPayload extends StatePayload {
@@ -94,7 +96,20 @@ function hydrate(wire: WireSnapshot | undefined): ScmSnapshot | undefined {
 
 let revealedChangeId = $state<string | undefined>(undefined);
 
+let lastRevision = 0;
+
 function applyState(payload: StatePayload): void {
+    // Revisions are per repository snapshot, so they restart when the view switches to
+    // another repository; comparing across that boundary would drop every later state.
+    if (payload.focusedRoot !== focusedRoot) {
+        lastRevision = 0;
+    }
+    const revision = payload.revision ?? 0;
+    if (revision > 0 && revision < lastRevision) {
+        // A slower refresh finished after a newer one; keep the newer UI.
+        return;
+    }
+    lastRevision = Math.max(lastRevision, revision);
     repos = payload.repos ?? [];
     focusedRoot = payload.focusedRoot;
     snapshot = hydrate(payload.snapshot);
