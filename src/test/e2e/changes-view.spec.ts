@@ -332,6 +332,30 @@ test.describe('JJ View Container E2E', () => {
         expect(repo.getLog('@-', 'description')).toContain('commit it');
     });
 
+    test('Shows the ancestor commits of the working copy', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('a.txt', 'a\n');
+        repo.describe('first commit');
+        repo.new();
+        repo.writeFile('b.txt', 'b\n');
+        repo.describe('second commit');
+        repo.new();
+        repo.writeFile('c.txt', 'c\n');
+
+        const parentId = repo.getChangeId('@-');
+        const grandParentId = repo.getChangeId('@--');
+
+        const { page } = await vscode.openWorkspace(repo);
+        await vscode.executeCommand('jj-view.changesView.focus');
+        const frame = await getWebviewFrame(page, 'jj-changes-root');
+
+        // Working copy row plus both ancestor groups, which start collapsed.
+        await expect(frame.locator('.scm-resource-item', { hasText: 'c.txt' })).toBeVisible({ timeout: 5000 });
+        await expect(frame.locator(`[data-change-id="${parentId}"]`)).toBeVisible({ timeout: 5000 });
+        await expect(frame.locator(`[data-change-id="${grandParentId}"]`)).toBeVisible({ timeout: 5000 });
+    });
+
     test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();

@@ -20,7 +20,8 @@ type ViewMode = 'repos' | 'changes';
 interface RepoSummary {
     root: string;
     name: string;
-    changeCount: number;
+    /** `undefined` until the repository snapshot exists (cold start). */
+    changeCount?: number;
     conflictCount: number;
 }
 
@@ -285,7 +286,7 @@ $effect(() => {
                                 {repo.conflictCount}
                             </span>
                         {/if}
-                        {#if repo.changeCount > 0}
+                        {#if (repo.changeCount ?? 0) > 0}
                             <span class="badge" title={`${repo.changeCount} changes`}>{repo.changeCount}</span>
                         {/if}
                     </div>

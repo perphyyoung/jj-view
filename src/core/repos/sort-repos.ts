@@ -44,7 +44,8 @@ export function isRepoSortKey(value: unknown): value is RepoSortKey {
 /** The fields the sort needs; callers pass their own richer rows. */
 export interface RepoSortEntry {
     name: string;
-    changeCount: number;
+    /** `undefined` while the snapshot is still unknown; treated as 0 for ordering. */
+    changeCount?: number;
     conflictCount: number;
     /** Committer timestamp of `@`, ISO string. Missing until the repo was refreshed. */
     lastCommitAt?: string;
@@ -87,7 +88,9 @@ export function sortRepos<T extends RepoSortEntry>(repos: readonly T[], key: Rep
                 );
             case 'changeCount':
                 return (
-                    right.changeCount - left.changeCount || nameOf(left).localeCompare(nameOf(right)) || byOrder(a, b)
+                    (right.changeCount ?? 0) - (left.changeCount ?? 0) ||
+                    nameOf(left).localeCompare(nameOf(right)) ||
+                    byOrder(a, b)
                 );
             case 'conflicts': {
                 const leftHas = left.conflictCount > 0 ? 1 : 0;

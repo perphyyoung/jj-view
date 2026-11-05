@@ -27,6 +27,8 @@ export class VsCodeScmProvider implements vscode.Disposable {
     private _draftDirty = false;
     private _lastKnownDescription = '';
     private _lastKnownCommitId = '';
+    /** Whether the latest snapshot was built while this repository was focused. */
+    private _snapshotFocused = false;
     private readonly _diffTabCleaner: DiffTabCleaner;
 
     public readonly scmModel: ScmModel;
@@ -85,7 +87,23 @@ export class VsCodeScmProvider implements vscode.Disposable {
 
         this.disposables.push(
             this.scmModel.onDidChangeSnapshot(async (snapshot) => {
+                this._snapshotFocused = this.repo.isFocused;
                 await this.renderSnapshot(snapshot);
+            }),
+        );
+
+        // A snapshot built while the repository was not focused skips the mutable ancestors
+        // (the Changes view would then show no history). Rebuild once it becomes focused.
+        this.disposables.push(
+            this.repositoryManager.onDidChangeFocusedRepository(() => {
+                if (this._disposed || !this.repo.isFocused || this._snapshotFocused) {
+                    return;
+                }
+                void this.refresh({ forceSnapshot: true, reason: 'focused after unfocused snapshot' }).catch(
+                    (err: unknown) => {
+                        this.outputChannel.error('[VsCodeScmProvider] Focus refresh failed', err as Error);
+                    },
+                );
             }),
         );
 
@@ -109,6 +127,11 @@ export class VsCodeScmProvider implements vscode.Disposable {
 
     public getSelectedCommitIds(): string[] {
         return this.scmModel.getSelectedCommitIds();
+    }
+
+    /** Exposed so the Changes view can tell "no data" from "built while unfocused". */
+    public get snapshotBuiltFocused(): boolean {
+        return this._snapshotFocused;
     }
 
     public get inputBoxValue(): string {

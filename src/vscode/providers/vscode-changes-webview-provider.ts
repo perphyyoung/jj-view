@@ -39,7 +39,8 @@ export interface ChangesWireResourceState {
 export interface ChangesWireRepoSummary {
     root: string;
     name: string;
-    changeCount: number;
+    /** `undefined` while the snapshot is still unknown (cold start). */
+    changeCount?: number;
     conflictCount: number;
     /** Committer timestamp of `@`; used by the Recent Commit ordering. */
     lastCommitAt?: string;
@@ -82,6 +83,8 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     private readonly _disposables: vscode.Disposable[] = [];
     private _viewDisposables: vscode.Disposable[] = [];
     private readonly _snapshotSubscriptions = new Map<string, { dispose(): void }>();
+    /** Last time a missing/stale snapshot was requested per root (cooldown, never permanent). */
+    private readonly _snapshotRequestedAt = new Map<string, number>();
 
     private static readonly VIEW_MODE_KEY = 'jj-view.changesViewMode';
     private static readonly REPO_SORT_KEY = 'jj-view.reposSortBy';
@@ -372,6 +375,35 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         });
     }
 
+    /**
+     * Requests one snapshot for the focused repository when the provider has none. This is
+     * what made a cold start show "Working Copy 0" until an unrelated refresh happened.
+     */
+    private _requestFocusedSnapshot(): void {
+        const repo = this._repositoryManager.focusedRepository;
+        if (!repo) {
+            return;
+        }
+        const root = repo.rootUri.fsPath;
+        const scm = this._scmProviders.get(root) ?? this._ensureScmProvider?.(repo);
+        if (!scm) {
+            return;
+        }
+        // Request when there is no snapshot yet, or when the snapshot was built while the
+        // repository was not focused (it then skips the ancestor groups).
+        const stale = !scm.scmModel.snapshot || !scm.snapshotBuiltFocused;
+        if (!stale) {
+            this._snapshotRequestedAt.delete(root);
+            return;
+        }
+        const last = this._snapshotRequestedAt.get(root) ?? 0;
+        if (Date.now() - last < 2000) {
+            return;
+        }
+        this._snapshotRequestedAt.set(root, Date.now());
+        void scm.refresh({ forceSnapshot: true, reason: 'missing or unfocused snapshot' }).catch(() => {});
+    }
+
     private _postState(): void {
         if (this._disposed || !this._view) {
             return;
@@ -379,6 +411,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         // Self-heal: a provider registered after the last sync would otherwise never be
         // subscribed, so snapshot events would not reach the webview.
         this._syncSnapshotSubscriptions();
+        this._requestFocusedSnapshot();
         this._updateTitle();
         this._post({ type: 'state', payload: this._statePayload() });
     }
@@ -396,8 +429,10 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
             return {
                 root,
                 name: path.basename(root),
-                changeCount: snapshot?.workingCopyCount ?? 0,
-                conflictCount: snapshot?.conflictedPaths.length ?? 0,
+                // `undefined` means "not known yet"; rendering it as 0 made a cold start look
+                // like a clean working copy.
+                changeCount: snapshot ? snapshot.workingCopyCount : undefined,
+                conflictCount: snapshot ? snapshot.conflictedPaths.length : 0,
                 lastCommitAt: snapshot?.currentEntry?.committer.timestamp,
                 lastUsedAt: this._repositoryManager.getLastUsedAt(root),
             };

@@ -44,6 +44,11 @@ describe('sortRepos', () => {
         expect(names(sortRepos(withTie, 'changeCount'))).toEqual(['alpha', 'delta', 'gamma', 'beta']);
     });
 
+    it('treats an unknown change count as zero', () => {
+        const withUnknown = [entry('unknown'), entry('has', { changeCount: 2 })];
+        expect(names(sortRepos(withUnknown, 'changeCount'))).toEqual(['has', 'unknown']);
+    });
+
     it('puts rows with conflicts first', () => {
         expect(names(sortRepos(repos, 'conflicts'))).toEqual(['beta', 'alpha', 'gamma']);
     });
