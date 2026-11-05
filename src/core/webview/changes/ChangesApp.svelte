@@ -3,16 +3,16 @@
   SPDX-License-Identifier: Apache-2.0
 -->
 <script lang="ts">
-import ContextMenu from '../../../../web/src/menu/ContextMenu.svelte';
-import { ContextKeyService } from '../../../../web/src/menu/context-key-service';
-import { extractVsCodeContext } from '../../../../web/src/menu/context-menu-utils';
-import { MenuRegistry } from '../../../../web/src/menu/menu-registry';
-import type { PackageJsonContributes, ResolvedMenuItemGroup } from '../../../../web/src/menu/menu-types';
-import ScmPane from '../../../../web/src/scm/ScmPane.svelte';
 import type { JjStatusEntry } from '../../jj-types';
 import type { ScmSnapshot } from '../../scm-model';
 import type { JjResourceState } from '../../scm-resource-state';
 import { useBridge, useMessageListener } from '../transport/bridge.svelte';
+import ContextMenu from '../ui/menu/ContextMenu.svelte';
+import { ContextKeyService } from '../ui/menu/context-key-service';
+import { extractVsCodeContext } from '../ui/menu/context-menu-utils';
+import { MenuRegistry } from '../ui/menu/menu-registry';
+import type { PackageJsonContributes, ResolvedMenuItemGroup } from '../ui/menu/menu-types';
+import ScmPane from '../ui/scm/ScmPane.svelte';
 
 type WireSnapshot = Omit<ScmSnapshot, 'workingCopyStatuses'>;
 type ViewMode = 'repos' | 'changes';

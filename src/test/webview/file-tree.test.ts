@@ -4,8 +4,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { createJjResourceState } from '../../src/core/scm-resource-state';
-import { buildFileTree, type FileTreeFolderNode, getResourceRelativePath } from '../src/scm/file-tree';
+import { createJjResourceState } from '../../core/scm-resource-state';
+import { buildFileTree, type FileTreeFolderNode, getResourceRelativePath } from '../../core/webview/ui/scm/file-tree';
 
 function state(path: string) {
     return createJjResourceState({ path, status: 'modified' }, '@', '/repo');

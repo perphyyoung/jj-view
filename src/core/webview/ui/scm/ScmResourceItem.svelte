@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
 import { onDestroy } from 'svelte';
-import type { JjResourceState } from '../../../src/core/scm-resource-state';
+import type { JjResourceState } from '../../../scm-resource-state';
 import type { IContextKeyService } from '../menu/context-key-service';
 import type { MenuRegistry } from '../menu/menu-registry';
 import type { ResolvedMenuItem } from '../menu/menu-types';

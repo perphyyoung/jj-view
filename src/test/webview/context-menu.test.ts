@@ -5,10 +5,10 @@
 
 import { render } from 'svelte/server';
 import { describe, expect, it } from 'vitest';
-import ContextMenu from '../src/menu/ContextMenu.svelte';
-import { ContextKeyService } from '../src/menu/context-key-service';
-import { type ContextNodeLike, extractVsCodeContext } from '../src/menu/context-menu-utils';
-import { MenuRegistry } from '../src/menu/menu-registry';
+import ContextMenu from '../../core/webview/ui/menu/ContextMenu.svelte';
+import { ContextKeyService } from '../../core/webview/ui/menu/context-key-service';
+import { type ContextNodeLike, extractVsCodeContext } from '../../core/webview/ui/menu/context-menu-utils';
+import { MenuRegistry } from '../../core/webview/ui/menu/menu-registry';
 
 function createMockNode(attrs: Record<string, string>, parent: ContextNodeLike | null = null): ContextNodeLike {
     return {

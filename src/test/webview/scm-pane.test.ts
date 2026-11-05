@@ -5,16 +5,16 @@
 
 import { render } from 'svelte/server';
 import { describe, expect, it } from 'vitest';
-import type { JjLogEntry } from '../../src/core/jj-types';
-import type { ScmSnapshot } from '../../src/core/scm-model';
-import { createJjResourceState } from '../../src/core/scm-resource-state';
-import { ContextKeyService } from '../src/menu/context-key-service';
-import { MenuRegistry } from '../src/menu/menu-registry';
-import ScmHeader from '../src/scm/ScmHeader.svelte';
-import ScmInputBox from '../src/scm/ScmInputBox.svelte';
-import ScmPane from '../src/scm/ScmPane.svelte';
-import ScmResourceGroup from '../src/scm/ScmResourceGroup.svelte';
-import ScmResourceItem from '../src/scm/ScmResourceItem.svelte';
+import type { JjLogEntry } from '../../core/jj-types';
+import type { ScmSnapshot } from '../../core/scm-model';
+import { createJjResourceState } from '../../core/scm-resource-state';
+import { ContextKeyService } from '../../core/webview/ui/menu/context-key-service';
+import { MenuRegistry } from '../../core/webview/ui/menu/menu-registry';
+import ScmHeader from '../../core/webview/ui/scm/ScmHeader.svelte';
+import ScmInputBox from '../../core/webview/ui/scm/ScmInputBox.svelte';
+import ScmPane from '../../core/webview/ui/scm/ScmPane.svelte';
+import ScmResourceGroup from '../../core/webview/ui/scm/ScmResourceGroup.svelte';
+import ScmResourceItem from '../../core/webview/ui/scm/ScmResourceItem.svelte';
 
 function createMockLogEntry(overrides: Partial<JjLogEntry> = {}): JjLogEntry {
     return {

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { WhenEvaluator } from '../src/menu/when-evaluator';
+import { WhenEvaluator } from '../../core/webview/ui/menu/when-evaluator';
 
 describe('WhenEvaluator', () => {
     it('evaluates empty or undefined clauses to true', () => {

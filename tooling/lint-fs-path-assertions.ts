@@ -22,9 +22,7 @@ function getAllTestFiles(dirPath: string): string[] {
     return files;
 }
 
-const testDirs = [path.resolve(process.cwd(), 'src/test'), path.resolve(process.cwd(), 'web/test')].filter((d) =>
-    fs.existsSync(d),
-);
+const testDirs = [path.resolve(process.cwd(), 'src/test')].filter((d) => fs.existsSync(d));
 const testFiles = testDirs.flatMap((d) => getAllTestFiles(d));
 
 if (testFiles.length === 0) {

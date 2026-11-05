@@ -3,7 +3,7 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.3.17",
+    "version": "3.3.18",
     "license": "Apache-2.0",
     "author": "perphyyoung",
     "repository": {
@@ -1216,7 +1216,7 @@
         "build:themes": "node tooling/generate-themes.ts",
         "watch-tests": "tsc -p . -w --outDir out",
         "pretest": "pnpm build && pnpm build:tests && pnpm lint",
-        "check-types": "tsc --noEmit && tsc -p web/tsconfig.json --noEmit",
+        "check-types": "tsc --noEmit",
         "lint": "biome check . && node tooling/lint-core-isolation.ts && node tooling/lint-fs-path-assertions.ts && node tooling/lint-local-only.ts",
         "fix-lint": "biome check --write . && node tooling/lint-core-isolation.ts && node tooling/lint-fs-path-assertions.ts",
         "check-license": "go run github.com/google/addlicense@v1.1.1 -check -s=only -ignore='**/node_modules/**' -ignore='node_modules/**' -ignore='web/node_modules/**' -ignore='dist/**' -ignore='web/dist/**' -ignore='out/**' -ignore='coverage/**' -ignore='.vscode-test/**' -ignore='.jj/**' -ignore='media/custom-icons/**' -ignore='pnpm-lock.yaml' -ignore='playwright-report/**' -ignore='test-results/**' **",

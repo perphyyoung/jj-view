@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { getFileIcon } from '../src/scm/file-icons';
+import { getFileIcon } from '../../core/webview/ui/scm/file-icons';
 
 describe('file-icons', () => {
     it('resolves TypeScript file icons', () => {

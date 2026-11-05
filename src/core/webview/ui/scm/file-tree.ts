@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { JjResourceState } from '../../../src/core/scm-resource-state';
+import type { JjResourceState } from '../../../scm-resource-state';
 
 export interface FileTreeFileNode {
     readonly type: 'file';

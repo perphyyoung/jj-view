@@ -66,7 +66,7 @@ git config core.autocrlf false   # 仅本仓库
 | `web/src/{bridge,commands,details,diff,host,layout,log,notifications,quick-input,settings,sidecar,status,stubs,styles,tabs}` | 仅 standalone 使用的组件 |
 | CI 中 `build:server:all`、web binaries artifact、`Run Web E2E Tests`、`dist/release/*`                                       | 对应步骤                 |
 
-保留 `web/src/scm/**` 与 `web/src/menu/**` —— 它们是 VS Code webview 复用的组件库（Changes 视图直接使用）。`package.json` 同时移除了 `build:web*`、`build:server*`、`build:all`、`dev*`、`setup:sidecar`、`test:e2e:web`。
+`web/` 目录已整体消失：`web/src/scm/**` 与 `web/src/menu/**` 是 Changes 视图复用的组件库，现位于 **`src/core/webview/ui/{scm,menu}/**`**，其测试位于 `src/test/webview/`；同时删除了 `@jj-view/web` 工作区包及其未使用依赖（`@pierre/diffs`、`@pierre/theme`、`shiki`、`@shikijs/*`）。`package.json` 另移除了 `build:web*`、`build:server*`、`build:all`、`dev*`、`setup:sidecar`、`test:e2e:web`。
 
 ---
 
@@ -101,7 +101,7 @@ git config core.autocrlf false   # 仅本仓库
 | 拆分为新提交   | 文件右键 `Split File into New Commit Above` / `Below`（`jj-view.splitFileIntoCommitAbove/Below`）：`jj squash --from <rev> -A\|-B <rev> -- <file>` + `--keep-emptied`；源提交被搬空也保留，新提交描述留空                                                   |
 | 新提交自动展开 | 拆分后比较操作前后 `children`/`parents` 差集得到新 change id，调用 `jj-view.revealChangesGroup`；provider 在 state 里带一次性 `revealChangeId`，webview 展开该组并 `scrollIntoView`                                                                         |
 | View as Tree   | 命令 `jj-view.changesAsTree` / `jj-view.changesAsList`，按上下文键 `jj.changesViewAsTree` 互斥显示，模式存 `globalState`（`jj-view.changesViewMode`，默认 `list`）                                                                                          |
-| 目录树         | `web/src/scm/file-tree.ts` 构建；单链目录折叠成 `src \ core \ webview` 一行（与原生 compact folders 一致）                                                                                                                                                  |
+| 目录树         | `src/core/webview/ui/scm/file-tree.ts` 构建；单链目录折叠成 `src \ core \ webview` 一行（与原生 compact folders 一致）                                                                                                                                       |
 
 ### 2.3 原生 SCM 集成已移除
 
@@ -284,18 +284,18 @@ Commit Details 的状态 chip 顺序：Immutable → Empty → Conflicted → bo
 | `design.md`                                                           | chip 类型、渲染条件、顺序与配色规则                                                                                                                                                                                                                        |
 | `src/core/webview/changes/index.ts`                                   | webview 入口（`initBridge` + `mount`）                                                                                                                                                                                                                     |
 | `src/core/webview/changes/ChangesApp.svelte`                          | 按 `mode` 渲染仓库列表或聚焦仓库的 `ScmPane`，含自绘右键菜单                                                                                                                                                                                               |
-| `web/src/scm/file-tree.ts`                                            | 扁平变更列表 → 目录树（含单链折叠）                                                                                                                                                                                                                        |
-| `web/src/scm/ScmTreeItem.svelte`                                      | 目录树递归渲染                                                                                                                                                                                                                                             |
+| `src/core/webview/ui/scm/file-tree.ts`                                | 扁平变更列表 → 目录树（含单链折叠）                                                                                                                                                                                                                        |
+| `src/core/webview/ui/scm/ScmTreeItem.svelte`                          | 目录树递归渲染                                                                                                                                                                                                                                             |
 | `media/jj-view-container.svg`                                         | 活动栏容器图标（24×24 单色）                                                                                                                                                                                                                               |
 
 ### 主要修改
 
 | 文件                             | 改动                                                                                                                                      |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `web/src/scm/ScmPane.svelte`     | 新增 `showHeader` / `compactInput` / `viewMode` / `expandAncestors` / `onDescriptionChange` / `revealedChangeId`，默认值保持原行为        |
-| `web/src/scm/ScmInputBox.svelte` | `compact` 模式（单行自适应、不拦截 Ctrl+Enter）；**只有真实 input 事件**才 `onValueChange`，挂载/属性同步只重算高度（否则空值会覆盖草稿） |
+| `src/core/webview/ui/scm/ScmPane.svelte`     | 新增 `showHeader` / `compactInput` / `viewMode` / `expandAncestors` / `onDescriptionChange` / `revealedChangeId`，默认值保持原行为        |
+| `src/core/webview/ui/scm/ScmInputBox.svelte` | `compact` 模式（单行自适应、不拦截 Ctrl+Enter）；**只有真实 input 事件**才 `onValueChange`，挂载/属性同步只重算高度（否则空值会覆盖草稿） |
 
-| `web/src/scm/ScmResourceGroup.svelte` / `ScmResourceItem.svelte` | tree/list 切换、隐藏目录后缀；组头 `data-change-id` + `expanded` 变 true 时强制展开（不反向折叠） |
+| `src/core/webview/ui/scm/ScmResourceGroup.svelte` / `ScmResourceItem.svelte` | tree/list 切换、隐藏目录后缀；组头 `data-change-id` + `expanded` 变 true 时强制展开（不反向折叠） |
 | `src/vscode/vscode-webview-html.ts` | 内联自定义图标字体 |
 | `src/vscode/providers/vscode-scm-provider.ts` | 支持跳过原生 SCM；草稿 `setDraft()` / `clearDraft()` + dirty 标记，`renderSnapshot` 不覆盖脏草稿 |
 | `src/core/code-forge-service.ts` | `enabled` 开关与各入口短路 |

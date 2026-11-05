@@ -73,7 +73,7 @@
             }
         },
         {
-            "includes": ["src/core/**", "web/src/**"],
+            "includes": ["src/core/**"],
             "linter": {
                 "rules": {
                     "style": {

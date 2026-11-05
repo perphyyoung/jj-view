@@ -14,7 +14,7 @@ const traceFile = path.join(os.tmpdir(), `jj-view-perf-trace-${process.pid}.json
 export default defineConfig({
     plugins: [svelte()],
     test: {
-        include: ['src/test/**/*.test.{ts,tsx}', 'web/test/**/*.test.ts', 'tooling/**/*.test.ts'],
+        include: ['src/test/**/*.test.{ts,tsx}', 'tooling/**/*.test.ts'],
         // Integration tests need a real VS Code host; repo tests need a real jj/git working copy.
         exclude: ['src/test/**/*.integration.test.ts', 'src/test/**/*.repo.test.ts'],
         // Temporary global setup to provide vscode mock during host abstraction retrofit
