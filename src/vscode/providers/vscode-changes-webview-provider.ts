@@ -9,6 +9,7 @@ import { ScmContextValue } from '../../core/jj-context-keys';
 import type { JjRepository } from '../../core/jj-repository';
 import type { JjRepositoryManager } from '../../core/jj-repository-manager';
 import type { JjStatusEntry } from '../../core/jj-types';
+import { FocusedSnapshotGuard } from '../../core/repos/snapshot-guard';
 import {
     DEFAULT_REPO_SORT,
     isRepoSortKey,
@@ -84,8 +85,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     private readonly _disposables: vscode.Disposable[] = [];
     private _viewDisposables: vscode.Disposable[] = [];
     private readonly _snapshotSubscriptions = new Map<string, { dispose(): void }>();
-    /** Last time a missing/stale snapshot was requested per root (cooldown, never permanent). */
-    private readonly _snapshotRequestedAt = new Map<string, number>();
+    private readonly _snapshotGuard: FocusedSnapshotGuard;
 
     private static readonly VIEW_MODE_KEY = 'jj-view.changesViewMode';
     private static readonly REPO_SORT_KEY = 'jj-view.reposSortBy';
@@ -131,6 +131,33 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 }),
             ),
         );
+
+        this._snapshotGuard = new FocusedSnapshotGuard({
+            focusedRoot: () => this._repositoryManager.focusedRepository?.rootUri.fsPath,
+            probe: (root) => {
+                const scm = this._scmProviders.get(root);
+                if (!scm) {
+                    return undefined;
+                }
+                return { hasSnapshot: Boolean(scm.scmModel.snapshot), builtFocused: scm.snapshotBuiltFocused };
+            },
+            refresh: async (root) => {
+                const repo = this._findRepository(root);
+                if (!repo) {
+                    return;
+                }
+                const scm = this._scmProviders.get(root) ?? this._ensureScmProvider?.(repo);
+                if (!scm) {
+                    return;
+                }
+                await scm.refresh({ forceSnapshot: true, reason: 'focused snapshot guard' });
+            },
+            onReady: () => this._postState(),
+            onError: (error: unknown, root: string) => {
+                const err = error instanceof Error ? error : new Error(String(error));
+                this._outputChannel?.error(`[ChangesView] Snapshot refresh failed for ${root}`, err);
+            },
+        });
 
         if (this._mode === 'changes') {
             void vscode.commands.executeCommand('setContext', 'jj.changesViewAsTree', this._viewMode === 'tree');
@@ -257,6 +284,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
 
     public dispose(): void {
         this._disposed = true;
+        this._snapshotGuard.dispose();
         this._clearViewDisposables();
         for (const subscription of this._snapshotSubscriptions.values()) {
             subscription.dispose();
@@ -381,32 +409,15 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     }
 
     /**
-     * Requests one snapshot for the focused repository when the provider has none. This is
-     * what made a cold start show "Working Copy 0" until an unrelated refresh happened.
+     * Makes sure the focused repository has a snapshot built while it was focused.
+     *
+     * A one-shot request is not enough: the refresh may fail while jj is busy and no further
+     * event will arrive, which left the Changes view (and the repository counts) empty until
+     * the user switched repositories. The guard retries a bounded number of times and reports
+     * failures to the output channel instead of swallowing them.
      */
     private _requestFocusedSnapshot(): void {
-        const repo = this._repositoryManager.focusedRepository;
-        if (!repo) {
-            return;
-        }
-        const root = repo.rootUri.fsPath;
-        const scm = this._scmProviders.get(root) ?? this._ensureScmProvider?.(repo);
-        if (!scm) {
-            return;
-        }
-        // Request when there is no snapshot yet, or when the snapshot was built while the
-        // repository was not focused (it then skips the ancestor groups).
-        const stale = !scm.scmModel.snapshot || !scm.snapshotBuiltFocused;
-        if (!stale) {
-            this._snapshotRequestedAt.delete(root);
-            return;
-        }
-        const last = this._snapshotRequestedAt.get(root) ?? 0;
-        if (Date.now() - last < 2000) {
-            return;
-        }
-        this._snapshotRequestedAt.set(root, Date.now());
-        void scm.refresh({ forceSnapshot: true, reason: 'missing or unfocused snapshot' }).catch(() => {});
+        this._snapshotGuard.run();
     }
 
     private _postState(): void {

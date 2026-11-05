@@ -9,7 +9,7 @@ import * as path from 'node:path';
 import type { Frame, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { TestRepo } from '../test-repo';
-import { openFileInEditor, test } from './e2e-helpers';
+import { getLogWebview, openFileInEditor, test } from './e2e-helpers';
 
 async function getWebviewFrame(page: Page, testId: string, timeout = 20000): Promise<Frame> {
     const deadline = Date.now() + timeout;
@@ -358,6 +358,31 @@ test.describe('JJ View Container E2E', () => {
         await expect(frame.locator('.scm-resource-item', { hasText: 'c.txt' })).toBeVisible({ timeout: 5000 });
         await expect(frame.locator(`[data-change-id="${parentId}"]`)).toBeVisible({ timeout: 5000 });
         await expect(frame.locator(`[data-change-id="${grandParentId}"]`)).toBeVisible({ timeout: 5000 });
+    });
+
+    test('Shows the same commits in JJ Log and Changes right after startup', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('a.txt', 'a1\n');
+        repo.describe('first commit');
+        repo.new();
+        repo.writeFile('a.txt', 'a2\n');
+        repo.writeFile('b.txt', 'b1\n');
+
+        const parentId = repo.getChangeId('@-');
+
+        const { page } = await vscode.openWorkspace(repo);
+
+        // Both views must agree on the history as soon as the window is up: the commit shown
+        // as the parent in JJ Log is the ancestor group in Changes.
+        await vscode.executeCommand('jj-view.logView.focus');
+        const logFrame = await getLogWebview(page);
+        await expect(logFrame.locator(`[data-change-id="${parentId}"]`)).toHaveCount(1, { timeout: 5000 });
+
+        await vscode.executeCommand('jj-view.changesView.focus');
+        const changesFrame = await getWebviewFrame(page, 'jj-changes-root');
+        await expect(changesFrame.locator(`[data-change-id="${parentId}"]`)).toHaveCount(1, { timeout: 5000 });
+        await expect(changesFrame.locator('.scm-resource-item', { hasText: 'b.txt' })).toBeVisible({ timeout: 5000 });
     });
 
     test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {
