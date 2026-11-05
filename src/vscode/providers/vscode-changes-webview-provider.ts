@@ -9,6 +9,14 @@ import { ScmContextValue } from '../../core/jj-context-keys';
 import type { JjRepository } from '../../core/jj-repository';
 import type { JjRepositoryManager } from '../../core/jj-repository-manager';
 import type { JjStatusEntry } from '../../core/jj-types';
+import {
+    DEFAULT_REPO_SORT,
+    isRepoSortKey,
+    REPO_SORT_KEYS,
+    REPO_SORT_LABELS,
+    type RepoSortKey,
+    sortRepos,
+} from '../../core/repos/sort-repos';
 import type { ScmSnapshot } from '../../core/scm-model';
 import { createJjResourceState, type JjResourceState } from '../../core/scm-resource-state';
 import type { Uri } from '../../core/uri-utils';
@@ -33,6 +41,8 @@ export interface ChangesWireRepoSummary {
     name: string;
     changeCount: number;
     conflictCount: number;
+    /** Committer timestamp of `@`; used by the Recent Commit ordering. */
+    lastCommitAt?: string;
 }
 
 export type ChangesViewMode = 'repos' | 'changes';
@@ -74,6 +84,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     private readonly _snapshotSubscriptions = new Map<string, { dispose(): void }>();
 
     private static readonly VIEW_MODE_KEY = 'jj-view.changesViewMode';
+    private static readonly REPO_SORT_KEY = 'jj-view.reposSortBy';
 
     constructor(
         private readonly _extensionUri: Uri,
@@ -121,6 +132,46 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 ),
             );
         }
+
+        if (this._mode === 'repos') {
+            this._disposables.push(
+                vscode.commands.registerCommand('jj-view.reposSort', (arg?: unknown) => this._pickRepoSort(arg)),
+            );
+        }
+    }
+
+    private get _repoSortKey(): RepoSortKey {
+        const stored = this._context.globalState.get<string>(
+            VsCodeChangesWebviewProvider.REPO_SORT_KEY,
+            DEFAULT_REPO_SORT,
+        );
+        return isRepoSortKey(stored) ? stored : DEFAULT_REPO_SORT;
+    }
+
+    /**
+     * Repositories title-bar action: pick how the rows are ordered. An explicit key is
+     * accepted so the same command works from the palette and from tests.
+     */
+    private async _pickRepoSort(arg?: unknown): Promise<void> {
+        if (isRepoSortKey(arg)) {
+            this._setRepoSort(arg);
+            return;
+        }
+        const current = this._repoSortKey;
+        const items = REPO_SORT_KEYS.map((key) => ({
+            label: REPO_SORT_LABELS[key],
+            description: key === current ? 'current' : undefined,
+            key,
+        }));
+        const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Sort repositories by…' });
+        if (picked) {
+            this._setRepoSort(picked.key);
+        }
+    }
+
+    private _setRepoSort(key: RepoSortKey): void {
+        void this._context.globalState.update(VsCodeChangesWebviewProvider.REPO_SORT_KEY, key);
+        this._postState();
     }
 
     /**
@@ -330,7 +381,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         viewMode: 'list' | 'tree';
         revealChangeId: string | undefined;
     } {
-        const repos = this._repositoryManager.repositories.map((repo) => {
+        const rows = this._repositoryManager.repositories.map((repo) => {
             const root = repo.rootUri.fsPath;
             const snapshot = this._scmProviders.get(root)?.scmModel.snapshot;
             return {
@@ -338,8 +389,11 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 name: path.basename(root),
                 changeCount: snapshot?.workingCopyCount ?? 0,
                 conflictCount: snapshot?.conflictedPaths.length ?? 0,
+                lastCommitAt: snapshot?.currentEntry?.committer.timestamp,
+                lastUsedAt: this._repositoryManager.getLastUsedAt(root),
             };
         });
+        const repos = sortRepos(rows, this._repoSortKey).map(({ lastUsedAt: _unused, ...row }) => row);
 
         const focusedRoot = this._repositoryManager.focusedRepository?.rootUri.fsPath;
         const focusedSnapshot = focusedRoot ? this._scmProviders.get(focusedRoot)?.scmModel.snapshot : undefined;

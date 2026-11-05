@@ -277,6 +277,41 @@ test.describe('JJ View Container E2E', () => {
         await expect.poll(() => alpha.getLog('@-', 'description'), { timeout: 5000 }).toContain('second draft');
     });
 
+    test('Sorts repositories from the title-bar command', async ({ vscode }) => {
+        const parent = mkdtempSync(path.join(os.tmpdir(), 'jj-view-sort-'));
+        const alpha = new TestRepo(path.join(parent, 'alpha'));
+        const beta = new TestRepo(path.join(parent, 'beta'));
+
+        alpha.init();
+        alpha.writeFile('a1.txt', 'a1\n');
+        alpha.writeFile('a2.txt', 'a2\n');
+        beta.init();
+        beta.writeFile('b1.txt', 'b1\n');
+        beta.describe('beta base');
+        beta.new();
+
+        const { page } = await vscode.openWorkspace(
+            { path: parent, waitForRepository: false },
+            { 'jj-view.autoRepositoryDetection': true },
+        );
+
+        await vscode.executeCommand('jj-view.reposView.focus');
+        const frame = await getWebviewFrame(page, 'jj-repos-root');
+        const rows = frame.locator('[data-testid="jj-repo-row"]');
+        await expect.poll(() => rows.count(), { timeout: 5000 }).toBe(2);
+
+        // Two changes in alpha, none in beta.
+        await vscode.executeCommand('jj-view.reposSort', 'changeCount');
+        await expect(rows.first()).toContainText('alpha');
+
+        await vscode.executeCommand('jj-view.reposSort', 'nameDesc');
+        await expect(rows.first()).toContainText('beta');
+
+        // Leave the shared window on the default ordering for the other tests.
+        await vscode.executeCommand('jj-view.reposSort', 'workspace');
+        await expect(rows.first()).toContainText('alpha');
+    });
+
     test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();
