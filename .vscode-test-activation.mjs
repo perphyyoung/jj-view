@@ -3,6 +3,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { defineConfig } from '@vscode/test-cli';
 
+// Same pinned host as `.vscode-test.mjs`; keep both reading the shared JSON.
+const vscodeVersion =
+    process.env.JVL_VSCODE_VERSION?.trim() ||
+    JSON.parse(fs.readFileSync(new URL('./tooling/vscode-version.json', import.meta.url), 'utf8')).version;
+
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jj-view-test-activation-user-data-'));
 const userDir = path.join(tmpDir, 'User');
 const workspaceDir = path.join(tmpDir, 'workspace');
@@ -24,6 +29,7 @@ fs.writeFileSync(
 );
 
 export default defineConfig({
+    version: vscodeVersion,
     files: 'out/test/extension.integration.test.js',
     mocha: {
         timeout: 20000,

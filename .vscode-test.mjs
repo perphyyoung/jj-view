@@ -3,6 +3,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { defineConfig } from '@vscode/test-cli';
 
+// Pinned test host; without it `vscode-test` resolves "stable" and can change under us.
+const vscodeVersion =
+    process.env.JVL_VSCODE_VERSION?.trim() ||
+    JSON.parse(fs.readFileSync(new URL('./tooling/vscode-version.json', import.meta.url), 'utf8')).version;
+
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jj-view-test-user-data-'));
 const testWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'jj-view-test-workspace-'));
 const userDir = path.join(tmpDir, 'User');
@@ -39,6 +44,7 @@ fs.writeFileSync(
 );
 
 export default defineConfig({
+    version: vscodeVersion,
     files: 'out/test/**/!(extension).integration.test.js',
     mocha: {
         timeout: 20000,

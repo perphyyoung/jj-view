@@ -348,6 +348,7 @@ e2e 注意事项：
 - `src/test/e2e/vscode-fixture.ts` 的路径比较已做 Windows 归一化（VS Code 返回小写盘符 `c:\`），否则所有用例 15s 超时
 - `DEFAULT_SETTINGS` 不再注入已删除的 `nativeScm.enabled` / `codeForge.enabled`；依赖原生 SCM 与 GitHub/GitLab/Gerrit 的 e2e 已随之删除
 - 多项目用例用 `openWorkspace({ path: parent, waitForRepository: false }, { 'jj-view.autoRepositoryDetection': true })`：根目录不是仓库，fixture 改为等"任意仓库被发现"；单目录用例行为不变
+- 测试宿主版本固定在 `tooling/vscode-version.json`（当前 `1.145.0`），e2e 与 integration 共用；`JVL_VSCODE_VERSION` 可临时覆盖。不固定时会解析 `stable`，每次运行都可能换版本并访问更新 API
 - fixture 校验 `jj-view.*` 设置是否注册时，按**扩展贡献的配置项**查找（扩展 ID 曾从 `jj-view` 改为 `jj-view-local`，按 ID 查找会把合法设置判成非法）
 - 现有 e2e 套件：`changes-view`（8）、`jj-log`（17）、`multi-repo`（2）、`line-blame`（11）、`squash`（5）、`arbitrary-diff` / `commit-details` / `context-menu` / `divergent` / `hidden-commits` / `view-file` / `workspace`
 - 不跑 integration 的场景：日常改动以 `test:unit` + 相关 e2e 为准；integration 只在提交前/CI 跑（启动真实 VS Code 宿主，分钟级）

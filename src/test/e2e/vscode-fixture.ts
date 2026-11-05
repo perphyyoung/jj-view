@@ -14,6 +14,7 @@ import { type ElectronApplication, _electron as electron, type Page } from 'play
 import type * as vscodeType from 'vscode';
 import type { Api as ExtensionApi } from '../../vscode/extension';
 import { logPerf } from './perf-logger';
+import { VSCODE_TEST_VERSION } from './vscode-version';
 
 export const ROOT_ID = 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz';
 export const isMac = process.platform === 'darwin';
@@ -257,7 +258,7 @@ export async function launchNewVSCode(
     const downloadStart = Date.now();
     const [extensionsDir, vscodePath] = await Promise.all([
         fs.promises.mkdtemp(path.join(os.tmpdir(), 'jj-view-test-extensions-')),
-        downloadAndUnzipVSCode({ reporter: new SilentReporter() }).then((res) => {
+        downloadAndUnzipVSCode({ version: VSCODE_TEST_VERSION, reporter: new SilentReporter() }).then((res) => {
             logPerf('launchNewVSCode: downloadAndUnzipVSCode', downloadStart);
             return res;
         }),
@@ -272,6 +273,7 @@ export async function launchNewVSCode(
         `--extensionDevelopmentPath=${path.join(extensionPath, 'src/test/e2e/helper-extension')}`,
         '--extension-development-confirm-save',
         '--disable-workspace-trust',
+        '--disable-updates',
         '--new-window',
         '--skip-welcome',
         '--skip-release-notes',
