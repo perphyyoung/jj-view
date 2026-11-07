@@ -89,6 +89,9 @@ export function formatHoverMarkdown(annotation: LineAnnotation, details?: Commit
     const sections: string[][] = [[annotationHeader(annotation.author, annotation.ago)]];
     if (diff) {
         sections.push(formatDiffBlock(diff));
+        // Separates the diff (and its notice) from the commit message, so the message is not
+        // mistaken for part of the explanation.
+        sections.push(['---']);
     }
     sections.push([resolveDescription(details, annotation.summary)]);
     return joinSections(sections);
@@ -116,6 +119,9 @@ export function formatUncommittedHoverMarkdown(
         sections.push(formatDiffBlock(diff));
     }
     if (parent) {
+        if (diff) {
+            sections.push(['---']);
+        }
         sections.push([annotationHeader(parent.author, parent.ago)]);
         sections.push([resolveDescription(details, parent.summary)]);
     }
@@ -186,15 +192,21 @@ function formatDiffBlock(diff: LineChange): string[] {
     const looksInvisible =
         diff.before !== undefined && (diff.before === diff.after || differsOnlyInvisibly(diff.before, diff.after));
 
-    const lines = ['```diff'];
+    const lines: string[] = [];
+    if (looksInvisible) {
+        // Above the diff, quoted, with an icon and bold prefix: the hover renderer has no
+        // custom colors, and a quotation block is the closest theme-aware separation.
+        lines.push(
+            '> ⚠️ **Notice** — the two lines differ in characters that are not visible here (line endings or trailing spaces).',
+        );
+        lines.push('');
+    }
+    lines.push('```diff');
     if (diff.before !== undefined) {
         lines.push(`- ${clipDiffLine(diff.before)}`);
     }
     lines.push(`+ ${clipDiffLine(diff.after)}`);
     lines.push('```');
-    if (looksInvisible) {
-        lines.push('_The two lines differ in characters that are not visible here (line endings or trailing spaces)._');
-    }
     return lines;
 }
 

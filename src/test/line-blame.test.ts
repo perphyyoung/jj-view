@@ -238,6 +238,10 @@ describe('pickLineChange', () => {
         expect(markdown).toContain('characters that are not visible here');
         // The diff block itself must stay: the change is real, only the cause is invisible.
         expect(markdown).toContain('```diff');
+        // Notice sits above the diff, is visually distinct, and is separated from the message.
+        expect(markdown.indexOf('**Notice**')).toBeLessThan(markdown.indexOf('```diff'));
+        expect(markdown).toContain('⚠️');
+        expect(markdown).toContain('\n---\n');
     });
 
     it('does not add the note for a normal change', () => {

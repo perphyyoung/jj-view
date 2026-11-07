@@ -104,6 +104,12 @@ test.describe('Line Blame E2E', () => {
         const hover = page.locator('.monaco-hover').first();
         await expect(hover).toBeVisible({ timeout: 5000 });
         await expect(hover).toContainText('characters that are not visible here', { timeout: 5000 });
+
+        // The notice must be above the diff and marked, so it cannot be read as the commit message.
+        const text = await hover.innerText();
+        expect(text).toContain('Notice');
+        expect(text).toContain('⚠️');
+        expect(text.indexOf('Notice')).toBeLessThan(text.indexOf('0.2.6'));
     });
 
     test('Shows the blame tooltip for the cursor line', async ({ vscode }) => {
