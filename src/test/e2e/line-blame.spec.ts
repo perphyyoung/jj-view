@@ -55,6 +55,57 @@ test.describe('Line Blame E2E', () => {
         await expect(hover).not.toContainText('Resolving');
     });
 
+    test('Marks a CRLF-only change instead of hiding the diff', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('version.json', '"version": "0.2.6"\n');
+        repo.describe('lf version');
+        repo.new();
+        // Same visible text, CRLF line ending: the diff must stay visible and be explained.
+        repo.writeFile('version.json', '"version": "0.2.6"\r\n');
+        repo.describe('crlf version');
+        repo.new();
+
+        const { page } = await vscode.openWorkspace(repo);
+        await openFileInEditor(vscode, page, 'version.json');
+
+        const editor = page.locator('.editor-instance .monaco-editor').first();
+        const line = editor.locator('.view-line').first();
+        await expect(line).toBeVisible({ timeout: 5000 });
+        await line.click();
+        await page.keyboard.press('End');
+
+        // Wait until the annotation is rendered; the hover provider is registered with it.
+        await expect
+            .poll(
+                () =>
+                    line.evaluate((el) => {
+                        const hasBlame = (value: string): boolean => value.includes('crlf version');
+                        const walk = (node: Node): boolean => {
+                            if (node.nodeType === Node.TEXT_NODE) {
+                                return hasBlame(node.textContent ?? '');
+                            }
+                            if (node.nodeType !== Node.ELEMENT_NODE) {
+                                return false;
+                            }
+                            const element = node as Element;
+                            if (hasBlame(getComputedStyle(element, '::after').content ?? '')) {
+                                return true;
+                            }
+                            return Array.from(element.childNodes).some(walk);
+                        };
+                        return walk(el);
+                    }),
+                { timeout: 5000 },
+            )
+            .toBe(true);
+
+        await line.hover();
+        const hover = page.locator('.monaco-hover').first();
+        await expect(hover).toBeVisible({ timeout: 5000 });
+        await expect(hover).toContainText('characters that are not visible here', { timeout: 5000 });
+    });
+
     test('Shows the blame tooltip for the cursor line', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();

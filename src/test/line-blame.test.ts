@@ -211,6 +211,45 @@ describe('pickLineChange', () => {
         });
     });
 
+    it('keeps a CRLF-only pair so the tooltip can mark the difference', () => {
+        const crlfChunk = {
+            oldStart: 1,
+            newStart: 1,
+            changes: [
+                { type: 'del', content: '-  "version": "0.2.6",\r' },
+                { type: 'add', content: '+  "version": "0.2.6",' },
+            ],
+        };
+
+        expect(pickLineChange([crlfChunk], 1)).toEqual({
+            before: '  "version": "0.2.6",\r',
+            after: '  "version": "0.2.6",',
+        });
+    });
+
+    it('explains why two lines that look alike still differ', () => {
+        const markdown = formatHoverMarkdown(
+            { line: 1, commitId: 'c1', shortCommitId: 'c1', author: 'py', ago: '1 day ago', summary: 's' },
+            undefined,
+            // jj's diff output drops the CR, so both sides arrive identical here.
+            { before: '  "version": "0.2.6",', after: '  "version": "0.2.6",' },
+        );
+
+        expect(markdown).toContain('characters that are not visible here');
+        // The diff block itself must stay: the change is real, only the cause is invisible.
+        expect(markdown).toContain('```diff');
+    });
+
+    it('does not add the note for a normal change', () => {
+        const markdown = formatHoverMarkdown(
+            { line: 1, commitId: 'c1', shortCommitId: 'c1', author: 'py', ago: '1 day ago', summary: 's' },
+            undefined,
+            { before: 'old', after: 'new' },
+        );
+
+        expect(markdown).not.toContain('characters that are not visible here');
+    });
+
     it('returns only the added side for a new line', () => {
         const addedChunk = {
             oldStart: 1,

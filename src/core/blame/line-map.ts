@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { diffArrays } from 'diff';
+import { stripCarriageReturn } from '../../utils/eol-utils';
 
 /**
  * Maps line numbers of the buffer to the same lines in a committed version of the file.
@@ -19,10 +20,6 @@ import { diffArrays } from 'diff';
  * @param bufferLines lines of the buffer being annotated
  * @returns buffer line (0-based) to commit line (0-based)
  */
-function stripCarriageReturn(line: string): string {
-    return line.endsWith('\r') ? line.slice(0, -1) : line;
-}
-
 export function buildBufferToCommitLineMap(
     commitLines: readonly string[],
     bufferLines: readonly string[],

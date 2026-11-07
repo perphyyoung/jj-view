@@ -2,6 +2,7 @@
  * Copyright 2026 Google LLC
  * SPDX-License-Identifier: Apache-2.0
  */
+import { differsOnlyInvisibly } from '../../utils/eol-utils';
 
 /** One annotated line as reported by `jj file annotate`. */
 export interface LineAnnotation {
@@ -134,6 +135,8 @@ export interface LineChange {
     before?: string;
     /** Current content of the line. */
     after: string;
+    /** True when the two sides differ only in trailing invisible characters. */
+    invisibleOnly?: boolean;
 }
 
 /**
@@ -177,12 +180,21 @@ function annotationHeader(author: string, ago: string): string {
 }
 
 function formatDiffBlock(diff: LineChange): string[] {
+    // A CRLF rewrite is a real change: keep the diff visible. When the parser dropped the
+    // invisible characters it can look like the same line twice, so explain that case instead
+    // of hiding the block.
+    const looksInvisible =
+        diff.before !== undefined && (diff.before === diff.after || differsOnlyInvisibly(diff.before, diff.after));
+
     const lines = ['```diff'];
     if (diff.before !== undefined) {
         lines.push(`- ${clipDiffLine(diff.before)}`);
     }
     lines.push(`+ ${clipDiffLine(diff.after)}`);
     lines.push('```');
+    if (looksInvisible) {
+        lines.push('_The two lines differ in characters that are not visible here (line endings or trailing spaces)._');
+    }
     return lines;
 }
 

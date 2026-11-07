@@ -589,6 +589,8 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         if (!this._diffCache.has(key)) {
             let chunks: readonly DiffChunkLike[] | undefined;
             try {
+                // Keep CRLF information: the parser drops a bare `\r`, which made a CRLF-only
+                // rewrite render as two identical lines. Mark it so the tooltip can show it.
                 const output = await repo.jj.getFileDiff(revision, relativePath);
                 chunks = output ? (parseDiff(output) as DiffChunkLike[]) : undefined;
             } catch (error: unknown) {
