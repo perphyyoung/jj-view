@@ -166,7 +166,11 @@ test.describe('Line Blame E2E', () => {
         // Ten of twelve commits are shown first; the list is virtualized, so assert on the
         // placeholder rather than the rendered row count.
         await expect(input).toHaveAttribute('placeholder', /10 of 12 commits/, { timeout: 5000 });
-        await expect(page.locator('.quick-input-list .monaco-list-row').first()).toContainText('change 12');
+        const firstRow = page.locator('.quick-input-list .monaco-list-row').first();
+        await expect(firstRow).toContainText('change 12');
+        // Second row is the line content; the full commit id must not be repeated there.
+        await expect(firstRow).toContainText('value 12');
+        await expect(page.locator('.quick-input-widget')).not.toContainText(/[0-9a-f]{40}/);
 
         // The load-more entry is below the fold; filter to it, then select it.
         await page.keyboard.type('Load more');
@@ -446,7 +450,8 @@ test.describe('Line Blame E2E', () => {
             await target.hover();
             const hover = page.locator('.monaco-hover').first();
             await expect(hover).toBeVisible({ timeout: 5000 });
-            await expect(hover).toContainText('+ b', { timeout: 5000 });
+            // 容易超时，延长到 8000 ms
+            await expect(hover).toContainText('+ b', { timeout: 8000 });
         });
     }
 

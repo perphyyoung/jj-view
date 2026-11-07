@@ -48,6 +48,10 @@ describe('lineHistoryCommand', () => {
         expect(call.items.at(-1)?.description).toContain('2 remaining');
         expect(call.items[0].label).toContain('change 12');
         expect(call.options?.placeHolder).toContain('10 of 12 commits');
+        // Second row shows the line itself, not the full commit id.
+        expect(call.items[0].detail).toBe('value 12');
+        expect(call.items[1].detail).toBe('value 11');
+        expect(call.items[0].detail).not.toMatch(/^[0-9a-f]{40}$/);
     });
 
     it('loads the next page when the load-more item is selected', async () => {
@@ -61,6 +65,7 @@ describe('lineHistoryCommand', () => {
         const last = ctx.host.ui.quickPickCalls.at(-1);
         expect(last?.items).toHaveLength(12);
         expect(last?.items.some((item) => item.label.includes('Load more'))).toBe(false);
+        expect(last?.items.at(-1)?.detail).toBe('value 1');
     });
 
     it('starts from the last committed state and matches git', async () => {

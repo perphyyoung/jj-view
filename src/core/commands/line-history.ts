@@ -5,6 +5,8 @@
 import path from 'pathe';
 import {
     buildLineHistoryArgs,
+    clipDetail,
+    extractLineTexts,
     hasMoreEntries,
     LINE_HISTORY_MAX_ENTRIES,
     LINE_HISTORY_PAGE_SIZE,
@@ -106,13 +108,15 @@ async function resolveGitDir(ctx: CommandContext, root: string): Promise<string 
 function formatItem(entry: LineHistoryEntry): {
     label: string;
     description: string;
-    detail: string;
+    detail?: string;
     value: LineHistoryEntry;
 } {
     return {
         label: `$(git-commit) ${shortSha(entry.sha)} ${entry.summary}`,
         description: `${entry.author} · ${entry.date.slice(0, 10)}`,
-        detail: entry.sha,
+        // Second row: what the line looked like in this commit. The sha is already in the
+        // label, so repeating it here only wastes the row.
+        ...(entry.text ? { detail: clipDetail(entry.text) } : {}),
         value: entry,
     };
 }
@@ -157,7 +161,12 @@ export async function lineHistoryCommand(ctx: CommandContext, payload?: LineHist
             }),
             { cwd: target.root, timeout: 15000, maxBuffer: 5 * 1024 * 1024 },
         );
-        const entries = parseLineHistoryOutput(result?.stdout ?? '');
+        const stdout = result?.stdout ?? '';
+        const entries = parseLineHistoryOutput(stdout);
+        const texts = extractLineTexts(stdout, target.line);
+        for (const entry of entries) {
+            entry.text = texts.get(entry.sha);
+        }
         if (entries.length === 0) {
             await ctx.host.ui.showInformation('No committed history for this line.');
             return;

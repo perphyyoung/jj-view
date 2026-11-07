@@ -24,12 +24,18 @@ if (!Number.isInteger(line) || line < 1) {
 
 const run = (cmd, args) => execFileSync(cmd, args, { cwd: repo, encoding: 'utf8', maxBuffer: 5e8 });
 
-function gitLineHistory() {
+function gitLineHistory(withPatch) {
+    const args = ['log', '-L', `${line},${line}:${file}`, '--format=%H', '-n', '200'];
+    if (!withPatch) {
+        args.push('--no-patch');
+    }
+    args.push('HEAD');
     const start = performance.now();
-    const out = run('git', ['log', '-L', `${line},${line}:${file}`, '--format=%H', '--no-patch', '-n', '200', 'HEAD']);
+    const out = run('git', args);
     return {
         ms: Math.round(performance.now() - start),
         commits: out.split('\n').filter((l) => /^[0-9a-f]{40}$/.test(l.trim())).length,
+        bytes: out.length,
     };
 }
 
@@ -95,6 +101,8 @@ function jjPerCommitHistory() {
     return { ms: Math.round(performance.now() - start), steps, hits };
 }
 
-const git = gitLineHistory();
+// The command needs the patches (they carry the line text), so compare both git variants.
+const git = gitLineHistory(true);
+const gitMetadataOnly = gitLineHistory(false);
 const jj = jjPerCommitHistory();
-console.log(JSON.stringify({ repo, file, line, git, jj }, null, 2));
+console.log(JSON.stringify({ repo, file, line, git, gitMetadataOnly, jj }, null, 2));

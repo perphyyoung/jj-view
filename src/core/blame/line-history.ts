@@ -12,6 +12,8 @@ export interface LineHistoryEntry {
     date: string;
     /** First line of the commit message. */
     summary: string;
+    /** What the tracked line looked like in this commit (undefined when unparsable). */
+    text?: string;
 }
 
 /** Entries shown before the "Load more" item. */
@@ -48,7 +50,6 @@ export function buildLineHistoryArgs(options: {
         `${options.line},${options.line}:${options.filePath}`,
         // `%x00` emits the NUL at runtime: a literal NUL cannot be passed in argv.
         '--format=%H%x00%an%x00%aI%x00%s',
-        '--no-patch',
         '-n',
         String(options.limit ?? LINE_HISTORY_MAX_ENTRIES),
         options.startSha,
@@ -76,6 +77,92 @@ export function parseLineHistoryOutput(stdout: string): LineHistoryEntry[] {
 /** Short id used in the picker, long enough to stay recognizable in this branch. */
 export function shortSha(sha: string): string {
     return sha.slice(0, 8);
+}
+
+const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+const DETAIL_LIMIT = 100;
+
+/** One line for the picker's second row: the tracked line's text, clipped. */
+export function clipDetail(text: string, limit: number = DETAIL_LIMIT): string {
+    const singleLine = text.replace(/\r$/, '');
+    return singleLine.length > limit ? `${singleLine.slice(0, limit - 1)}…` : singleLine;
+}
+
+/**
+ * Extracts the tracked line's text per commit from the same `git log -L` output.
+ *
+ * `-L` prints each commit's patch; walking newest to oldest and following the line through
+ * the hunks yields what the line looked like in every listed commit, with no extra git call.
+ * Parsing failures only cost the detail row, never the list.
+ */
+export function extractLineTexts(stdout: string, startLine: number): Map<string, string> {
+    const texts = new Map<string, string>();
+    let line = startLine;
+
+    const commits = stdout.split('\n');
+    let i = 0;
+    while (i < commits.length) {
+        const header = commits[i];
+        const parts = header.split(FIELD_SEPARATOR);
+        if (parts.length < 4 || !/^[0-9a-f]{7,40}$/.test(parts[0])) {
+            i++;
+            continue;
+        }
+        const sha = parts[0];
+        i++;
+
+        let oldNo = 0;
+        let newNo = 0;
+        let pending: number[] = [];
+        let text: string | undefined;
+        let parentLine: number | undefined;
+
+        for (; i < commits.length; i++) {
+            const raw = commits[i];
+            const nextParts = raw.split(FIELD_SEPARATOR);
+            if (nextParts.length >= 4 && /^[0-9a-f]{7,40}$/.test(nextParts[0])) {
+                break;
+            }
+            const hunk = HUNK_HEADER.exec(raw);
+            if (hunk) {
+                oldNo = Number(hunk[1]);
+                newNo = Number(hunk[3]);
+                pending = [];
+                continue;
+            }
+            if (raw.startsWith('\\')) {
+                continue;
+            }
+            const kind = raw[0];
+            if (kind === ' ') {
+                if (newNo === line && text === undefined) {
+                    text = raw.slice(1);
+                    parentLine = oldNo;
+                }
+                oldNo++;
+                newNo++;
+                pending = [];
+            } else if (kind === '-') {
+                pending.push(oldNo);
+                oldNo++;
+            } else if (kind === '+') {
+                if (newNo === line && text === undefined) {
+                    text = raw.slice(1);
+                    parentLine = pending[0];
+                }
+                newNo++;
+            }
+        }
+
+        if (text !== undefined) {
+            texts.set(sha, text);
+        }
+        if (parentLine !== undefined) {
+            line = parentLine;
+        }
+    }
+
+    return texts;
 }
 
 /** True when another page exists for the given number of visible entries. */
