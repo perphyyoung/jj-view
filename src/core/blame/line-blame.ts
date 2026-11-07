@@ -85,8 +85,14 @@ export function formatLineBlameText(
  * Builds the multi-line Markdown tooltip shown when hovering the annotated line:
  * a single "author · relative time" header followed by the complete commit message.
  */
-export function formatHoverMarkdown(annotation: LineAnnotation, details?: CommitDetails, diff?: LineChange): string {
-    const sections: string[][] = [[annotationHeader(annotation.author, annotation.ago)]];
+export function formatHoverMarkdown(
+    annotation: LineAnnotation,
+    details?: CommitDetails,
+    diff?: LineChange,
+    lineHistoryLink?: string,
+): string {
+    const header = annotationHeader(annotation.author, annotation.ago);
+    const sections: string[][] = [[lineHistoryLink ? `${header} · ${lineHistoryLink}` : header]];
     if (diff) {
         sections.push(formatDiffBlock(diff));
         // Separates the diff (and its notice) from the commit message, so the message is not

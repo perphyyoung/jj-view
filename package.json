@@ -3,7 +3,7 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.3.23",
+    "version": "3.3.24",
     "license": "Apache-2.0",
     "author": "perphyyoung",
     "repository": {
@@ -347,6 +347,11 @@
             {
                 "command": "jj-view.viewFileAtRevision",
                 "title": "View File at Revision...",
+                "category": "JJ View Local"
+            },
+            {
+                "command": "jj-view.lineHistory",
+                "title": "Show Line History",
                 "category": "JJ View Local"
             },
             {
@@ -1133,6 +1138,11 @@
                 {
                     "command": "jj-view.viewFileAtRevision",
                     "group": "jj-view",
+                    "when": "resourceScheme == 'file'"
+                },
+                {
+                    "command": "jj-view.lineHistory",
+                    "group": "navigation@99",
                     "when": "resourceScheme == 'file'"
                 }
             ],

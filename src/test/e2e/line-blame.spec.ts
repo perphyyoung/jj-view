@@ -5,7 +5,7 @@
 
 import { expect } from '@playwright/test';
 import { TestRepo } from '../test-repo';
-import { openFileInEditor, test } from './e2e-helpers';
+import { openFileInEditor, rightClickAndSelect, test } from './e2e-helpers';
 
 test.describe('Line Blame E2E', () => {
     test('Shows the full tooltip on the first hover', async ({ vscode }) => {
@@ -110,6 +110,94 @@ test.describe('Line Blame E2E', () => {
         expect(text).toContain('Notice');
         expect(text).toContain('⚠️');
         expect(text.indexOf('Notice')).toBeLessThan(text.indexOf('0.2.6'));
+    });
+
+    test('Opens Line History from the hover and pages it', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        for (let i = 1; i <= 12; i++) {
+            repo.writeFile('history.txt', `value ${i}\n`);
+            repo.describe(`change ${i}`);
+            repo.new();
+        }
+
+        const { page } = await vscode.openWorkspace(repo);
+        await openFileInEditor(vscode, page, 'history.txt');
+
+        const editor = page.locator('.editor-instance .monaco-editor').first();
+        const line = editor.locator('.view-line').first();
+        await expect(line).toBeVisible({ timeout: 5000 });
+        await line.click();
+        await page.keyboard.press('End');
+
+        // Wait for the annotation before hovering; the hover provider is registered with it.
+        await expect
+            .poll(
+                () =>
+                    line.evaluate((el) => {
+                        const hasBlame = (value: string): boolean => value.includes('change 12');
+                        const walk = (node: Node): boolean => {
+                            if (node.nodeType === Node.TEXT_NODE) {
+                                return hasBlame(node.textContent ?? '');
+                            }
+                            if (node.nodeType !== Node.ELEMENT_NODE) {
+                                return false;
+                            }
+                            const element = node as Element;
+                            if (hasBlame(getComputedStyle(element, '::after').content ?? '')) {
+                                return true;
+                            }
+                            return Array.from(element.childNodes).some(walk);
+                        };
+                        return walk(el);
+                    }),
+                { timeout: 5000 },
+            )
+            .toBe(true);
+
+        await line.hover();
+        const hover = page.locator('.monaco-hover').first();
+        await expect(hover).toBeVisible({ timeout: 5000 });
+        const link = hover.locator('a', { hasText: 'Line History' });
+        await expect(link).toBeVisible({ timeout: 5000 });
+        await link.click();
+
+        const input = page.locator('.quick-input-widget input').first();
+        // Ten of twelve commits are shown first; the list is virtualized, so assert on the
+        // placeholder rather than the rendered row count.
+        await expect(input).toHaveAttribute('placeholder', /10 of 12 commits/, { timeout: 5000 });
+        await expect(page.locator('.quick-input-list .monaco-list-row').first()).toContainText('change 12');
+
+        // The load-more entry is below the fold; filter to it, then select it.
+        await page.keyboard.type('Load more');
+        await page.keyboard.press('Enter');
+        await expect(input).toHaveAttribute('placeholder', /12 of 12 commits/, { timeout: 5000 });
+    });
+
+    test('Opens Line History from the editor context menu', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        for (let i = 1; i <= 3; i++) {
+            repo.writeFile('menu.txt', `value ${i}\n`);
+            repo.describe(`change ${i}`);
+            repo.new();
+        }
+
+        const { page } = await vscode.openWorkspace(repo);
+        await openFileInEditor(vscode, page, 'menu.txt');
+
+        const editor = page.locator('.editor-instance .monaco-editor').first();
+        const line = editor.locator('.view-line').first();
+        await expect(line).toBeVisible({ timeout: 5000 });
+        await line.click();
+        await page.keyboard.press('End');
+
+        await rightClickAndSelect(page, line, 'Show Line History');
+
+        // Reproduces the reported bug: with a payload the command never received, the menu
+        // only shows an informational toast and no picker appears.
+        const input = page.locator('.quick-input-widget input').first();
+        await expect(input).toHaveAttribute('placeholder', /3 of 3 commits/, { timeout: 5000 });
     });
 
     test('Shows the blame tooltip for the cursor line', async ({ vscode }) => {

@@ -427,7 +427,8 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
                 showDiff ? this._getLineChange(repo, annotation.commitId, relativePath, line, document) : undefined,
                 this._getCommitDetails(repo, annotation.commitId),
             ]);
-            markdown = formatHoverMarkdown(annotation, details, diff);
+            const link = buildLineHistoryLink(root, relativePath, annotation.line);
+            markdown = formatHoverMarkdown(annotation, details, diff, link);
         }
         this._outputChannel?.debug?.(`[LineBlame] hover resolved in ${Date.now() - start}ms`);
         return markdown;
@@ -677,4 +678,13 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         editor.setDecorations(this._decoration, []);
         this._hoverByUri.delete(editor.document.uri.toString());
     }
+}
+
+/**
+ * Command link shown in the hover header. The query is URI-encoded JSON, which VS Code
+ * decodes into the command's first argument.
+ */
+function buildLineHistoryLink(root: string, relativePath: string, line: number): string {
+    const args = encodeURIComponent(JSON.stringify({ root, path: relativePath, line }));
+    return `[Line History](command:jj-view.lineHistory?${args})`;
 }

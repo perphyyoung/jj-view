@@ -19,6 +19,7 @@ import { showDetailsCommand } from '../core/commands/details';
 import { discardChangeCommand } from '../core/commands/discard-change';
 import { duplicateCommand } from '../core/commands/duplicate';
 import { editCommand } from '../core/commands/edit';
+import { lineHistoryCommand } from '../core/commands/line-history';
 import { newMergeChangeCommand } from '../core/commands/merge';
 import { showMultiFileDiffCommand } from '../core/commands/multi-diff';
 import { newCommand } from '../core/commands/new';
@@ -71,6 +72,7 @@ import { createShowDetailsPayload } from './payloads/details.payload';
 import { createDiscardChangePayload } from './payloads/discard-change.payload';
 import { createDuplicatePayload } from './payloads/duplicate.payload';
 import { createEditPayload } from './payloads/edit.payload';
+import { createLineHistoryPayload } from './payloads/line-history.payload';
 import { createNewMergeChangePayload } from './payloads/merge.payload';
 import { createShowMultiFileDiffPayload } from './payloads/multi-diff.payload';
 import { createNewPayload } from './payloads/new.payload';
@@ -346,6 +348,8 @@ export function registerCommands(options: RegisterCommandsOptions): void {
             createViewFileAtRevisionPayload,
             viewFileAtRevisionCommand,
         ),
+        // Called from the blame hover (path/line) and the editor context menu (fileName/lineNumber).
+        registerCommandWithPayload('jj-view.lineHistory', createLineHistoryPayload, lineHistoryCommand),
         registerCommand('jj-view.workspaceAdd', workspaceAddCommand),
         registerCommandWithPayload('jj-view.workspaceForget', createWorkspaceForgetPayload, workspaceForgetCommand),
         registerCommandWithPayload('jj-view.workspaceDelete', createWorkspaceDeletePayload, workspaceDeleteCommand),

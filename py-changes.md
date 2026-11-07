@@ -205,6 +205,15 @@ git config core.autocrlf false   # 仅本仓库
 
 - 行末显示 `Uncommitted`；悬停为 `**Uncommitted changes**` + 该行在 `@` 的行级 diff + `@-` 的作者/相对时间/完整描述（新增行没有最后一段）
 
+#### 行历史（Line History）
+
+- 入口：hover 标题行尾的 `Line History` 链接（`command:jj-view.lineHistory?{root,path,line}`），以及行号右键 `Show Line History`
+- 数据：`git log -L <line>,<line>:<path> --no-patch --format=%H%x00%an%x00%aI%x00%s -n 200 <commit>`；提交 id 就是 jj 的 `commit_id`，选中项直接打开该提交与父提交的 diff（`parents(<sha>)`）
+- 不用 jj 自实现：`jj` 无 `git log -L` 等价物；逐提交 `jj diff` 走查实测 37s（105 步），同仓库 `git log -L` 83ms（21 提交）。`jj log -p` 批量仍需自己实现行追踪
+- 仓库形态：colocated 用 `<root>/.git`；非 colocated 用 `.jj/repo/store/git` + 显式 commit sha（不依赖 `HEAD`）
+- 分页：一次取最多 200 条（单次调用 83ms），QuickPick 先显示 10 条 + `Load more…`（含剩余数），点击后本地追加 10 条
+- 限制：`git log -L` 不跟随重命名（重命名处停止）；仅单行；无 git 的仓库提示 “requires a git-backed repository”
+
 #### 限制与配置
 
 - 仅 `file` scheme、仓库内文件；超过 `maxFileLines`（5000）不注解；未跟踪/二进制文件静默不显示
