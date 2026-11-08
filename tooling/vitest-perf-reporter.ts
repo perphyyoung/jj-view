@@ -92,19 +92,50 @@ export class VitestPerfReporter implements Reporter {
 
         // Always the last lines: a run whose per-test output scrolled away (or was cut short by
         // the suite timeout) still ends with counts, the wall clock and the failing test names.
+        // Format mirrors vitest's own summary lines (Test Files / Tests) with color.
         const summary = this.summarize(testModules);
-        console.log(
-            `[PERF] files: ${summary.filesPassed} passed, ${summary.filesFailed} failed, ${summary.filesSkipped} skipped (${fileTimings.length} total) | ` +
-                `tests: ${summary.testsPassed} passed, ${summary.testsFailed} failed, ${summary.testsSkipped} skipped (${testTimings.length} total)`,
-        );
+        const green = (s: string) => `\u001b[32m${s}\u001b[39m`;
+        const red = (s: string) => `\u001b[31m${s}\u001b[39m`;
+        const dim = (s: string) => `\u001b[90m${s}\u001b[39m`;
+        const bold = (s: string) => `\u001b[1m${s}\u001b[22m`;
+
+        const filesTotal = summary.filesPassed + summary.filesFailed + summary.filesSkipped;
+        const testsTotal = summary.testsPassed + summary.testsFailed + summary.testsSkipped;
+
+        const filesParts: string[] = [];
+        if (summary.filesFailed > 0) {
+            filesParts.push(red(`${summary.filesFailed} failed`));
+        }
+        if (summary.filesPassed > 0) {
+            filesParts.push(green(`${summary.filesPassed} passed`));
+        }
+        if (summary.filesSkipped > 0) {
+            filesParts.push(dim(`${summary.filesSkipped} skipped`));
+        }
+        console.log(` ${bold('Test Files')} ${filesParts.join(dim(' | '))} ${dim(`(${filesTotal})`)}`);
+
+        const testsParts: string[] = [];
+        if (summary.testsFailed > 0) {
+            testsParts.push(red(`${summary.testsFailed} failed`));
+        }
+        if (summary.testsPassed > 0) {
+            testsParts.push(green(`${summary.testsPassed} passed`));
+        }
+        if (summary.testsSkipped > 0) {
+            testsParts.push(dim(`${summary.testsSkipped} skipped`));
+        }
+        console.log(`      ${bold('Tests')} ${testsParts.join(dim(' | '))} ${dim(`(${testsTotal})`)}`);
+
         if (summary.failures.length > 0) {
-            console.log(`[PERF] failed tests (${summary.failures.length}):`);
+            console.log(red(`[PERF] failed tests (${summary.failures.length}):`));
             for (const failure of summary.failures) {
-                console.log(`  - ${failure.file} > ${failure.name}${failure.message ? ` — ${failure.message}` : ''}`);
+                console.log(
+                    `  ${red('×')} ${failure.file} > ${failure.name}${failure.message ? ` — ${failure.message}` : ''}`,
+                );
             }
         }
         const elapsedSeconds = (Date.now() - this.startedAt) / 1000;
-        console.log(`[PERF] wall-clock: ${elapsedSeconds.toFixed(1)}s\n`);
+        console.log(dim(`[PERF] wall-clock: ${elapsedSeconds.toFixed(1)}s\n`));
 
         try {
             if (fs.existsSync(this.traceFilePath)) {
@@ -149,15 +180,31 @@ export class VitestPerfReporter implements Reporter {
 
         for (const mod of testModules) {
             const modState = taskState(mod);
-            if (modState === 'failed') {
+            // Suite-level errors (e.g. mock factory failures) live in `errors`, not in
+            // `result().state`, so check both to avoid under-reporting failed files.
+            const modErrors = (mod as { errors?: Array<{ message?: string }> }).errors ?? [];
+            const hasSuiteError = modErrors.length > 0;
+
+            // A file is "failed" if the module itself failed OR any of its tests failed.
+            const tests = [...mod.children.allTests()];
+            const hasFailedTest = tests.some((t) => taskState(t) === 'failed');
+
+            if (modState === 'failed' || hasSuiteError || hasFailedTest) {
                 summary.filesFailed += 1;
+                if (hasSuiteError) {
+                    summary.failures.push({
+                        file: mod.relativeModuleId,
+                        name: '(suite)',
+                        message: (modErrors[0]?.message ?? '').split('\n')[0]?.trim() ?? '',
+                    });
+                }
             } else if (modState === 'skipped' || modState === 'pending' || modState === 'todo') {
                 summary.filesSkipped += 1;
             } else {
                 summary.filesPassed += 1;
             }
 
-            for (const test of mod.children.allTests()) {
+            for (const test of tests) {
                 const state = taskState(test);
                 if (state === 'failed') {
                     summary.testsFailed += 1;
