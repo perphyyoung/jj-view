@@ -364,7 +364,10 @@ export class JjRepositoryManager implements HostDisposable {
                 }
 
                 if (autoDetect === true || autoDetect === 'subFolders') {
-                    const glob = autoDetect === true ? '**/.jj/working_copy/type' : '*/.jj/working_copy/type';
+                    // One level only: nested working copies (test scratch dirs, vendored repos,
+                    // node_modules-style trees) must not be registered. Deep projects opt in via
+                    // `jj-view.scanRepositories` instead of a recursive glob.
+                    const glob = '*/.jj/working_copy/type';
                     if (this._host.workspace.findFiles) {
                         const files = await this._host.workspace.findFiles(glob, folder.uri, 1000);
                         await Promise.all(

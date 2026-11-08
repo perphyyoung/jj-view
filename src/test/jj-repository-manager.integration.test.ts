@@ -458,7 +458,7 @@ suite('JjRepositoryManager Integration Test', () => {
         assert.strictEqual(registered.rootUri.fsPath, mainRepo.path);
     });
 
-    test('scan recursively discovers sub-repositories inside workspace folders using real findFiles', async () => {
+    test('scan discovers only immediate sub-repositories inside workspace folders using real findFiles', async () => {
         // Create subprojects nested at different levels
         const sub1 = path.join(mainRepo.path, 'subproject1');
         const sub2 = path.join(mainRepo.path, 'nested', 'subproject2');
@@ -473,13 +473,15 @@ suite('JjRepositoryManager Integration Test', () => {
 
         const roots = manager.repositories.map((r) => r.rootUri.fsPath);
 
+        // Auto-detection is one level deep: nested working copies (test scratch dirs, vendored
+        // repos) must not be registered, otherwise every refresh pays for them.
         // Should discover:
         // 1. mainRepo (via findRepoRoot check of the workspace folder root itself)
-        // 2. subproject1 (via auto-detection scan of subfolders)
-        // 3. subproject2 (via recursive auto-detection scan of subfolders)
+        // 2. subproject1 (immediate subfolder)
+        // and must NOT discover subproject2 (two levels deep).
         assert.ok(roots.includes(mainRepo.path), 'Should discover mainRepo');
         assert.ok(roots.includes(sub1), 'Should discover sub1');
-        assert.ok(roots.includes(sub2), 'Should discover sub2');
+        assert.ok(!roots.includes(sub2), 'Should NOT discover sub2');
 
         await manager.clear();
     });
