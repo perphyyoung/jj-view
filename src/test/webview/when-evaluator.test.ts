@@ -36,14 +36,12 @@ describe('WhenEvaluator', () => {
             false,
         );
         expect(
-            WhenEvaluator.evaluateWithRecord("jj.codeForgeProvider != 'gerrit'", {
-                jj: { codeForgeProvider: 'github' },
-                'jj.codeForgeProvider': 'github',
+            WhenEvaluator.evaluateWithRecord("jj.uploadState != 'busy'", {
+                jj: { uploadState: 'idle' },
+                'jj.uploadState': 'idle',
             }),
         ).toBe(true);
-        expect(
-            WhenEvaluator.evaluateWithRecord("jj.codeForgeProvider != 'gerrit'", { 'jj.codeForgeProvider': 'gerrit' }),
-        ).toBe(false);
+        expect(WhenEvaluator.evaluateWithRecord("jj.uploadState != 'busy'", { 'jj.uploadState': 'busy' })).toBe(false);
     });
 
     it('evaluates unquoted identifier comparison fallback', () => {

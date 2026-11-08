@@ -106,6 +106,8 @@ export class TestRepo {
 
     public readonly path: string;
     private configId?: string;
+    /** Lazily created once per worker; `init()` copies it instead of spawning `jj git init`. */
+    private static templateRoot?: string;
 
     private ensureRepoConfig(): { configId: string; repoConfigDir: string; configPath: string } {
         const start = process.hrtime.bigint();
@@ -260,16 +262,46 @@ export class TestRepo {
         this.exec(args);
     }
 
-    init() {
-        this.exec(['--config-file', defaultTestConfigFile, 'git', 'init']);
-        const { configPath } = this.ensureRepoConfig();
-        if (!fs.existsSync(configPath)) {
-            fs.copyFileSync(defaultTestConfigFile, configPath);
-        } else {
-            const existing = fs.readFileSync(configPath, 'utf-8');
-            const defaultContent = fs.readFileSync(defaultTestConfigFile, 'utf-8');
-            fs.writeFileSync(configPath, `${defaultContent}\n${existing}`, 'utf-8');
+    /**
+     * Creates the pristine colocated repo once per worker. `jj git init` is one of the most
+     * expensive test calls (~250ms), and every `beforeEach` used to pay for it.
+     */
+    private static ensureTemplate(): string {
+        if (TestRepo.templateRoot && fs.existsSync(TestRepo.templateRoot)) {
+            return TestRepo.templateRoot;
         }
+        const templateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jj-view-repo-template-'));
+        const start = process.hrtime.bigint();
+        const res = cp.spawnSync(TestRepo.getJjBinary(), ['--config-file', defaultTestConfigFile, 'git', 'init'], {
+            cwd: templateRoot,
+            encoding: 'utf-8',
+            env: { ...process.env, JJ_CONFIG: '' },
+            stdio: ['ignore', 'pipe', 'pipe'],
+            windowsHide: true,
+        });
+        recordCommandTrace('TestRepo', ['template-init'], Number(process.hrtime.bigint() - start) / 1_000_000);
+        if (res.status !== 0 || res.error) {
+            throw new Error(`Failed to create jj test repo template: ${res.error ?? res.stderr}`);
+        }
+        tempDirs.add(templateRoot);
+        TestRepo.templateRoot = templateRoot;
+        return templateRoot;
+    }
+
+    init() {
+        const start = process.hrtime.bigint();
+        const template = TestRepo.ensureTemplate();
+        // Copy `.jj/` and the colocated `.git` pointer: pure file IO, no jj process.
+        for (const entry of fs.readdirSync(template)) {
+            fs.cpSync(path.join(template, entry), path.join(this.path, entry), { recursive: true });
+        }
+        // Each copy needs its own config id, otherwise `repo.config()` calls would share one
+        // user config file and leak settings between tests.
+        this.configId = crypto.randomBytes(10).toString('hex');
+        fs.writeFileSync(path.join(this.path, '.jj', 'repo', 'config-id'), this.configId, 'utf-8');
+        const { configPath } = this.ensureRepoConfig();
+        fs.writeFileSync(configPath, fs.readFileSync(defaultTestConfigFile, 'utf-8'), 'utf-8');
+        recordCommandTrace('TestRepo', ['template-copy'], Number(process.hrtime.bigint() - start) / 1_000_000);
     }
 
     new(parents?: string[], message?: string): { changeId: string; commitId: string } {

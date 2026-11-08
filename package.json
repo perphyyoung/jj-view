@@ -1241,8 +1241,10 @@
         "test:e2e": "node esbuild.js && pnpm build:tests && playwright test -c playwright.e2e.config.ts",
         "test:unit": "vitest run --reporter=dot",
         "test:repo": "vitest run --reporter=dot -c vitest.repo.config.ts",
+        "test:repo:fast": "vitest run --reporter=verbose --bail=1 -c vitest.repo.config.ts --exclude \"src/test/commands/**\"",
+        "test:repo:heavy": "vitest run --reporter=dot -c vitest.repo.config.ts src/test/commands",
         "test:changed": "vitest run --changed",
-        "test:fast": "vitest run --exclude \"src/test/commands/**\" --reporter=dot",
+        "test:fast": "vitest run --reporter=dot --bail=1",
         "test:failures": "node tooling/parse-test-failures.ts",
         "release:encode": "node .agents/scripts/encode-release-notes.ts",
         "release:open": "node tooling/open-release-url.ts"

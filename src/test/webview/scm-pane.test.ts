@@ -42,7 +42,7 @@ describe('Web SCM Components (SSR & Rendering)', () => {
     const menuRegistry = new MenuRegistry();
 
     describe('ScmHeader', () => {
-        it('renders source control title and dynamic action buttons', () => {
+        it('renders the title with only the built-in settings action', () => {
             const context = new ContextKeyService();
             const result = render(ScmHeader, {
                 props: {
@@ -55,10 +55,9 @@ describe('Web SCM Components (SSR & Rendering)', () => {
             const html = result.body;
 
             expect(html).toContain('SOURCE CONTROL');
-            expect(html).toContain('scm-title-action-jj-view.new');
-            expect(html).toContain('scm-title-action-jj-view.setDescription');
-            expect(html).toContain('scm-title-action-jj-view.commit');
-            expect(html).toContain('scm-title-action-jj-view.refresh');
+            // Native SCM menus were removed: the header must not resurrect scm/title actions.
+            expect(html).toContain('scm-settings-button');
+            expect(html).not.toContain('scm-title-action-jj-view.');
         });
     });
 

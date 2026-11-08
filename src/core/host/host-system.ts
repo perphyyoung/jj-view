@@ -38,7 +38,7 @@ export class ProcessExitError extends Error {
     }
 }
 
-export type HelperScriptName = 'batch-diff' | 'batch-edit' | 'conflict-capture';
+export type HelperScriptName = 'batch-diff' | 'batch-edit';
 
 export interface HostProcess {
     execFile(file: string, args: readonly string[], options?: ProcessExecOptions): Promise<ProcessResult>;

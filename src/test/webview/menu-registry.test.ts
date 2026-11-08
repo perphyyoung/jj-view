@@ -98,27 +98,6 @@ describe('MenuRegistry & Icon Resolution', () => {
         });
     });
 
-    it('resolves scm/title inline actions filtered by context keys', () => {
-        const registry = new MenuRegistry();
-        const context = new ContextKeyService();
-
-        // Default state: scmProviderCount is 1, so focusRepository should not be visible
-        let actions = registry.getInlineActions('scm/title', context);
-        let commands = actions.map((a) => a.command);
-        expect(commands).toContain('jj-view.new');
-        expect(commands).toContain('jj-view.setDescription');
-        expect(commands).toContain('jj-view.commit');
-        expect(commands).toContain('jj-view.refresh');
-        expect(commands).not.toContain('jj-view.focusRepository');
-
-        // With multiple providers: focusRepository becomes visible
-        context.set('scmProvider', 'jj');
-        context.set('scm.providerCount', 2);
-        actions = registry.getInlineActions('scm/title', context);
-        commands = actions.map((a) => a.command);
-        expect(commands).toContain('jj-view.focusRepository');
-    });
-
     it('resolves jvl/resourceGroup/context inline actions matching capability flags', () => {
         const registry = new MenuRegistry();
         const rootContext = new ContextKeyService();

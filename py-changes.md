@@ -126,6 +126,7 @@ git config core.autocrlf false   # 仅本仓库
 
 - 删除 `JjMergeService`、`VsCodeMergeContentProvider`、`jj-view.openMergeEditor` 命令与 `jj-merge-output` scheme
 - 冲突文件仍出现在 Changes 视图的冲突组，点击按普通差异打开；`jj-view.newMergeChange`（创建合并提交）不受影响
+- 配套清理：`JjService.getConflictParts()`、`conflict-capture` 辅助脚本/测试、`jj-merge-output` 的 URI 与仓库解析测试一并删除；`getConflictedFiles()` 与冲突组显示保留
 
 ### 2.6 刷新机制
 

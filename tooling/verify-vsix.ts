@@ -30,7 +30,6 @@ const requiredEntries = [
     // Runtime helper scripts
     `extension/scripts/batch-diff.${scriptExt}`,
     `extension/scripts/batch-edit.${scriptExt}`,
-    `extension/scripts/conflict-capture.${scriptExt}`,
 ];
 
 let missing = 0;

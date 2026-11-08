@@ -380,33 +380,6 @@ export function createVscodeMock(overrides: Record<string, unknown> = {}): Recor
         commands: {
             executeCommand: vi.fn(),
         },
-        scm: {
-            createSourceControl: vi.fn().mockImplementation((id: string, label: string, rootUri?: unknown) => {
-                const resourceGroups: unknown[] = [];
-                return {
-                    id,
-                    label,
-                    rootUri,
-                    inputBox: { value: '', placeholder: '' },
-                    acceptInputCommand: undefined,
-                    quickDiffProvider: undefined,
-                    count: 0,
-                    createResourceGroup: vi.fn().mockImplementation((groupId: string, groupLabel: string) => {
-                        const group = {
-                            id: groupId,
-                            label: groupLabel,
-                            resourceStates: [],
-                            hideWhenEmpty: false,
-                            contextValue: '',
-                            dispose: vi.fn(),
-                        };
-                        resourceGroups.push(group);
-                        return group;
-                    }),
-                    dispose: vi.fn(),
-                };
-            }),
-        },
         _emitters: {
             onDidChangeTabs: onDidChangeTabsEmitter,
             onDidChangeTabGroups: onDidChangeTabGroupsEmitter,

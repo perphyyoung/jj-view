@@ -8,12 +8,6 @@ import type { PackageJsonContributes } from './menu-types';
 export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
     commands: [
         {
-            command: 'jj-view.focusRepository',
-            title: 'Show Repository in JJ Log',
-            category: 'JJ View',
-            icon: '$(eye)',
-        },
-        {
             command: 'jj-view.newMergeChange',
             title: 'New Merge Change',
             category: 'JJ View',
@@ -36,11 +30,6 @@ export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
             title: 'Set Description (Prompt)',
             category: 'JJ View',
             icon: '$(save)',
-        },
-        {
-            command: 'jj-view.focusDescriptionInput',
-            title: 'Focus SCM Description Input',
-            category: 'JJ View',
         },
         {
             command: 'jj-view.commit',
@@ -594,29 +583,6 @@ export const DEFAULT_PACKAGE_JSON_CONTRIBUTES: PackageJsonContributes = {
                 command: 'jj-view.workspaceAdd',
                 group: 'navigation@10',
                 when: 'view == jj-view.logView',
-            },
-        ],
-        'scm/title': [
-            {
-                command: 'jj-view.focusRepository',
-                group: 'navigation@0',
-                when: 'scmProvider =~ /^jj/ && scm.providerCount > 1',
-            },
-            {
-                command: 'jj-view.new',
-                group: 'navigation@1',
-            },
-            {
-                command: 'jj-view.setDescription',
-                group: 'navigation@2',
-            },
-            {
-                command: 'jj-view.commit',
-                group: 'navigation@3',
-            },
-            {
-                command: 'jj-view.refresh',
-                group: 'navigation@10',
             },
         ],
         'jvl/resourceGroup/context': [

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveRepository } from '../core/host/ui-helpers';
@@ -95,7 +96,23 @@ describe('resolveRepository', () => {
         expect(result).toBeUndefined();
     });
 
-    it('resolves repository from SourceControlResourceState with nested symlinked directory (issue 348)', () => {
+    it('resolves a repository from a resource URI under a nested symlink (issue 348)', (ctx) => {
+        // Windows without Developer Mode denies directory symlinks (EPERM). The resolution
+        // logic is still covered by the other cases; skip instead of failing the fast tier.
+        if (process.platform === 'win32') {
+            const probe = path.join(repo.path, 'jj-view-symlink-probe');
+            try {
+                fs.symlinkSync(repo.path, probe, 'dir');
+                fs.unlinkSync(probe);
+            } catch (err: unknown) {
+                if ((err as NodeJS.ErrnoException).code === 'EPERM') {
+                    ctx.skip();
+                    return;
+                }
+                throw err;
+            }
+        }
+
         // Test layout:
         // repo.path ($root)
         // ├── .jj/ (real directory)

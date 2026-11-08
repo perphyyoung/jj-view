@@ -25,38 +25,6 @@ describe('Shell and Batch Scripts', () => {
         await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     });
 
-    describe('conflict-capture', () => {
-        test('copies base, left, and right files to output directory', async () => {
-            const outDir = path.join(tmpDir, 'conflict-out');
-            await fs.mkdir(outDir, { recursive: true });
-
-            const baseFile = path.join(tmpDir, 'base.txt');
-            const leftFile = path.join(tmpDir, 'left.txt');
-            const rightFile = path.join(tmpDir, 'right.txt');
-
-            await fs.writeFile(baseFile, 'base', 'utf8');
-            await fs.writeFile(leftFile, 'left', 'utf8');
-            await fs.writeFile(rightFile, 'right', 'utf8');
-
-            const scriptArgs = [baseFile, leftFile, rightFile, outDir];
-
-            try {
-                if (isWin) {
-                    await execFileAsync(path.join(scriptsDir, 'conflict-capture.bat'), scriptArgs, { shell: true });
-                } else {
-                    await execFileAsync(path.join(scriptsDir, 'conflict-capture.sh'), scriptArgs);
-                }
-            } catch (err: unknown) {
-                // We expect it to exit with code 1 so jj resolve aborts
-                expect((err as { code?: number }).code).toBe(1);
-            }
-
-            expect(await fs.readFile(path.join(outDir, 'base'), 'utf8')).toBe('base');
-            expect(await fs.readFile(path.join(outDir, 'left'), 'utf8')).toBe('left');
-            expect(await fs.readFile(path.join(outDir, 'right'), 'utf8')).toBe('right');
-        });
-    });
-
     describe('batch-diff', () => {
         test('copies left and right directories', async () => {
             const leftDir = path.join(tmpDir, 'batch-diff-l');

@@ -3,46 +3,36 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { JjRepositoryManager } from '../core/jj-repository-manager';
+import { beforeEach, describe, expect, it } from 'vitest';
+import type { JjRepository } from '../core/jj-repository';
+import type { JjRepositoryManager } from '../core/jj-repository-manager';
 import { Uri } from '../core/uri-utils';
 import { VirtualFsUriTracker } from '../core/virtual-fs-uri-tracker';
-import { FakeHostEnvironment } from './fake-host-environment';
-import { TestRepo } from './test-repo';
-import { createMockLogOutputChannel } from './test-utils';
+import { createMock } from './test-utils';
 
-describe('VirtualFsUriTracker Unit Tests', () => {
-    let repo: TestRepo;
-    let host: FakeHostEnvironment;
-    let repoManager: JjRepositoryManager;
+/**
+ * Pure tracker state: the old repo-tier version created a real jj repository only so
+ * `getRepositoryForUri` could say "inside" or "outside". A stub is enough here.
+ */
+const root = Uri.file('/repo').fsPath;
+
+const manager = createMock<JjRepositoryManager>({
+    getRepositoryForUri: (uri: Uri) =>
+        uri.fsPath.toLowerCase().startsWith(root.toLowerCase()) ? ({} as JjRepository) : undefined,
+});
+
+describe('VirtualFsUriTracker', () => {
     let tracker: VirtualFsUriTracker;
 
-    beforeEach(async () => {
-        repo = new TestRepo();
-        repo.init();
-
-        host = new FakeHostEnvironment();
-        host.workspace.addFolder(Uri.file(repo.path));
-        const outputChannel = createMockLogOutputChannel({
-            appendLine: () => {},
-        });
-        repoManager = new JjRepositoryManager(outputChannel, host);
-        await repoManager.maybeRegisterRepositoryContainingUri(Uri.file(repo.path));
-
-        tracker = new VirtualFsUriTracker(repoManager);
-    });
-
-    afterEach(async () => {
-        tracker.dispose();
-        await repoManager.dispose();
-        await repo.dispose();
+    beforeEach(() => {
+        tracker = new VirtualFsUriTracker(manager);
     });
 
     it('records accessed URIs and notifies on fireChangeEvents', () => {
         const events: Uri[][] = [];
         tracker.onDidChangeFile((uris) => events.push(uris));
 
-        const uri = Uri.file(`${repo.path}/file.txt`);
+        const uri = Uri.file(`${root}/file.txt`);
         tracker.recordAccess(uri);
 
         const notified = tracker.fireChangeEvents();
@@ -50,14 +40,12 @@ describe('VirtualFsUriTracker Unit Tests', () => {
         expect(notified[0].fsPath).toBeSameFsPath(uri.fsPath);
         expect(events.length).toBe(1);
 
-        // Subsequent fireChangeEvents without access should not notify (knownUris cleared)
-        const secondNotified = tracker.fireChangeEvents();
-        expect(secondNotified.length).toBe(0);
+        expect(tracker.fireChangeEvents().length).toBe(0);
         expect(events.length).toBe(1);
     });
 
     it('manages watcher reference counting across multiple watch tokens', () => {
-        const uri = Uri.file(`${repo.path}/file.txt`);
+        const uri = Uri.file(`${root}/file.txt`);
         let fireCount = 0;
         tracker.onDidChangeFile(() => fireCount++);
 
@@ -67,21 +55,17 @@ describe('VirtualFsUriTracker Unit Tests', () => {
         tracker.fireChangeEvents();
         expect(fireCount).toBe(1);
 
-        // Disposing watcher1 leaves watcher2 active
         watcher1.dispose();
         tracker.fireChangeEvents();
         expect(fireCount).toBe(2);
 
-        // Disposing watcher2 removes the URI from watched set
         watcher2.dispose();
         tracker.fireChangeEvents();
-        expect(fireCount).toBe(2); // No new fire
+        expect(fireCount).toBe(2);
     });
 
     it('disposal of watcher token is idempotent', () => {
-        const uri = Uri.file(`${repo.path}/file.txt`);
-        const watcher = tracker.watch(uri);
-
+        const watcher = tracker.watch(Uri.file(`${root}/file.txt`));
         expect(() => {
             watcher.dispose();
             watcher.dispose();
@@ -92,7 +76,7 @@ describe('VirtualFsUriTracker Unit Tests', () => {
         const events: Uri[][] = [];
         tracker.onDidChangeFile((uris) => events.push(uris));
 
-        const uri = Uri.file(`${repo.path}/direct.txt`);
+        const uri = Uri.file(`${root}/direct.txt`);
         tracker.fireDirectChangeEvents([uri]);
 
         expect(events.length).toBe(1);
@@ -102,21 +86,19 @@ describe('VirtualFsUriTracker Unit Tests', () => {
     it('ignores operations when disposed', () => {
         tracker.dispose();
 
-        const uri = Uri.file(`${repo.path}/file.txt`);
+        const uri = Uri.file(`${root}/file.txt`);
         tracker.recordAccess(uri);
         const watcher = tracker.watch(uri);
         expect(() => watcher.dispose()).not.toThrow();
-
-        const notified = tracker.fireChangeEvents();
-        expect(notified.length).toBe(0);
+        expect(tracker.fireChangeEvents().length).toBe(0);
     });
 
     it('deduplicates URIs in fireDirectChangeEvents', () => {
         const events: Uri[][] = [];
         tracker.onDidChangeFile((uris) => events.push(uris));
 
-        const uri = Uri.file(`${repo.path}/direct.txt`);
-        tracker.fireDirectChangeEvents([uri, uri, Uri.file(`${repo.path}/direct.txt`)]);
+        const uri = Uri.file(`${root}/direct.txt`);
+        tracker.fireDirectChangeEvents([uri, uri, Uri.file(`${root}/direct.txt`)]);
 
         expect(events.length).toBe(1);
         expect(events[0].length).toBe(1);
@@ -124,18 +106,13 @@ describe('VirtualFsUriTracker Unit Tests', () => {
     });
 
     it('disposing watcher token after tracker disposal does not throw', () => {
-        const uri = Uri.file(`${repo.path}/file.txt`);
-        const watcher = tracker.watch(uri);
+        const watcher = tracker.watch(Uri.file(`${root}/file.txt`));
         tracker.dispose();
-
         expect(() => watcher.dispose()).not.toThrow();
     });
 
     it('filters out URIs that do not belong to any registered repository', () => {
-        const outsideUri = Uri.file('/outside/non-existent-repo/file.txt');
-        tracker.recordAccess(outsideUri);
-
-        const notified = tracker.fireChangeEvents();
-        expect(notified.length).toBe(0);
+        tracker.recordAccess(Uri.file('/outside/non-existent-repo/file.txt'));
+        expect(tracker.fireChangeEvents().length).toBe(0);
     });
 });

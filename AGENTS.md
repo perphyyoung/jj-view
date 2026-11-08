@@ -11,8 +11,9 @@
 ## 测试与验证
 
 - 修改代码后必须**先通过 `pnpm lint`（含 `pnpm check-types`）再跑测试**；lint 未通过不得进入测试阶段
-- 执行**任何测试命令**（`pnpm test:unit`、repo 测试、`playwright test`、build、lint 等）都不要截断输出，必须读取完整的原始输出；禁止用 `Select-String`、`Select-Object -Last N`、`| head`、`| tail` 等过滤或截取
-- 输出过长时只允许重定向到 `tmp/*.log` 后**完整读取文件**（可分段读），不得在管道里按关键字筛选
-- 理由：被过滤掉的往往是断言值/堆栈/失败步骤，截断会误判并导致返工，省 token 得不偿失
+- 执行 `package.json` scripts 里的**任何命令**（`pnpm test:unit`、repo 测试、`playwright test`、build、lint 等）都必须读**完整的原始输出**再判断成败；禁止 `Select-String`、`Select-Object -Last/-First N`、`| head`、`| tail`、`grep`、`-c` 等截断或筛选后直接下结论——失败信息常夹在输出中段，只看尾部会把失败误判成通过
+- 需要定位信息时优先用命令自身开关收窄范围（`playwright --grep`、Vitest 文件过滤、日志级别）；额外 grep 只能作为补充确认，不能替代完整阅读
+- 输出确实过长时只允许重定向到 `tmp/*.log` 后**完整读取文件**（可分段读），不得在管道里按关键字筛选；结论需注明完整输出的路径
+- 理由：被过滤掉的往往是断言值/堆栈/失败步骤，截断会误判并导致返工，省 token 得不偿失（来源：`d:/py-code/pbp/跨项目通用规则.md:29-33`）
 - e2e 测试里的 timeout 上限 5 秒；确需超过时必须在代码里加注释说明原因
 - 新增或修改测试前，先按 `测试体系.md` 判断该放哪一层：UI 行为才用 e2e；真实 jj 语义用 repo；纯逻辑用 unit。同一行为的矩阵放轻层，e2e 只验证接线；禁止在 e2e 里用 TestRepo 复算仓库状态，也禁止为提示文案去 e2e 抓原生通知 DOM

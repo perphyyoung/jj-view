@@ -31,12 +31,6 @@ export const launchVSCode = launchNewVSCode;
 /**
  * Presses the keyboard shortcut to focus the SCM view / SCM description input.
  */
-export async function pressScmShortcut(page: Page) {
-    const start = Date.now();
-    await page.keyboard.press(isMac ? 'Meta+Shift+G' : 'Control+Shift+G');
-    logPerf('pressScmShortcut', start);
-}
-
 /**
  * Robustly ensures a specific VS Code view pane/sidebar is visible using its keyboard shortcut.
  * Resolves window/iframe focus issues before pressing the keys.
@@ -575,79 +569,6 @@ export async function expectSettingsOpen(page: Page, settingName: string | RegEx
 
     logPerf(`expectSettingsOpen ${typeof settingName === 'string' ? settingName : 'regex'}`, start);
     return settingItem.first();
-}
-
-/**
- * Robustly sets the description in the SCM input field.
- * Focuses the input using the focusDescriptionInput shortcut,
- * inserts the description text, and validates the input value.
- *
- * @returns The locator targeting the Source Control Input treeitem.
- */
-export async function setScmDescription(page: Page, description: string, vscode?: VSCodeFixture): Promise<Locator> {
-    const start = Date.now();
-    const scmInputRow = page.getByRole('treeitem', { name: 'Source Control Input' }).first();
-    let attempts = 0;
-
-    await expect(async () => {
-        attempts++;
-        // 1. Ensure the SCM input is visible and focused
-        await pressScmShortcut(page);
-        await scmInputRow.click();
-
-        // Wait for the native edit context or a textarea to be active
-        await page
-            .waitForFunction(
-                () => {
-                    const el = document.activeElement;
-                    return el?.getAttribute('role') === 'textbox' || el?.tagName === 'TEXTAREA';
-                },
-                { timeout: 2000 },
-            )
-            .catch((err) => {
-                console.error('Failed to wait for input to be active:', err);
-                throw err;
-            });
-
-        // 2. Clear the input
-        await page.keyboard.press(isMac ? 'Meta+A' : 'Control+A');
-        await page.keyboard.press('Backspace');
-
-        // 3. Set the description
-        // Use insertText for speed, but follow up with a validation
-        await page.keyboard.insertText(description);
-
-        // 4. Validate that the input editor's text content is exactly what we typed
-        const words = description.trim().split(/\s+/).filter(Boolean);
-        const regexPattern = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s*');
-        const exactRegex = new RegExp(`^\\s*${regexPattern}\\s*$`);
-        await expect(scmInputRow.locator('.monaco-editor')).toHaveText(exactRegex, { timeout: 3000 });
-
-        if (vscode) {
-            // Also validate that the Extension Host has received the value.
-            // This replaces the need for blind page.waitForTimeout(200) after setScmDescription.
-            await expect(async () => {
-                const match = await vscode.evaluate(async (_vscode, api, expectedVal) => {
-                    const focused = api.repositoryManager.focusedRepository;
-                    if (!focused) {
-                        return false;
-                    }
-                    const scmProvider = api.scmProviders.get(focused.rootUri.fsPath);
-                    if (!scmProvider) {
-                        return false;
-                    }
-                    return scmProvider.inputBoxValue.trim() === (expectedVal as string).trim();
-                }, description);
-                expect(match).toBe(true);
-            }).toPass({ timeout: 2000, intervals: [20, 50, 100] });
-        }
-    }, `Failed to set SCM description to "${description}" reliably`).toPass({
-        timeout: 10000,
-        intervals: [100, 250, 500],
-    });
-
-    logPerf(`setScmDescription`, start, /* prefix= */ undefined, `(attempts: ${attempts})`);
-    return scmInputRow;
 }
 
 /**
