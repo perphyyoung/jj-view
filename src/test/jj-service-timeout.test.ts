@@ -90,11 +90,10 @@ describe('JjService Timeout Tests', () => {
         const readPromise = jjService.getRepoRoot();
         readPromise.catch(() => {}); // Prevent unhandled rejection
 
-        // Let the async fast-path (fsPromises.stat) settle before advancing timers
-        await new Promise((resolve) => process.nextTick(resolve));
-        await new Promise((resolve) => process.nextTick(resolve));
-        await new Promise((resolve) => process.nextTick(resolve));
-        await vi.advanceTimersByTimeAsync(0);
+        // Wait until execFile is reached (fsPromises.stat settles through the fast path)
+        await vi.waitFor(() => {
+            expect(vi.mocked(cp.execFile).mock.calls.length).toBeGreaterThan(0);
+        });
 
         // Advance 1 minute - should still be pending
         vi.advanceTimersByTime(60_000);
@@ -144,11 +143,10 @@ describe('JjService Timeout Tests', () => {
         const readPromise = service.getRepoRoot();
         readPromise.catch(() => {}); // Prevent unhandled rejection
 
-        // Let the async fast-path (fsPromises.stat) settle before advancing timers
-        await new Promise((resolve) => process.nextTick(resolve));
-        await new Promise((resolve) => process.nextTick(resolve));
-        await new Promise((resolve) => process.nextTick(resolve));
-        await vi.advanceTimersByTimeAsync(0);
+        // Wait until execFile is reached (fsPromises.stat settles through the fast path)
+        await vi.waitFor(() => {
+            expect(vi.mocked(cp.execFile).mock.calls.length).toBeGreaterThan(0);
+        });
 
         // Advance 10s - should be pending
         vi.advanceTimersByTime(10_000);

@@ -1,0 +1,229 @@
+/**
+ * Copyright 2026 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import * as parcelWatcher from '@parcel/watcher';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { DirectoryWatcher } from '../core/directory-watcher';
+import type { LoggerChannel } from '../utils/output-channel';
+import { FakeHostEnvironment } from './fake-host-environment';
+import { makeTestTmpDir } from './test-tmp-root';
+import { createMockLogOutputChannel } from './test-utils';
+
+vi.mock('@parcel/watcher', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@parcel/watcher')>();
+    return {
+        ...actual,
+        subscribe: vi.fn(actual.subscribe),
+    };
+});
+
+describe('DirectoryWatcher (real @parcel/watcher)', { retry: os.platform() === 'win32' ? 3 : 0 }, () => {
+    let tmpDir: string;
+    let outputChannel: LoggerChannel;
+    let host: FakeHostEnvironment;
+    let callback: Mock;
+    let watcher: DirectoryWatcher;
+
+    beforeEach(() => {
+        tmpDir = makeTestTmpDir('dw-test-');
+        outputChannel = createMockLogOutputChannel();
+        host = new FakeHostEnvironment();
+        callback = vi.fn();
+        watcher = new DirectoryWatcher(tmpDir, callback, outputChannel, { name: 'DirectoryWatcher', host });
+    });
+
+    afterEach(async () => {
+        await watcher.dispose();
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    const waitForLog = async (pattern: string, timeout = 10000) => {
+        await vi.waitFor(
+            () => {
+                const { calls } = (outputChannel.info as Mock).mock;
+                const found = calls.some((call) => call[0].includes(pattern));
+                if (!found) {
+                    throw new Error(`Log pattern "${pattern}" not found`);
+                }
+            },
+            { timeout, interval: 50 },
+        );
+    };
+
+    it('subscribes and logs on start', async () => {
+        await watcher.start();
+        await waitForLog('Started');
+        expect(outputChannel.info).toHaveBeenCalledWith(expect.stringMatching(/Starting.*watcher/));
+    });
+
+    it('does not double subscribe if start is called twice', async () => {
+        await watcher.start();
+        await watcher.start();
+
+        const startCalls = (outputChannel.info as Mock).mock.calls.filter((call) => /Starting.*watcher/.test(call[0]));
+        expect(startCalls).toHaveLength(1);
+    });
+
+    it('detects file creation', async () => {
+        await watcher.start();
+        await waitForLog('Started');
+
+        fs.writeFileSync(path.join(tmpDir, 'new-file.txt'), 'hello');
+
+        await vi.waitFor(
+            () => {
+                expect(callback).toHaveBeenCalled();
+                const events = callback.mock.calls.flatMap((call) => call[0]);
+                const hasCreate = events.some((e: { path: string; type: string }) => e.path.includes('new-file.txt'));
+                expect(hasCreate, 'Expected a create event for new-file.txt').toBe(true);
+            },
+            { timeout: 10000, interval: 50 },
+        );
+    });
+
+    it('detects file modification', async () => {
+        const filePath = path.join(tmpDir, 'existing.txt');
+        fs.writeFileSync(filePath, 'initial');
+
+        await watcher.start();
+        await waitForLog('Started');
+
+        // Clear any events from watcher catching the initial file
+        callback.mockClear();
+
+        fs.writeFileSync(filePath, 'modified');
+
+        await vi.waitFor(
+            () => {
+                expect(callback).toHaveBeenCalled();
+                const events = callback.mock.calls.flatMap((call) => call[0]);
+                const hasUpdate = events.some((e: { path: string; type: string }) => e.path.includes('existing.txt'));
+                expect(hasUpdate, 'Expected an update event for existing.txt').toBe(true);
+            },
+            { timeout: 10000, interval: 50 },
+        );
+    });
+
+    it('detects file deletion', async () => {
+        await watcher.start();
+        await waitForLog('Started');
+
+        const filePath = path.join(tmpDir, 'to-delete.txt');
+        fs.writeFileSync(filePath, 'bye');
+
+        // Wait for creation first to ensure watcher is ready
+        await vi.waitFor(
+            () => {
+                const events = callback.mock.calls.flatMap((call) => call[0]);
+                const hasCreate = events.some(
+                    (e: { path: string; type: string }) => e.path.includes('to-delete.txt') && e.type === 'create',
+                );
+                expect(hasCreate, 'Expected verify creation of to-delete.txt').toBe(true);
+            },
+            { timeout: 10000, interval: 50 },
+        );
+
+        callback.mockClear();
+
+        fs.rmSync(filePath);
+
+        await vi.waitFor(
+            () => {
+                expect(callback).toHaveBeenCalled();
+                const events = callback.mock.calls.flatMap((call) => call[0]);
+                const hasDelete = events.some(
+                    (e: { path: string; type: string }) => e.path.includes('to-delete.txt') && e.type === 'delete',
+                );
+                expect(hasDelete, 'Expected a delete event for to-delete.txt').toBe(true);
+            },
+            { timeout: 10000, interval: 50 },
+        );
+    });
+
+    it('ignores paths matching the ignore pattern', async () => {
+        const ignoredDir = path.join(tmpDir, '.jj');
+        fs.mkdirSync(ignoredDir, { recursive: true });
+
+        await watcher.start(['.jj']);
+        await waitForLog('Started');
+
+        // Write to the ignored directory — should NOT trigger
+        fs.writeFileSync(path.join(ignoredDir, 'ignored-file.txt'), 'ignored');
+
+        // Write to a non-ignored path — SHOULD trigger
+        fs.writeFileSync(path.join(tmpDir, 'visible-file.txt'), 'visible');
+
+        await vi.waitFor(
+            () => {
+                const events = callback.mock.calls.flatMap((call) => call[0]);
+                const hasVisible = events.some((e: { path: string }) => e.path.includes('visible-file.txt'));
+                expect(hasVisible, 'Expected event for visible-file.txt').toBe(true);
+            },
+            { timeout: 10000, interval: 50 },
+        );
+
+        // Verify no events for the ignored file
+        const allEvents = callback.mock.calls.flatMap((call) => call[0]);
+        const hasIgnored = allEvents.some((e: { path: string }) => e.path.includes('ignored-file.txt'));
+        expect(hasIgnored, 'Should not have received event for ignored file').toBe(false);
+    });
+
+    it('stops receiving events after stop()', async () => {
+        await watcher.start();
+        await waitForLog('Started');
+
+        await watcher.stop();
+        callback.mockClear();
+
+        fs.writeFileSync(path.join(tmpDir, 'after-stop.txt'), 'nope');
+
+        // Wait a bit to confirm no events arrive
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('stops receiving events after dispose()', async () => {
+        await watcher.start();
+        await waitForLog('Started');
+
+        await watcher.dispose();
+        callback.mockClear();
+
+        fs.writeFileSync(path.join(tmpDir, 'after-dispose.txt'), 'nope');
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('handles dispose during start without error', async () => {
+        const startPromise = watcher.start();
+        await watcher.dispose();
+        await startPromise;
+
+        // Should not throw — just gracefully clean up
+        callback.mockClear();
+
+        fs.writeFileSync(path.join(tmpDir, 'after-race.txt'), 'nope');
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('shows warning message and links to README on ENOSPC inotify error', async () => {
+        host.ui.setNextWarningResponse('Open README');
+
+        const fakeError = new Error("inotify_add_watch on '/some/path' failed: No space left on device (ENOSPC)");
+        vi.mocked(parcelWatcher.subscribe).mockRejectedValueOnce(fakeError);
+
+        await expect(watcher.start()).rejects.toThrow(fakeError);
+
+        expect(host.ui.warningMessages.some((msg) => msg.includes('inotify watch limit reached'))).toBe(true);
+        expect(host.nav.externalUrisOpened.map((u) => u.toString())).toContain(
+            'https://github.com/brychanrobot/jj-view#file-watcher-mode',
+        );
+    });
+});
