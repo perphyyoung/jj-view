@@ -22,6 +22,7 @@ export default defineConfig({
     plugins: [svelte()],
     test: {
         include: ['src/test/**/*.repo.test.ts'],
+        globalSetup: ['./src/test/global-setup.ts'],
         setupFiles: ['./src/test/vitest-setup.ts'],
         globals: true,
         env: {

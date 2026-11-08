@@ -170,6 +170,15 @@ export class JjService {
         if (this._repoRoot) {
             return this._repoRoot;
         }
+        // Fast path: a working copy with its own `.jj` store has the repo root at
+        // `workspaceRoot`. `jj root` is a separate process whose startup dominates the
+        // cost in nested test repos (measured 84ms-2254ms), so only spawn it when the
+        // workspace is a subdirectory of some enclosing repository.
+        const hasOwnStore = await this.system.fs.exists(path.join(this.workspaceRoot, '.jj')).catch(() => false);
+        if (hasOwnStore) {
+            this._repoRoot = this.workspaceRoot;
+            return this._repoRoot;
+        }
         this._repoRoot = await this.run('root', [], { useCachedSnapshot: true, label: 'getRepoRoot' });
         return this._repoRoot;
     }
@@ -1277,23 +1286,6 @@ export class JjService {
         await this.run('new', [revision], { isMutation: true, label: 'resolve' });
     }
 
-    async getConflictedFiles(): Promise<string[]> {
-        try {
-            const output = await this.run('resolve', ['--list'], {
-                useCachedSnapshot: true,
-                label: 'getConflictedFiles',
-            });
-            return output
-                .split('\n')
-                .map((line) => line.trim())
-                .filter((line) => line.length > 0)
-                .map((line) => line.split(/\s+/)[0]);
-        } catch {
-            // No conflicts at this revision
-            return [];
-        }
-    }
-
     async describe(message: string, revision?: string): Promise<void> {
         const cmdArgs = ['-m', message];
         if (revision) {
@@ -1365,8 +1357,17 @@ export class JjService {
     /**
      * Retrieves the file changes between two revisions (`fromRevision` and `toRevision`).
      */
+    private debugDiff(message: string): void {
+        if (process.env.JJ_VIEW_DEBUG_DIFF === '1') {
+            process.stderr.write(`[DIFFDBG] ${message}\n`);
+        }
+    }
+
     async getChangesBetween(fromRevision: string, toRevision: string): Promise<JjFileChange[]> {
         const cacheKey = `${fromRevision}..${toRevision}`;
+        this.debugDiff(
+            `getChangesBetween ws=${this.workspaceRoot} from=${fromRevision} to=${toRevision} key=${cacheKey}`,
+        );
         return this._changesCache.getOrFetch(cacheKey, () => this._doGetChangesBetween(fromRevision, toRevision));
     }
 
@@ -1452,7 +1453,11 @@ export class JjService {
             label: 'getChangesBetween',
         });
 
-        return this._parseJsonLines(output, JjFileChangeSchema, 'getChangesBetween');
+        const changes = this._parseJsonLines(output, JjFileChangeSchema, 'getChangesBetween');
+        this.debugDiff(
+            `diff MISS ws=${this.workspaceRoot} from=${fromRevision} to=${toRevision} rawLines=${output.trim().split('\n').length} rawHead=${JSON.stringify(output.slice(0, 220))} parsed=${changes.map((c) => `${c.path}:${c.status}`).join(',')}`,
+        );
+        return changes;
     }
 
     private _parseJsonLines<T>(output: string, schema: z.ZodType<T>, label: string): T[] {

@@ -21,6 +21,7 @@ export default defineConfig({
         // Integration tests need a real VS Code host; repo tests need a real jj/git working copy.
         exclude: ['src/test/**/*.integration.test.ts', 'src/test/**/*.repo.test.ts'],
         // Temporary global setup to provide vscode mock during host abstraction retrofit
+        globalSetup: ['./src/test/global-setup.ts'],
         setupFiles: ['./src/test/vitest-setup.ts'],
         globals: true,
         env: perfEnabled ? { JJ_VIEW_PERF_TRACE_FILE: traceFile } : {},

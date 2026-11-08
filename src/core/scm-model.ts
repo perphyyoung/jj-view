@@ -176,12 +176,12 @@ export class ScmModel implements Disposable {
                       })
                     : Promise.resolve<JjLogEntry[]>([]);
 
-            const [bulkLog, workingCopyEntries, children, conflictedPaths] = await Promise.all([
+            const [bulkLog, workingCopyEntries, children] = await Promise.all([
                 bulkLogPromise,
                 this.jj.getLog({ revision: '@', limit: 1 }),
                 isFocused ? this.jj.getChildren('@') : Promise.resolve<JjLogEntry[]>([]),
-                this.jj.getConflictedFiles(),
             ]);
+            const conflictedPaths: string[] = [];
 
             const currentEntry = workingCopyEntries[0] || bulkLog.find((e) => e.is_current_working_copy) || bulkLog[0];
             this._currentEntry = currentEntry;

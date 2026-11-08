@@ -18,7 +18,7 @@
 ## 测试与验证
 
 - 使用 && 串联命令
-- 修改代码后必须**先通过 `pnpm lint`（含 `pnpm check-types`）再跑测试**；lint 未通过不得进入测试阶段
+- 修改代码后必须**先通过 `pnpm format` 与 `pnpm lint`（含 `pnpm check-types`）再跑测试**；format 或 lint 未通过不得进入测试阶段
 - 执行 `package.json` scripts 里的**任何命令**（`pnpm test:unit`、repo 测试、`playwright test`、build、lint 等）都必须读**完整的原始输出**再判断成败；禁止 `Select-String`、`Select-Object -Last/-First N`、`| head`、`| tail`、`grep`、`-c` 等截断或筛选后直接下结论——失败信息常夹在输出中段，只看尾部会把失败误判成通过
 - 需要定位信息时优先用命令自身开关收窄范围（`playwright --grep`、Vitest 文件过滤、日志级别）；额外 grep 只能作为补充确认，不能替代完整阅读
 - 输出确实过长时只允许重定向到 `tmp/*.log` 后**完整读取文件**（可分段读），不得在管道里按关键字筛选；结论需注明完整输出的路径

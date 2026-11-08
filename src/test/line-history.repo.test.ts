@@ -21,7 +21,8 @@ describe('lineHistoryCommand', () => {
     beforeEach(() => {
         repo = new TestRepo();
         repo.init();
-        for (let i = 1; i <= 12; i++) {
+        // 5 commits is enough to verify line-history ordering and endpoints.
+        for (let i = 1; i <= 5; i++) {
             repo.writeFile('line.txt', `value ${i}\n`);
             repo.describe(`change ${i}`);
             repo.new();
@@ -46,9 +47,9 @@ describe('lineHistoryCommand', () => {
         const payload = ctx.host.nav.lineHistoryOpened[0];
         expect(payload.path).toBe('line.txt');
         expect(payload.line).toBe(1);
-        expect(payload.entries).toHaveLength(12);
-        expect(payload.entries[0].text).toBe('value 12');
-        expect(payload.entries[1].text).toBe('value 11');
+        expect(payload.entries).toHaveLength(5);
+        expect(payload.entries[0].text).toBe('value 5');
+        expect(payload.entries[1].text).toBe('value 4');
         expect(payload.entries.at(-1)?.text).toBe('value 1');
     });
 

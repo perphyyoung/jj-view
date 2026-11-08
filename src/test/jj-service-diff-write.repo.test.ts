@@ -159,4 +159,78 @@ describe('JjService diff writes', () => {
             await fs.rm(tempBase, { recursive: true, force: true }).catch(() => {});
         }
     });
+
+    function generateRealisticCppSource(lineCount = 5500): string {
+        const lines: string[] = [
+            '// Copyright 2026 The Chromium Authors',
+            '// Use of this source code is governed by a BSD-style license that can be',
+            '// found in the LICENSE file.',
+            '',
+            '#include <iostream>',
+            '#include <memory>',
+            '#include <string>',
+            '#include <vector>',
+            '#include <map>',
+            '',
+            'namespace chrome::glic::testing {',
+            '',
+        ];
+
+        let currentClass = 0;
+        while (lines.length < lineCount) {
+            currentClass++;
+            lines.push(`class GlicApiHostHandler_${currentClass} {`);
+            lines.push(' public:');
+            lines.push(`  explicit GlicApiHostHandler_${currentClass}(int id) : id_(id) {}`);
+            lines.push(`  virtual ~GlicApiHostHandler_${currentClass}() = default;`);
+            lines.push('');
+            lines.push(`  int GetHandlerId() const { return id_; }`);
+            lines.push(`  std::string ComputeSignature(const std::string& input) const {`);
+            lines.push(`    return "handler_" + std::to_string(id_) + "_" + input;`);
+            lines.push('  }');
+            lines.push('');
+            lines.push(' protected:');
+            lines.push(`  void HandleMessage(const std::string& type, const std::vector<uint8_t>& payload) {`);
+            lines.push(`    // Processing message type: ${currentClass}`);
+            lines.push('    if (type.empty()) {');
+            lines.push('      return;');
+            lines.push('    }');
+            lines.push('    payload_cache_[type] = payload;');
+            lines.push('  }');
+            lines.push('');
+            lines.push(' private:');
+            lines.push('  int id_;');
+            lines.push('  std::map<std::string, std::vector<uint8_t>> payload_cache_;');
+            lines.push('};');
+            lines.push('');
+        }
+
+        lines.push('} // namespace chrome::glic::testing');
+        return lines.join('\n');
+    }
+
+    test('large file diff and setFilesContent', async () => {
+        const originalContent = generateRealisticCppSource(2000);
+        const lines = originalContent.split('\n');
+        lines[1500] = '  // MODIFIED IN CHILD AT 1500: Updated signature algorithm';
+        lines[3500] = '    // MODIFIED IN CHILD AT 3500: Added payload validation check';
+        const modifiedContent = lines.join('\n');
+
+        const ids = await buildGraph(repo, [
+            { label: 'base', files: { 'large_file.cc': originalContent } },
+            { label: 'child', parents: ['base'], files: { 'large_file.cc': modifiedContent } },
+        ]);
+
+        const diff = await jjService.getDiffContent(ids.child.commitId, 'large_file.cc');
+        expect(diff.left).toBe(originalContent);
+        expect(diff.right).toBe(modifiedContent);
+
+        // Now modify and setFilesContent
+        lines[2500] = '  // MODIFIED VIA SETFILESCONTENT: Injected telemetry handler';
+        const newContent = lines.join('\n');
+        await jjService.setFilesContent(ids.child.changeId, new Map([['large_file.cc', newContent]]));
+
+        const saved = repo.getFileContent(ids.child.changeId, 'large_file.cc');
+        expect(saved).toBe(newContent);
+    });
 });
