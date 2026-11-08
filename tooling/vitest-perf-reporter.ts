@@ -90,18 +90,91 @@ export class VitestPerfReporter implements Reporter {
 
         console.log(`${'='.repeat(80)}`);
 
-        // Always the last line: a run that is cut short or whose summary scrolls away still
-        // ends with the number people actually look for.
-        const elapsedSeconds = (Date.now() - this.startedAt) / 1000;
+        // Always the last lines: a run whose per-test output scrolled away (or was cut short by
+        // the suite timeout) still ends with counts, the wall clock and the failing test names.
+        const summary = this.summarize(testModules);
         console.log(
-            `[PERF] wall-clock: ${elapsedSeconds.toFixed(1)}s | files: ${fileTimings.length} | tests: ${testTimings.length}\n`,
+            `[PERF] files: ${summary.filesPassed} passed, ${summary.filesFailed} failed, ${summary.filesSkipped} skipped (${fileTimings.length} total) | ` +
+                `tests: ${summary.testsPassed} passed, ${summary.testsFailed} failed, ${summary.testsSkipped} skipped (${testTimings.length} total)`,
         );
+        if (summary.failures.length > 0) {
+            console.log(`[PERF] failed tests (${summary.failures.length}):`);
+            for (const failure of summary.failures) {
+                console.log(`  - ${failure.file} > ${failure.name}${failure.message ? ` — ${failure.message}` : ''}`);
+            }
+        }
+        const elapsedSeconds = (Date.now() - this.startedAt) / 1000;
+        console.log(`[PERF] wall-clock: ${elapsedSeconds.toFixed(1)}s\n`);
 
         try {
             if (fs.existsSync(this.traceFilePath)) {
                 fs.unlinkSync(this.traceFilePath);
             }
         } catch {}
+    }
+
+    /**
+     * Counts passed/failed/skipped tests and collects the failing test names with the first line
+     * of their error, so the tail of the log is enough to see what broke.
+     */
+    private summarize(testModules: ReadonlyArray<TestModule>): {
+        filesPassed: number;
+        filesFailed: number;
+        filesSkipped: number;
+        testsPassed: number;
+        testsFailed: number;
+        testsSkipped: number;
+        failures: Array<{ file: string; name: string; message: string }>;
+    } {
+        type TaskResult = { state?: string; errors?: Array<{ message?: string }> };
+        const taskState = (task: unknown): string => {
+            const result = (task as { result?: () => TaskResult }).result?.();
+            return result?.state ?? 'passed';
+        };
+        const taskError = (task: unknown): string => {
+            const errors = (task as { result?: () => TaskResult }).result?.()?.errors ?? [];
+            const message = errors[0]?.message ?? '';
+            return message.split('\n')[0]?.trim() ?? '';
+        };
+
+        const summary = {
+            filesPassed: 0,
+            filesFailed: 0,
+            filesSkipped: 0,
+            testsPassed: 0,
+            testsFailed: 0,
+            testsSkipped: 0,
+            failures: [] as Array<{ file: string; name: string; message: string }>,
+        };
+
+        for (const mod of testModules) {
+            const modState = taskState(mod);
+            if (modState === 'failed') {
+                summary.filesFailed += 1;
+            } else if (modState === 'skipped' || modState === 'pending' || modState === 'todo') {
+                summary.filesSkipped += 1;
+            } else {
+                summary.filesPassed += 1;
+            }
+
+            for (const test of mod.children.allTests()) {
+                const state = taskState(test);
+                if (state === 'failed') {
+                    summary.testsFailed += 1;
+                    summary.failures.push({
+                        file: mod.relativeModuleId,
+                        name: test.fullName,
+                        message: taskError(test),
+                    });
+                } else if (state === 'skipped' || state === 'pending' || state === 'todo') {
+                    summary.testsSkipped += 1;
+                } else {
+                    summary.testsPassed += 1;
+                }
+            }
+        }
+
+        return summary;
     }
 
     private readTraceRecords(): TraceRecord[] {

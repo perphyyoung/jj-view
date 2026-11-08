@@ -225,6 +225,26 @@ export class JjEditFsService implements Disposable {
             }
             this._uriTracker.fireDirectChangeEvents(revWrites.map((w) => w.uri));
 
+            // Editing the working-copy revision must also land on disk: `readFile('@')` prefers
+            // the file on disk, and users expect their editor buffer to match after a save.
+            if (revision === '@') {
+                const fileSystem = repo.host.system?.fs;
+                if (fileSystem) {
+                    for (const w of revWrites) {
+                        await fileSystem.writeTextFile(w.filePath, w.content).catch((err: unknown) => {
+                            this._repositoryManager.outputChannel.warn(
+                                `[JjEditFsService] Failed to mirror @ write to disk (${w.filePath}): ${String(err)}`,
+                            );
+                        });
+                    }
+                }
+            }
+
+            // The diff cache is keyed by revision and holds the pre-write contents; readers that
+            // run right after a flush would otherwise see the old file. Drop it so the next
+            // read rebuilds from the settled repository state.
+            await repo.jj.clearCache().catch(() => {});
+
             for (const w of revWrites) {
                 w.resolve();
             }
