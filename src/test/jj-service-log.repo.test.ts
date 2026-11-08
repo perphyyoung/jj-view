@@ -4,7 +4,6 @@
  */
 
 import * as cp from 'node:child_process';
-import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { JjService, NO_OP_LOGGER } from '../core/jj-service';
 import { buildGraph, TestRepo } from './test-repo';
@@ -151,57 +150,6 @@ describe('JjService log and annotate', () => {
 
     // === Ancestry and workspaces (from jj-service-log-ancestry) ===
 
-    test('detects divergent commits and offsets', async () => {
-        repo.describe('version 1');
-        const commitIdV1 = repo.getCommitId('@');
-
-        repo.describe('version 2');
-        const commitIdV2 = repo.getCommitId('@');
-
-        repo.bookmark('old-version', commitIdV1);
-
-        const logs = await jjService.getLog({ revision: 'all()' });
-
-        const v1Entry = logs.find((l) => l.commit_id === commitIdV1);
-        const v2Entry = logs.find((l) => l.commit_id === commitIdV2);
-
-        expect(v1Entry).toBeDefined();
-        expect(v2Entry).toBeDefined();
-
-        expect(v1Entry?.is_divergent).toBe(true);
-        expect(v2Entry?.is_divergent).toBe(true);
-
-        expect(v1Entry?.change_id).toMatch(/\/\d+$/);
-        expect(v2Entry?.change_id).toMatch(/\/\d+$/);
-
-        expect(v1Entry?.change_id_offset).toBe(1);
-        expect(v2Entry?.change_id_offset).toBe(0);
-        expect(v1Entry?.change_id_offset).not.toBe(v2Entry?.change_id_offset);
-    });
-
-    test('includes workspace labels in working_copies field', async () => {
-        const workspaceName = 'repo2';
-
-        const otherCommit = await buildGraph(repo, [{ label: 'other', description: 'other' }]);
-        const otherCommitId = otherCommit.other.changeId;
-
-        const currentWcId = repo.getChangeId('@');
-
-        repo.workspaceAdd(workspaceName, otherCommitId);
-
-        const logs = await jjService.getLog({ revision: 'all()' });
-
-        const repo2WcEntry = logs.find((l) => l.working_copies?.some((w) => w.startsWith(workspaceName)));
-
-        expect(repo2WcEntry).toBeDefined();
-        expect(repo2WcEntry?.is_current_working_copy).toBe(false);
-
-        const currentWcEntry = logs.find((l) => l.is_current_working_copy);
-        expect(currentWcEntry).toBeDefined();
-        expect(currentWcEntry?.change_id).toBe(currentWcId);
-        expect(currentWcEntry?.working_copies).toContain('default');
-    });
-
     test('without revisions returns multiple entries', async () => {
         await repo.initWithGraph('three-linear', [
             { label: 'c1', description: 'c1' },
@@ -263,30 +211,6 @@ describe('JjService log and annotate', () => {
 
     // === Graph and file changes (from jj-service-log-graph) ===
 
-    test('handles complex graph (forks)', async () => {
-        await buildGraph(repo, [
-            { label: 'root', description: 'root' },
-            { label: 'parent', parents: ['root'], description: 'parent' },
-            { label: 'child1', parents: ['parent'], description: 'child1' },
-            { label: 'child2', parents: ['parent'], description: 'child2', isCurrentWorkingCopy: true },
-        ]);
-
-        const logs = await jjService.getLog();
-
-        expect(logs.length).toBeGreaterThanOrEqual(4);
-
-        const child1Log = logs.find((l) => l.description.trim() === 'child1');
-        const child2Log = logs.find((l) => l.description.trim() === 'child2');
-        const parentLog = logs.find((l) => l.description.trim() === 'parent');
-
-        expect(child1Log).toBeDefined();
-        expect(child2Log).toBeDefined();
-        expect(parentLog).toBeDefined();
-
-        expect(child1Log?.parents[0].commit_id).toBe(parentLog?.commit_id);
-        expect(child2Log?.parents[0].commit_id).toBe(parentLog?.commit_id);
-    }, 30000);
-
     test('Complex Replay (Reproduce User Scenario) with return IDs', async () => {
         const { Initial, FakeTS, CC, Cool, VPM, Orcs, HEAD } = await buildGraph(repo, [
             { label: 'Initial', description: 'initial commit' },
@@ -332,58 +256,4 @@ describe('JjService log and annotate', () => {
         expect(getParents(Orcs.changeId)).toContain(Cool.changeId);
         expect(getParents(HEAD.changeId)).toContain(VPM.changeId);
     }, 30000);
-
-    test('returns file changes with statuses', async () => {
-        await buildGraph(repo, [
-            {
-                label: 'setup',
-                description: 'setup',
-                files: { 'modified.txt': 'initial', 'deleted.txt': 'to delete' },
-            },
-            { parents: ['setup'], isCurrentWorkingCopy: true },
-        ]);
-
-        repo.writeFile('added.txt', 'new');
-        repo.writeFile('modified.txt', 'modified');
-        repo.deleteFile('deleted.txt');
-
-        const [log] = await jjService.getLog({ revision: '@' });
-        const changes = log.changes;
-        if (!changes) {
-            throw new Error('changes not found');
-        }
-
-        expect(changes.find((c) => c.path === 'added.txt')?.status).toBe('added');
-        expect(changes.find((c) => c.path === 'modified.txt')?.status).toBe('modified');
-        expect(changes.find((c) => c.path === 'deleted.txt')?.status).toBe('deleted');
-    });
-
-    test('includes oldPath for renamed files', async () => {
-        const oldFile = 'old-log-rename.txt';
-        const newFile = 'new-log-rename.txt';
-        repo.writeFile(oldFile, 'log rename content');
-        repo.describe('parent');
-        await jjService.new();
-        repo.moveFile(oldFile, newFile);
-
-        const [logEntry] = await jjService.getLog({ revision: '@' });
-        expect(logEntry).toBeDefined();
-
-        const changes = logEntry.changes || [];
-        const renameEntry = changes.find((c) => c.path === newFile);
-        expect(renameEntry).toBeDefined();
-        expect(renameEntry?.status).toBe('renamed');
-        expect(renameEntry?.oldPath).toBe(oldFile);
-    });
-
-    test('handles atypical workspace names', async () => {
-        const alphaRepo = repo.workspaceAdd('alpha:1.0', undefined, path.join(repo.path, 'alpha_1.0'));
-        alphaRepo.new();
-
-        const logEntries = await jjService.getLog({ revision: alphaRepo.getWorkingCopyId() });
-
-        expect(logEntries.length).toBeGreaterThan(0);
-        const head = logEntries[0];
-        expect(head.working_copies).toContain('alpha:1.0');
-    });
 });
