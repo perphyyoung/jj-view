@@ -82,6 +82,7 @@ export class VitestPerfReporter implements Reporter {
         console.log('='.repeat(80));
 
         this.printSubprocessSummary(traceRecords, commandStats);
+        this.printThresholds(fileTimings, traceRecords);
         this.printSlowestFiles(fileTimings.slice(0, 15));
         this.printSlowestTests(testTimings.slice(0, 20));
 
@@ -262,6 +263,52 @@ export class VitestPerfReporter implements Reporter {
                 `  ${(idx + 1).toString().padStart(2)}. ${Math.round(r.durationMs)}ms - jj ${r.command} [${r.caller}]${loc}`,
             );
         });
+    }
+
+    /**
+     * Warns about files that are too slow or spawn too many jj processes.
+     *
+     * These are the two ways the repo tier loses time: a file that runs long, and a file whose
+     * cases each start many jj processes. Both should be optimized instead of tolerated.
+     */
+    private printThresholds(
+        files: Array<{ file: string; durationMs: number; testCount: number }>,
+        records: TraceRecord[],
+    ): void {
+        const FILE_DURATION_LIMIT_MS = 30_000;
+        const SPAWNS_PER_TEST_LIMIT = 5;
+
+        const spawnsPerFile = new Map<string, number>();
+        for (const record of records) {
+            if (!record.testFile) {
+                continue;
+            }
+            spawnsPerFile.set(record.testFile, (spawnsPerFile.get(record.testFile) ?? 0) + 1);
+        }
+
+        const warnings: string[] = [];
+        for (const file of files) {
+            if (file.durationMs > FILE_DURATION_LIMIT_MS) {
+                warnings.push(
+                    `[PERF] slow file: ${file.file} took ${(file.durationMs / 1000).toFixed(1)}s (limit ${FILE_DURATION_LIMIT_MS / 1000}s)`,
+                );
+            }
+            const spawns = spawnsPerFile.get(file.file) ?? 0;
+            const perTest = file.testCount > 0 ? spawns / file.testCount : 0;
+            if (perTest > SPAWNS_PER_TEST_LIMIT) {
+                warnings.push(
+                    `[PERF] spawn-heavy file: ${file.file} ran ${spawns} jj commands for ${file.testCount} tests (${perTest.toFixed(1)} per test, limit ${SPAWNS_PER_TEST_LIMIT})`,
+                );
+            }
+        }
+
+        if (warnings.length === 0) {
+            return;
+        }
+        console.log('\n--- Threshold Warnings ---');
+        for (const warning of warnings) {
+            console.log(warning);
+        }
     }
 
     private printSlowestFiles(files: Array<{ file: string; durationMs: number; testCount: number }>): void {

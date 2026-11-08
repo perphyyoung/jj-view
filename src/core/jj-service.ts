@@ -127,6 +127,14 @@ export class JjService {
     private static readonly MAX_LOG_ENTRY_CACHE_KEYS = 4000;
     private _cacheEpoch = 0;
     private readonly _logEntryCache = new Map<string, JjLogEntry>();
+    /**
+     * Memoized nearest visible ancestors, keyed by search set + change id.
+     *
+     * Resolving them costs one `jj log` per entry, and the log view refreshes repeatedly on
+     * the same entries. The cache is dropped by `clearCache()`, which runs after every
+     * mutation, so a stale answer can never survive a repository change.
+     */
+    private readonly _nearestAncestorCache = new Map<string, string[]>();
     private readonly _diffCache: AsyncCache<string, { tempDir: string; expires: number }>;
     private readonly _changesCache = new AsyncCache<string, JjStatusEntry[]>({
         clone: (entries) => entries.map((e) => ({ ...e })),
@@ -680,6 +688,12 @@ export class JjService {
 
             // Some parents are not in the current log slice. Find the nearest ones in the search set.
             // We use the same change ID expression for the output to ensure consistency.
+            const cacheKey = `${searchSet}\u0000${entry.change_id}`;
+            const memoized = this._nearestAncestorCache.get(cacheKey);
+            if (memoized) {
+                entry.nearest_visible_ancestors = [...memoized];
+                continue;
+            }
             followUps.push(
                 (async () => {
                     try {
@@ -694,10 +708,12 @@ export class JjService {
                             ],
                             { useCachedSnapshot: true, label: `nearestAncestors:${entry.change_id}` },
                         );
-                        entry.nearest_visible_ancestors = results
+                        const ancestors = results
                             .split('\n')
                             .map((l) => l.trim())
                             .filter(Boolean);
+                        entry.nearest_visible_ancestors = ancestors;
+                        this._nearestAncestorCache.set(cacheKey, ancestors);
                     } catch (e) {
                         this.logger.warn(`Warning: failed to fetch nearest ancestors for ${entry.change_id}: ${e}`);
                         entry.nearest_visible_ancestors = [];
@@ -835,6 +851,7 @@ export class JjService {
         this._cacheEpoch++;
         this._repoRoot = undefined;
         this._logEntryCache.clear();
+        this._nearestAncestorCache.clear();
         this._gitRoot = undefined;
         this._gitRootPromise = undefined;
         this._gitBlobHashCache.clear();

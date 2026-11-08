@@ -160,26 +160,29 @@ export class TestRepo {
         }
 
         const repoPath = this.path;
-        try {
-            await fs.promises.rm(repoPath, {
+        // Deleting a jj working copy means removing hundreds of small files, which costs tens
+        // of milliseconds on Windows. Do it in the background: the process-exit cleanup still
+        // removes the directory, and the test does not wait for the disk.
+        void fs.promises
+            .rm(repoPath, {
                 recursive: true,
                 force: true,
                 maxRetries: 5,
                 retryDelay: 50,
-            });
-        } catch {}
-        tempDirs.delete(repoPath);
+            })
+            .catch(() => {});
 
         if (this.configId) {
             const userJjDir = getUserJjDir();
             const repoConfigDir = path.join(userJjDir, 'repos', this.configId);
             const gcStart = process.hrtime.bigint();
-            try {
-                await fs.promises.rm(repoConfigDir, { recursive: true, force: true });
-                const duration = Math.max(0, Number(process.hrtime.bigint() - gcStart) / 1_000_000);
-                recordCommandTrace('TestRepo', ['repo-config-gc'], duration);
-            } catch {}
-            tempDirs.delete(repoConfigDir);
+            void fs.promises
+                .rm(repoConfigDir, { recursive: true, force: true })
+                .then(() => {
+                    const duration = Math.max(0, Number(process.hrtime.bigint() - gcStart) / 1_000_000);
+                    recordCommandTrace('TestRepo', ['repo-config-gc'], duration);
+                })
+                .catch(() => {});
         }
     }
 
@@ -291,6 +294,36 @@ export class TestRepo {
     }
 
     /**
+     * True when the repo still holds only the empty template: no commits and no extra files.
+     * Only then may a cached graph replace its content.
+     */
+    isPristine(): boolean {
+        return fs.readdirSync(this.path).every((entry) => entry === '.jj' || entry === '.git');
+    }
+
+    /**
+     * Copies `sourcePath` into this repo and gives the copy its own config id, so
+     * `repo.config()` calls never leak between tests.
+     */
+    applyTemplate(sourcePath: string, replaceStore: boolean): void {
+        if (replaceStore) {
+            for (const entry of ['.jj', '.git']) {
+                const target = path.join(this.path, entry);
+                if (fs.existsSync(target)) {
+                    fs.rmSync(target, { recursive: true, force: true });
+                }
+            }
+        }
+        for (const entry of fs.readdirSync(sourcePath)) {
+            fs.cpSync(path.join(sourcePath, entry), path.join(this.path, entry), { recursive: true });
+        }
+        this.configId = crypto.randomBytes(10).toString('hex');
+        fs.writeFileSync(path.join(this.path, '.jj', 'repo', 'config-id'), this.configId, 'utf-8');
+        const { configPath } = this.ensureRepoConfig();
+        fs.writeFileSync(configPath, fs.readFileSync(defaultTestConfigFile, 'utf-8'), 'utf-8');
+    }
+
+    /**
      * Copies a pre-built commit graph instead of running `jj` for it.
      *
      * The graph is built once per worker and then copied (pure file IO), so tests that only
@@ -298,49 +331,28 @@ export class TestRepo {
      * because the copied operation store carries the same change ids.
      */
     async initWithGraph(name: string, defs: CommitDefinition[]): Promise<Record<string, CommitId>> {
-        let cached = TestRepo.graphTemplates.get(name);
+        const signature = graphSignature(defs);
+        let cached = TestRepo.graphTemplates.get(name) ?? graphCache.get(signature);
         if (!cached) {
             const templateRepo = new TestRepo();
             templateRepo.init();
             const ids = await buildGraph(templateRepo, defs);
             cached = { path: templateRepo.path, ids };
             TestRepo.graphTemplates.set(name, cached);
+            graphCache.set(signature, cached);
         }
 
         const start = process.hrtime.bigint();
         // Replace whatever `init()` copied before: the graph template carries its own store.
-        for (const entry of ['.jj', '.git']) {
-            const target = path.join(this.path, entry);
-            if (fs.existsSync(target)) {
-                fs.rmSync(target, { recursive: true, force: true });
-            }
-        }
-        for (const entry of fs.readdirSync(cached.path)) {
-            fs.cpSync(path.join(cached.path, entry), path.join(this.path, entry), { recursive: true });
-        }
-        // The copy needs its own config id, otherwise `repo.config()` calls would share one
-        // user config file and leak settings between tests.
-        this.configId = crypto.randomBytes(10).toString('hex');
-        fs.writeFileSync(path.join(this.path, '.jj', 'repo', 'config-id'), this.configId, 'utf-8');
-        const { configPath } = this.ensureRepoConfig();
-        fs.writeFileSync(configPath, fs.readFileSync(defaultTestConfigFile, 'utf-8'), 'utf-8');
+        this.applyTemplate(cached.path, true);
         recordCommandTrace('TestRepo', ['graph-template-copy'], Number(process.hrtime.bigint() - start) / 1_000_000);
         return cached.ids;
     }
 
     init() {
         const start = process.hrtime.bigint();
-        const template = TestRepo.ensureTemplate();
         // Copy `.jj/` and the colocated `.git` pointer: pure file IO, no jj process.
-        for (const entry of fs.readdirSync(template)) {
-            fs.cpSync(path.join(template, entry), path.join(this.path, entry), { recursive: true });
-        }
-        // Each copy needs its own config id, otherwise `repo.config()` calls would share one
-        // user config file and leak settings between tests.
-        this.configId = crypto.randomBytes(10).toString('hex');
-        fs.writeFileSync(path.join(this.path, '.jj', 'repo', 'config-id'), this.configId, 'utf-8');
-        const { configPath } = this.ensureRepoConfig();
-        fs.writeFileSync(configPath, fs.readFileSync(defaultTestConfigFile, 'utf-8'), 'utf-8');
+        this.applyTemplate(TestRepo.ensureTemplate(), false);
         recordCommandTrace('TestRepo', ['template-copy'], Number(process.hrtime.bigint() - start) / 1_000_000);
     }
 
@@ -922,9 +934,40 @@ export interface CommitId {
     commitId: string;
 }
 
+/**
+ * Cache of pre-built commit graphs, keyed by the shape of the definition list.
+ *
+ * Building a graph costs one `jj new` per commit (~180 ms each on Windows). Tests repeat the
+ * same shapes over and over, so the first build is snapshotted and later tests copy the
+ * snapshot instead of re-running jj. The ids stay valid because the copy carries the same
+ * operation store.
+ */
+const graphCache = new Map<string, { path: string; ids: Record<string, CommitId> }>();
+
+function graphSignature(commits: CommitDefinition[]): string {
+    return JSON.stringify(commits);
+}
+
+function cloneIds(ids: Record<string, CommitId>): Record<string, CommitId> {
+    return Object.fromEntries(Object.entries(ids).map(([label, id]) => [label, { ...id }]));
+}
+
 export async function buildGraph(repo: TestRepo, commits: CommitDefinition[]): Promise<Record<string, CommitId>> {
     if (commits.length === 0) {
         return {};
+    }
+
+    // Reuse a graph of the same shape: the copy replaces the repo content, so it is only
+    // valid while the repo still holds the empty template.
+    const signature = graphSignature(commits);
+    const pristine = repo.isPristine();
+    if (pristine) {
+        const cached = graphCache.get(signature);
+        if (cached) {
+            repo.applyTemplate(cached.path, true);
+            recordCommandTrace('TestRepo', ['graph-cache-hit'], 0);
+            return cloneIds(cached.ids);
+        }
     }
 
     const labelToId: Record<string, CommitId> = {};
@@ -998,6 +1041,14 @@ export async function buildGraph(repo: TestRepo, commits: CommitDefinition[]): P
                 break;
             }
         }
+    }
+
+    if (pristine) {
+        // Snapshot the built repo so later tests with the same shape can copy it instead of
+        // running `jj new` again.
+        const snapshot = new TestRepo();
+        snapshot.applyTemplate(repo.path, false);
+        graphCache.set(signature, { path: snapshot.path, ids: cloneIds(labelToId) });
     }
 
     return labelToId;
