@@ -27,8 +27,8 @@ export default defineConfig({
         // Threads start far faster than forked processes, which matters on Windows.
         pool: 'threads',
         // Unit tests are pure logic; anything slower than this belongs in the repo tier.
-        testTimeout: 15000,
-        hookTimeout: 15000,
+        testTimeout: 5000,
+        hookTimeout: 5000,
         retry: isWindows && process.env.CI ? 1 : 0,
         maxWorkers: isWindows && process.env.CI ? 2 : undefined,
         // `execArgv` is rejected by worker threads (ERR_WORKER_INVALID_EXEC_ARGV); set the heap

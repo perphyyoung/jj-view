@@ -7,13 +7,16 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { LogViewController } from '../core/controllers/log-view-controller';
 import { JjContextKey } from '../core/jj-context-keys';
 import { JjRepositoryManager } from '../core/jj-repository-manager';
-import type { JjLogEntry } from '../core/jj-types';
 import { Uri } from '../core/uri-utils';
 import { FakeHostEnvironment } from './fake-host-environment';
 import { TestRepo } from './test-repo';
-import { createMock, createMockLogOutputChannel } from './test-utils';
+import { createMockLogOutputChannel } from './test-utils';
 
-describe('LogViewController Domain Unit Tests', () => {
+/**
+ * Real-jj behaviour of the log controller: RPC handling, refreshing from disk and the
+ * initial snapshot replay. Pure state lives in `log-view-controller.test.ts` (unit tier).
+ */
+describe('LogViewController with real jj', () => {
     let testRepo: TestRepo;
     let repositoryManager: JjRepositoryManager;
     let fakeHost: FakeHostEnvironment;
@@ -51,79 +54,6 @@ describe('LogViewController Domain Unit Tests', () => {
     afterEach(async () => {
         controller.dispose();
         await repositoryManager.dispose();
-    });
-
-    test('manages commits and fires onDidUpdateCommits', () => {
-        const updates: (readonly JjLogEntry[])[] = [];
-        controller.onDidUpdateCommits((c) => updates.push(c));
-
-        const dummyCommits: JjLogEntry[] = [
-            createMock<JjLogEntry>({
-                change_id: 'test-change-1',
-                commit_id: 'test-commit-1',
-                description: 'test commit',
-                is_immutable: false,
-                is_empty: false,
-                conflict: false,
-                bookmarks: [],
-                tags: [],
-                parents: [],
-            }),
-        ];
-
-        controller.setCommits(dummyCommits);
-        expect(updates.length).toBe(1);
-        expect(controller.commits).toEqual(dummyCommits);
-        expect(postedMessages.length).toBeGreaterThan(0);
-    });
-
-    test('manages commit selection and guards against identical selections', () => {
-        const selections: (readonly string[])[] = [];
-        controller.onDidChangeSelection((s) => selections.push(s));
-
-        controller.setSelectedCommits(['c1', 'c2']);
-        expect(selections.length).toBe(1);
-        expect(controller.selectedCommitIds).toEqual(['c1', 'c2']);
-
-        // Same selection should not fire event
-        controller.setSelectedCommits(['c1', 'c2']);
-        expect(selections.length).toBe(1);
-    });
-
-    test('toggles commit actions and filters invalid action strings', () => {
-        expect(controller.hiddenActions).toEqual(['squash']);
-
-        controller.toggleAction('squash');
-        expect(controller.hiddenActions).toEqual([]);
-
-        controller.toggleAction('squash');
-        expect(controller.hiddenActions).toEqual(['squash']);
-
-        // Invalid action is ignored
-        controller.toggleAction('invalidAction');
-        expect(controller.hiddenActions).toEqual(['squash']);
-    });
-
-    test('updates configuration values and broadcasts update', () => {
-        controller.updateConfig({
-            theme: 'compact',
-            graphLabelAlignment: 'compact',
-            minChangeIdLength: 5,
-        });
-
-        expect(controller.theme).toBe('compact');
-        expect(controller.graphLabelAlignment).toBe('compact');
-        expect(controller.minChangeIdLength).toBe(5);
-    });
-
-    test('automatically updates configuration when host.config fires onDidChangeConfiguration', () => {
-        fakeHost.config.set('logTheme', 'compact');
-        fakeHost.config.set('graphLabelAlignment', 'compact');
-        fakeHost.config.set('minChangeIdLength', 8);
-
-        expect(controller.theme).toBe('compact');
-        expect(controller.graphLabelAlignment).toBe('compact');
-        expect(controller.minChangeIdLength).toBe(8);
     });
 
     test('handles RPC messages via handleMessage', async () => {
