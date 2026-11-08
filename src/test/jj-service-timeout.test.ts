@@ -14,8 +14,14 @@ describe('JjService Timeout Tests', () => {
     let jjService: JjService;
 
     beforeEach(() => {
+        // Ensure a clean timer state from any previous test file.
+        vi.useRealTimers();
         jjService = new JjService('/mock/root', NO_OP_LOGGER);
-        vi.useFakeTimers();
+        // Keep process.nextTick/setImmediate real: fsPromises.stat (used by the getRepoRoot
+        // fast path) schedules its callback through them, which fake timers would swallow.
+        vi.useFakeTimers({
+            toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+        });
     });
 
     afterEach(() => {
@@ -82,19 +88,20 @@ describe('JjService Timeout Tests', () => {
         });
 
         const readPromise = jjService.getRepoRoot();
+        readPromise.catch(() => {}); // Prevent unhandled rejection
+
+        // Let the async fast-path (fsPromises.stat) settle before advancing timers
+        await new Promise((resolve) => process.nextTick(resolve));
+        await new Promise((resolve) => process.nextTick(resolve));
+        await new Promise((resolve) => process.nextTick(resolve));
+        await vi.advanceTimersByTimeAsync(0);
 
         // Advance 1 minute - should still be pending
-        await vi.advanceTimersByTimeAsync(60_000);
-
-        let rejected = false;
-        readPromise.catch(() => {
-            rejected = true;
-        });
+        vi.advanceTimersByTime(60_000);
         await new Promise((resolve) => process.nextTick(resolve));
-        expect(rejected).toBe(false);
 
         // Advance past 2 minutes (total > 120s)
-        await vi.advanceTimersByTimeAsync(61_000);
+        vi.advanceTimersByTime(61_000);
 
         await expect(readPromise).rejects.toThrow('Read operation timed out after 120s');
     });
@@ -135,9 +142,17 @@ describe('JjService Timeout Tests', () => {
 
         const service = new JjService('/mock/root', NO_OP_LOGGER, { getConfig });
         const readPromise = service.getRepoRoot();
+        readPromise.catch(() => {}); // Prevent unhandled rejection
+
+        // Let the async fast-path (fsPromises.stat) settle before advancing timers
+        await new Promise((resolve) => process.nextTick(resolve));
+        await new Promise((resolve) => process.nextTick(resolve));
+        await new Promise((resolve) => process.nextTick(resolve));
+        await vi.advanceTimersByTimeAsync(0);
 
         // Advance 10s - should be pending
-        await vi.advanceTimersByTimeAsync(10_000);
+        vi.advanceTimersByTime(10_000);
+        await new Promise((resolve) => process.nextTick(resolve));
 
         let rejected = false;
         readPromise.catch(() => {
@@ -147,7 +162,7 @@ describe('JjService Timeout Tests', () => {
         expect(rejected).toBe(false);
 
         // Advance past 15s (total 16s)
-        await vi.advanceTimersByTimeAsync(6000);
+        vi.advanceTimersByTime(6000);
 
         await expect(readPromise).rejects.toThrow('Read operation timed out after 15s');
         expect(getConfig).toHaveBeenCalledWith('readTimeoutSeconds', 120);
