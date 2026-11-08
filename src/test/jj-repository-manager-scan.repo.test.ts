@@ -101,7 +101,21 @@ describe('JjRepositoryManager scan depth', () => {
         expect(registered).not.toContain(path.join(root, 'tmp', 'scratch-repo'));
     });
 
-    test('subFolders mode uses the same single-level scan', async () => {
+    test('detectSubRepositories=false registers only the workspace root', async () => {
+        host.config.set('detectSubRepositories', false);
+        createRepo('lvl1');
+        installFindFiles();
+
+        manager = new JjRepositoryManager(createMockLogOutputChannel(), host);
+        await manager.scanForRepositories();
+
+        const registered = manager.repositories.map((r) => path.resolve(r.rootUri.fsPath).toLowerCase());
+        const root = path.resolve(workspaceRoot).toLowerCase();
+        expect(usedPatterns).toEqual([]);
+        expect(registered).not.toContain(path.join(root, 'lvl1'));
+    });
+
+    test('legacy autoRepositoryDetection=subFolders still enables sub-repository detection', async () => {
         host.config.set('autoRepositoryDetection', 'subFolders');
         createRepo('lvl1');
         createRepo(path.join('lvl1', 'lvl2'));

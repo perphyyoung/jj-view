@@ -388,7 +388,7 @@ suite('JjRepositoryManager Integration Test', () => {
 
         // Stub configuration
         const getStub = sandbox.stub();
-        getStub.withArgs('autoRepositoryDetection', true).returns(true);
+        getStub.withArgs('detectSubRepositories', null).returns(true);
         getStub.withArgs('scanRepositories', []).returns([]);
         getStub.withArgs('ignoredRepositories', []).returns([otherRepo.path]);
 
@@ -414,9 +414,9 @@ suite('JjRepositoryManager Integration Test', () => {
 
         await using _workspace = await setWorkspaceFolders([Uri.file(mainRepo.path)]);
 
-        // Stub configuration: autoDetect is false, but otherRepo is in scanRepositories
+        // Stub configuration: sub-repository detection is off, but otherRepo is in scanRepositories
         const getStub = sandbox.stub();
-        getStub.withArgs('autoRepositoryDetection', true).returns(false);
+        getStub.withArgs('detectSubRepositories', null).returns(false);
         getStub.withArgs('scanRepositories', []).returns([otherRepo.path]);
         getStub.withArgs('ignoredRepositories', []).returns([]);
 
@@ -486,7 +486,7 @@ suite('JjRepositoryManager Integration Test', () => {
         await manager.clear();
     });
 
-    test('scan discovers immediate sub-repositories only when autoRepositoryDetection=subFolders using real findFiles', async () => {
+    test('legacy autoRepositoryDetection=subFolders discovers only immediate sub-repositories using real findFiles', async () => {
         // Create subprojects nested at different levels
         const sub1 = path.join(mainRepo.path, 'subproject1');
         const sub2 = path.join(mainRepo.path, 'nested', 'subproject2');
@@ -498,7 +498,8 @@ suite('JjRepositoryManager Integration Test', () => {
         sub2Repo.init();
 
         const getStub = sandbox.stub();
-        getStub.withArgs('autoRepositoryDetection', true).returns('subFolders');
+        getStub.withArgs('detectSubRepositories', null).returns(null);
+        getStub.withArgs('autoRepositoryDetection', null).returns('subFolders');
         getStub.withArgs('scanRepositories', []).returns([]);
         getStub.withArgs('ignoredRepositories', []).returns([]);
 

@@ -3,7 +3,7 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.3.30",
+    "version": "3.3.31",
     "license": "Apache-2.0",
     "author": "perphyyoung",
     "repository": {
@@ -246,19 +246,10 @@
                     "default": true,
                     "description": "Controls whether the diff editor should be opened when clicking a change. Otherwise the regular editor will be opened."
                 },
-                "jj-view.autoRepositoryDetection": {
-                    "type": [
-                        "boolean",
-                        "string"
-                    ],
-                    "enum": [
-                        true,
-                        false,
-                        "subFolders",
-                        "openEditors"
-                    ],
+                "jj-view.detectSubRepositories": {
+                    "type": "boolean",
                     "default": true,
-                    "description": "Controls whether to automatically detect jj repositories. true / subFolders: Scans the workspace root and its immediate subdirectories only (nested repositories are not auto-detected; list them in jj-view.scanRepositories if needed); false: Only checks workspace roots; openEditors: Only registers on-demand when files are opened."
+                    "description": "Whether jj repositories in the immediate subdirectories of a workspace folder are shown in JJ View. When disabled, only the workspace root itself is detected. Deeper repositories are never auto-detected; list them in jj-view.scanRepositories instead."
                 },
                 "jj-view.scanRepositories": {
                     "type": "array",

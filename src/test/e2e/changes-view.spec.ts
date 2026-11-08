@@ -162,7 +162,7 @@ test.describe('JJ View Container E2E', () => {
         // (the e2e defaults disable it) and wait for any discovered repository.
         const { page } = await vscode.openWorkspace(
             { path: parent, waitForRepository: false },
-            { 'jj-view.autoRepositoryDetection': true },
+            { 'jj-view.detectSubRepositories': true },
         );
 
         // The active editor belongs to beta while the Changes view targets alpha.
@@ -239,7 +239,7 @@ test.describe('JJ View Container E2E', () => {
 
         const { page } = await vscode.openWorkspace(
             { path: parent, waitForRepository: false },
-            { 'jj-view.autoRepositoryDetection': true },
+            { 'jj-view.detectSubRepositories': true },
         );
 
         await vscode.executeCommand('jj-view.reposView.focus');
@@ -291,7 +291,7 @@ test.describe('JJ View Container E2E', () => {
 
         const { page } = await vscode.openWorkspace(
             { path: parent, waitForRepository: false },
-            { 'jj-view.autoRepositoryDetection': true },
+            { 'jj-view.detectSubRepositories': true },
         );
 
         await vscode.executeCommand('jj-view.reposView.focus');

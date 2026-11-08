@@ -67,7 +67,7 @@ export const DEFAULT_SETTINGS: Record<string, unknown> = {
     'security.workspace.trust.enabled': false,
     'jj-view.fileWatcherMode': 'watch',
     'jj-view.minChangeIdLength': 3,
-    'jj-view.autoRepositoryDetection': false,
+    'jj-view.detectSubRepositories': false,
     'telemetry.telemetryLevel': 'off',
     'update.mode': 'none',
     'extensions.autoCheckUpdates': false,

@@ -292,7 +292,7 @@ export class JjRepositoryManager implements HostDisposable {
         if (this._disposed) {
             return;
         }
-        const autoDetect = this.getAutoRepositoryDetectionConfig();
+        const detectSubRepositories = this.shouldDetectSubRepositories();
         const scanPaths = this.getScanRepositoriesConfig();
 
         const candidates: DetectedRepoInfo[] = [];
@@ -356,14 +356,13 @@ export class JjRepositoryManager implements HostDisposable {
                 const rootPath = folder.uri.fsPath;
                 const rootReal = await this.fs.realpath(rootPath).catch(() => rootPath);
 
-                if (this.shouldScanWorkspaceRoots()) {
-                    const rootDir = await this.findRepoRoot(rootReal);
-                    if (rootDir) {
-                        await addCandidate(rootDir);
-                    }
+                // The workspace root itself is always considered.
+                const rootDir = await this.findRepoRoot(rootReal);
+                if (rootDir) {
+                    await addCandidate(rootDir);
                 }
 
-                if (autoDetect === true || autoDetect === 'subFolders') {
+                if (detectSubRepositories) {
                     // One level only: nested working copies (test scratch dirs, vendored repos,
                     // node_modules-style trees) must not be registered. Deep projects opt in via
                     // `jj-view.scanRepositories` instead of a recursive glob.
@@ -1128,16 +1127,29 @@ export class JjRepositoryManager implements HostDisposable {
     }
 
     /**
-     * Retrieves the autoRepositoryDetection configuration value.
+     * Whether jj repositories in the immediate subdirectories of a workspace folder are shown.
      *
-     * @returns The autoRepositoryDetection configuration value:
-     * - true: recursively scan subfolders.
-     * - false: only scan workspace roots.
-     * - 'subFolders': scan immediate subfolders.
-     * - 'openEditors': only register on-demand when files are opened.
+     * Workspace roots are always scanned. Deeper repositories are only picked up when listed in
+     * `jj-view.scanRepositories`, so vendored repos and test scratch directories cannot flood
+     * the view.
+     *
+     * Legacy `jj-view.autoRepositoryDetection` values are mapped for compatibility:
+     * `true` / `'subFolders'` -> true, `false` / `'openEditors'` -> false.
      */
-    private getAutoRepositoryDetectionConfig(): boolean | string {
-        return this._host.config.get<boolean | string>('autoRepositoryDetection', true) ?? true;
+    private shouldDetectSubRepositories(): boolean {
+        const configured = this._host.config.get<boolean | null>('detectSubRepositories', null);
+        if (configured !== null) {
+            return configured;
+        }
+
+        const legacy = this._host.config.get<boolean | string | null>('autoRepositoryDetection', null);
+        if (legacy === null) {
+            return true;
+        }
+        if (typeof legacy === 'boolean') {
+            return legacy;
+        }
+        return legacy === 'subFolders';
     }
 
     /**
@@ -1159,25 +1171,11 @@ export class JjRepositoryManager implements HostDisposable {
     }
 
     /**
-     * Determines whether open editors should be used to discover and register repositories.
-     * Open editors are used for discovery only if autoRepositoryDetection is true or 'openEditors'.
-     *
-     * @returns True if open editors should be scanned/tracked, false otherwise.
+     * Open editors are always used as a fallback: they only register a repository that is
+     * already inside a workspace folder, and duplicates are ignored.
      */
     private shouldDetectFromOpenEditors(): boolean {
-        const configValue = this.getAutoRepositoryDetectionConfig();
-        return configValue === true || configValue === 'openEditors';
-    }
-
-    /**
-     * Determines whether workspace roots should be scanned to discover repositories.
-     * Workspace roots are scanned unless autoRepositoryDetection is 'openEditors'.
-     *
-     * @returns True if workspace roots should be scanned, false otherwise.
-     */
-    private shouldScanWorkspaceRoots(): boolean {
-        const autoDetect = this.getAutoRepositoryDetectionConfig();
-        return autoDetect !== 'openEditors';
+        return true;
     }
 
     /**

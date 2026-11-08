@@ -147,7 +147,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
                     );
                 }
                 if (
-                    e.affectsConfiguration('jj-view.autoRepositoryDetection') ||
+                    e.affectsConfiguration('jj-view.detectSubRepositories') ||
                     e.affectsConfiguration('jj-view.scanRepositories') ||
                     e.affectsConfiguration('jj-view.ignoredRepositories')
                 ) {
