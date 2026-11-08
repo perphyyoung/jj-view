@@ -24,9 +24,9 @@ export default defineConfig({
         setupFiles: ['./src/test/vitest-setup.ts'],
         globals: true,
         env: perfEnabled ? { JJ_VIEW_PERF_TRACE_FILE: traceFile } : {},
-        // dot: one character per test (fast to scan). The perf reporter only joins when
-        // explicitly requested; a CLI `--reporter=...` would replace this list anyway.
-        reporters: perfEnabled ? ['dot', new VitestPerfReporter(traceFile)] : ['dot'],
+        // verbose everywhere: dot collapses to a single unstyled line and looks like no output
+        // in some terminals. The perf reporter only joins when explicitly requested.
+        reporters: perfEnabled ? ['verbose', new VitestPerfReporter(traceFile)] : ['verbose'],
         // Threads start far faster than forked processes, which matters on Windows.
         pool: 'threads',
         // Unit tests are pure logic; anything slower than this belongs in the repo tier.

@@ -23,6 +23,8 @@ interface CommandStat {
 
 export class VitestPerfReporter implements Reporter {
     private traceFilePath: string;
+    /** Wall-clock start, so the last line of every run reports the total duration. */
+    private readonly startedAt = Date.now();
 
     constructor(traceFilePath?: string) {
         if (traceFilePath) {
@@ -86,7 +88,14 @@ export class VitestPerfReporter implements Reporter {
         this.printSlowestFiles(fileTimings.slice(0, 15));
         this.printSlowestTests(testTimings.slice(0, 20));
 
-        console.log(`${'='.repeat(80)}\n`);
+        console.log(`${'='.repeat(80)}`);
+
+        // Always the last line: a run that is cut short or whose summary scrolls away still
+        // ends with the number people actually look for.
+        const elapsedSeconds = (Date.now() - this.startedAt) / 1000;
+        console.log(
+            `[PERF] wall-clock: ${elapsedSeconds.toFixed(1)}s | files: ${fileTimings.length} | tests: ${testTimings.length}\n`,
+        );
 
         try {
             if (fs.existsSync(this.traceFilePath)) {

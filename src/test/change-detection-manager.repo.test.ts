@@ -28,6 +28,8 @@ describe('ChangeDetectionManager', () => {
     beforeEach(async () => {
         repo = new TestRepo();
         repo.init();
+        // These cases write into `.jj/repo/op_heads/heads` before running any command.
+        repo.ensureStore();
 
         jj = new JjService(repo.path, NO_OP_LOGGER);
         host = new FakeHostEnvironment();

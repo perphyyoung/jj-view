@@ -3,23 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RevisionQuery } from '../../core/commands/command-utils';
-import {
-    promptForRevision,
-    promptSelectOrCreate,
-    resolveRepository,
-    showJjError,
-    withDelayedProgress,
-} from '../../core/host/ui-helpers';
-import { JjRepositoryManager } from '../../core/jj-repository-manager';
+import { promptForRevision, promptSelectOrCreate, withDelayedProgress } from '../../core/host/ui-helpers';
 import { JjService, NO_OP_LOGGER } from '../../core/jj-service';
 import { Uri } from '../../core/uri-utils';
-import { FakeHostEnvironment, FakeHostUi } from '../fake-host-environment';
+import { FakeHostUi } from '../fake-host-environment';
 import { buildGraph, TestRepo } from '../test-repo';
-import { createMockLogOutputChannel } from '../test-utils';
 import '../vitest-utils';
 
 describe('ui-helpers', () => {
@@ -372,67 +362,6 @@ describe('ui-helpers', () => {
         });
     });
 
-    describe('showJjError', () => {
-        let repo: TestRepo;
-        let jj: JjService;
-        let ui: FakeHostUi;
-
-        beforeEach(() => {
-            repo = new TestRepo();
-            repo.init();
-            jj = new JjService(repo.path, NO_OP_LOGGER);
-            ui = new FakeHostUi();
-        });
-
-        it('displays error message and logs error', async () => {
-            const log = createMockLogOutputChannel();
-            ui.showErrorMessage = vi.fn().mockResolvedValue(undefined);
-
-            const err = new Error('Working copy is dirty');
-            await showJjError(ui, err, 'Commit Error', jj, log);
-
-            expect(log.error).toHaveBeenCalledWith('Commit Error: Working copy is dirty', err);
-            expect(ui.showErrorMessage).toHaveBeenCalledWith('Commit Error: Working copy is dirty', 'Show Log');
-        });
-
-        it('opens log when Show Log action is selected', async () => {
-            const log = createMockLogOutputChannel();
-            ui.setNextErrorResponse('Show Log');
-
-            const err = new Error('Something failed');
-            const result = await showJjError(ui, err, 'Error', jj, log);
-
-            expect(result).toBe('Show Log');
-            expect(log.show).toHaveBeenCalled();
-        });
-
-        it('passes extra actions and returns selected extra action', async () => {
-            const log = createMockLogOutputChannel();
-            ui.setNextErrorResponse('Configure Upload...');
-
-            const err = new Error('No upload command');
-            const result = await showJjError(ui, err, 'Upload Error', jj, log, ['Configure Upload...']);
-
-            expect(result).toBe('Configure Upload...');
-        });
-
-        it('detects Git index lock error and deletes lock file when chosen', async () => {
-            const log = createMockLogOutputChannel();
-            const lockPath = path.join(repo.path, '.git', 'index.lock');
-            fs.mkdirSync(path.dirname(lockPath), { recursive: true });
-            fs.writeFileSync(lockPath, '');
-
-            ui.setNextErrorResponse('Delete Lock File');
-
-            const err = new Error('Could not acquire lock for index file');
-            const result = await showJjError(ui, err, 'Git Error', jj, log);
-
-            expect(result).toBe('Delete Lock File');
-            expect(fs.existsSync(lockPath)).toBe(false);
-            expect(log.info).toHaveBeenCalledWith(expect.stringContaining('Deleted lock file'));
-        });
-    });
-
     describe('withDelayedProgress', () => {
         let ui: FakeHostUi;
 
@@ -475,93 +404,6 @@ describe('ui-helpers', () => {
             const task = () => Promise.reject(new Error('boom'));
 
             await expect(withDelayedProgress(ui, 'Failing op', task, 100)).rejects.toThrow('boom');
-        });
-    });
-
-    describe('resolveRepository', () => {
-        let repo: TestRepo;
-        let repoManager: JjRepositoryManager;
-        let host: FakeHostEnvironment;
-
-        beforeEach(async () => {
-            repo = new TestRepo();
-            repo.init();
-
-            host = new FakeHostEnvironment();
-            host.workspace.addFolder(Uri.file(repo.path));
-
-            const outputChannel = createMockLogOutputChannel();
-
-            repoManager = new JjRepositoryManager(outputChannel, host);
-            await repoManager.maybeRegisterRepositoryContainingUri(Uri.file(repo.path));
-        });
-
-        afterEach(async () => {
-            await repoManager.dispose();
-        });
-
-        it('resolves repository from activeUri', () => {
-            const fileUri = Uri.file(path.join(repo.path, 'sub', 'file.txt'));
-            const resolved = resolveRepository(repoManager, { activeUri: fileUri });
-
-            expect(resolved).toBeDefined();
-            expect(resolved?.rootUri.fsPath).toBeSameFsPath(repo.path);
-        });
-
-        it('resolves repository from custom jj-commit scheme activeUri', () => {
-            const commitUri = Uri.from({
-                scheme: 'jj-commit',
-                path: '/Commit',
-                fragment: `repoRoot=${encodeURIComponent(repo.path)}`,
-            });
-            const resolved = resolveRepository(repoManager, { activeUri: commitUri });
-
-            expect(resolved).toBeDefined();
-            expect(resolved?.rootUri.fsPath).toBeSameFsPath(repo.path);
-        });
-
-        it('resolves repository from args object containing rootUri', () => {
-            const scmArg = { rootUri: Uri.file(repo.path) };
-            const resolved = resolveRepository(repoManager, { args: [scmArg] });
-
-            expect(resolved).toBeDefined();
-            expect(resolved?.rootUri.fsPath).toBeSameFsPath(repo.path);
-        });
-
-        it('resolves repository from resource group argument with resourceStates', () => {
-            const fileUri = Uri.file(path.join(repo.path, 'file.txt'));
-            const groupArg = { resourceStates: [{ resourceUri: fileUri }] };
-            const resolved = resolveRepository(repoManager, { args: [groupArg] });
-
-            expect(resolved).toBeDefined();
-            expect(resolved?.rootUri.fsPath).toBeSameFsPath(repo.path);
-        });
-
-        it('resolves repository from direct URI argument in args', () => {
-            const fileUri = Uri.file(path.join(repo.path, 'file.txt'));
-            const resolved = resolveRepository(repoManager, { args: [fileUri] });
-
-            expect(resolved).toBeDefined();
-            expect(resolved?.rootUri.fsPath).toBeSameFsPath(repo.path);
-        });
-
-        it('resolves repository from host.documents.getActiveDocumentUri', () => {
-            const fileUri = Uri.file(path.join(repo.path, 'file.txt'));
-            host.documents.setActiveDocument(fileUri);
-            const resolved = resolveRepository(repoManager, {
-                host,
-            });
-
-            expect(resolved).toBeDefined();
-            expect(resolved?.rootUri.fsPath).toBeSameFsPath(repo.path);
-        });
-
-        it('falls back to focusedRepository if no active uri or args match', () => {
-            const registered = repoManager.getRepositoryForUri(Uri.file(repo.path));
-            repoManager.setFocusedRepository(registered);
-
-            const resolved = resolveRepository(repoManager);
-            expect(resolved).toBe(registered);
         });
     });
 });

@@ -20,6 +20,8 @@ describe('JjRepository.refresh error handling', () => {
         host = new FakeHostEnvironment();
         repo = new TestRepo();
         repo.init();
+        // The cases watch paths under `.jj`, so the store must exist before any command runs.
+        repo.ensureStore();
     });
 
     afterEach(async () => {

@@ -128,9 +128,12 @@ describe('Index Lock Error Handling', () => {
             const error = new Error('Could not acquire lock for index file');
             const mockOutputChannel = createMockLogOutputChannel();
 
-            // Create a separate service pointing to an empty non-jj directory
+            // Create a separate service pointing to an empty non-jj directory. Test scratch
+            // space now lives under the project (which is itself a jj repo), so a bare
+            // directory would still resolve a root; stub the lookup to model "no repo".
             const emptyDirRepo = new TestRepo(); // not calling init()
             const emptyJjService = new JjService(emptyDirRepo.path, createMockLogOutputChannel());
+            vi.spyOn(emptyJjService, 'getRepoRoot').mockRejectedValue(new Error('not a jj repository'));
 
             const ui = new FakeHostUi();
             ui.showErrorMessage = vi.fn().mockResolvedValue(undefined);

@@ -11,7 +11,7 @@ import * as path from 'node:path';
 import { match, P } from 'ts-pattern';
 import which from 'which';
 import { recordCommandTrace } from './perf-trace';
-import { ensureTestTmpRoot, makeTestTmpDir } from './test-tmp-root';
+import { ensureTestTmpRoot, makeTestTmpDir, TEST_TMP_ROOT } from './test-tmp-root';
 
 function memoize<T>(fn: () => T): () => T {
     let cached: T | undefined;
@@ -107,6 +107,19 @@ export class TestRepo {
 
     public readonly path: string;
     private configId?: string;
+    /** False until the store (`.jj` / `.git`) has been materialized in `path`. */
+    private storeReady = false;
+    private pendingTemplate?: string;
+    /**
+     * One `jj log -r all()` per repository state, reused by every assertion helper.
+     *
+     * Tests read `getParents` / `getChangeId` / `getDescription` / `getWorkingCopyId` several
+     * times per case, and each used to spawn its own `jj log` (~210 ms). Reading them from one
+     * snapshot removes most of the spawn count without changing what the assertions see.
+     */
+    private inspectCache?: InspectEntry[];
+    /** `op_heads/heads` mtime captured with the snapshot. */
+    private inspectCacheStamp?: number;
     /** Lazily created once per worker; `init()` copies it instead of spawning `jj git init`. */
     private static templateRoot?: string;
     /** Pre-built commit graphs, keyed by name and shared by every copy in this worker. */
@@ -190,7 +203,16 @@ export class TestRepo {
     // POLICY: This method is intentionally private. Do not expose it publicly.
     // Instead, create specific methods for each operation to ensure strictly typed usage
     // and prevent arbitrary command execution in tests.
-    private exec(args: string[], options: { trim?: boolean } = {}): { stdout: string; stderr: string } {
+    private exec(
+        args: string[],
+        options: { trim?: boolean; keepInspectCache?: boolean } = {},
+    ): { stdout: string; stderr: string } {
+        this.ensureStore();
+        // Any command may change the repository, so assertions must re-read. The inspect query
+        // itself opts out, otherwise it would invalidate the snapshot it is building.
+        if (!options.keepInspectCache) {
+            this.inspectCache = undefined;
+        }
         const env = { ...process.env, JJ_CONFIG: '' };
         const jjBinary = TestRepo.getJjBinary();
         const start = process.hrtime.bigint();
@@ -306,7 +328,31 @@ export class TestRepo {
      * Only then may a cached graph replace its content.
      */
     isPristine(): boolean {
+        if (!this.storeReady) {
+            return true;
+        }
         return fs.readdirSync(this.path).every((entry) => entry === '.jj' || entry === '.git');
+    }
+
+    /**
+     * Materializes the empty template before the repo is used.
+     *
+     * Lazy on purpose: a test that installs a cached graph never copies the empty template,
+     * and a cache hit then has no `.jj` to delete first (deleting a jj store means removing
+     * hundreds of files, which some sandboxes throttle). Tests that touch `.jj` directly
+     * before running a command call this explicitly.
+     */
+    ensureStore(): void {
+        if (this.storeReady) {
+            return;
+        }
+        // A path that already has `.jj` is a real repo (for example a jj secondary workspace
+        // with a `.git` *file*): never copy the empty template over it.
+        if (fs.existsSync(path.join(this.path, '.jj'))) {
+            this.storeReady = true;
+            return;
+        }
+        this.applyTemplate(this.pendingTemplate ?? TestRepo.ensureTemplate(), false);
     }
 
     /**
@@ -317,8 +363,18 @@ export class TestRepo {
         if (replaceStore) {
             for (const entry of ['.jj', '.git']) {
                 const target = path.join(this.path, entry);
-                if (fs.existsSync(target)) {
-                    fs.rmSync(target, { recursive: true, force: true });
+                if (!fs.existsSync(target)) {
+                    continue;
+                }
+                // Move the old store aside instead of deleting it: removing a jj store means
+                // deleting hundreds of files, which sandboxes throttle or reject. The parked
+                // copy lives under the gitignored tmp/ and is removed at process exit.
+                const parked = path.join(TEST_TMP_ROOT, `replaced-${crypto.randomUUID()}-${entry.slice(1)}`);
+                try {
+                    fs.renameSync(target, parked);
+                } catch {
+                    // Copying over the existing store is safe: the destination only ever holds
+                    // the empty template.
                 }
             }
         }
@@ -329,6 +385,7 @@ export class TestRepo {
         fs.writeFileSync(path.join(this.path, '.jj', 'repo', 'config-id'), this.configId, 'utf-8');
         const { configPath } = this.ensureRepoConfig();
         fs.writeFileSync(configPath, fs.readFileSync(defaultTestConfigFile, 'utf-8'), 'utf-8');
+        this.storeReady = true;
     }
 
     /**
@@ -392,7 +449,101 @@ export class TestRepo {
         this.exec(args);
     }
 
+    /**
+     * One `jj log` covering every visible commit, parsed once per repository state.
+     */
+    /**
+     * Cheap freshness check: jj appends one file per operation to `op_heads/heads`, so the
+     * directory mtime changes for every mutation — including ones issued through `JjService`,
+     * which never passes through `exec()`.
+     */
+    private opHeadsStamp(): number {
+        try {
+            return fs.statSync(path.join(this.path, '.jj', 'repo', 'op_heads', 'heads')).mtimeMs;
+        } catch {
+            return 0;
+        }
+    }
+
+    private inspect(): InspectEntry[] {
+        const stamp = this.opHeadsStamp();
+        if (this.inspectCache && this.inspectCacheStamp === stamp) {
+            return this.inspectCache;
+        }
+        const output = this.exec(
+            [
+                'log',
+                '--ignore-working-copy',
+                '-r',
+                'all()',
+                '--no-graph',
+                '-T',
+                'change_id ++ "\t" ++ commit_id ++ "\t" ++ json(description) ++ "\t" ++ if(current_working_copy, "1", "0") ++ "\t" ++ parents.map(|p| p.change_id()).join(",") ++ "\n"',
+            ],
+            { keepInspectCache: true },
+        ).stdout;
+
+        const entries: InspectEntry[] = [];
+        for (const line of output.split('\n')) {
+            if (!line.trim()) {
+                continue;
+            }
+            const [changeId = '', commitId = '', rawDescription = '""', wc = '0', rawParents = ''] = line.split('\t');
+            let description = '';
+            try {
+                description = JSON.parse(rawDescription) as string;
+            } catch {
+                description = rawDescription;
+            }
+            entries.push({
+                changeId,
+                commitId,
+                description,
+                parents: rawParents.split(',').filter(Boolean),
+                isWorkingCopy: wc === '1',
+            });
+        }
+        this.inspectCache = entries;
+        this.inspectCacheStamp = this.opHeadsStamp();
+        return entries;
+    }
+
+    /**
+     * Resolves `@`, `@-`, a change id (full or prefix) or a commit id from the snapshot.
+     * Anything else (revsets such as `root()`, `all()`, ranges) returns undefined so the
+     * caller falls back to a dedicated `jj log`.
+     */
+    private resolveInspect(revision: string): InspectEntry | undefined {
+        const trimmed = revision.trim();
+        // Reject revsets (`root()`, `all()`, ranges) before paying for the snapshot.
+        const isAt = trimmed === '@' || trimmed === '@-';
+        if (!isAt && !/^[a-z0-9]+(\/[0-9]+)?$/i.test(trimmed)) {
+            return undefined;
+        }
+        const entries = this.inspect();
+        if (trimmed === '@') {
+            return entries.find((e) => e.isWorkingCopy);
+        }
+        if (trimmed === '@-') {
+            const wc = entries.find((e) => e.isWorkingCopy);
+            return wc ? entries.find((e) => e.changeId === wc.parents[0]) : undefined;
+        }
+        const byChange = entries.filter((e) => e.changeId === trimmed || e.changeId.startsWith(trimmed));
+        if (byChange.length === 1) {
+            return byChange[0];
+        }
+        if (byChange.length > 1) {
+            return undefined;
+        }
+        const byCommit = entries.filter((e) => e.commitId.startsWith(trimmed));
+        return byCommit.length === 1 ? byCommit[0] : undefined;
+    }
+
     getDescription(revision: string): string {
+        const entry = this.resolveInspect(revision);
+        if (entry) {
+            return entry.description.trim();
+        }
         return this.exec(['log', '--ignore-working-copy', '-r', revision, '-T', 'description', '--no-graph']).stdout;
     }
 
@@ -401,6 +552,10 @@ export class TestRepo {
     }
 
     getWorkingCopyId(): string {
+        const entry = this.resolveInspect('@');
+        if (entry) {
+            return entry.changeId;
+        }
         return this.exec(['log', '--ignore-working-copy', '-r', '@', '-T', 'change_id', '--no-graph']).stdout;
     }
 
@@ -511,10 +666,18 @@ export class TestRepo {
     }
 
     getChangeId(revision: string): string {
+        const entry = this.resolveInspect(revision);
+        if (entry) {
+            return entry.changeId;
+        }
         return this.exec(['log', '--ignore-working-copy', '-r', revision, '-T', 'change_id', '--no-graph']).stdout;
     }
 
     getCommitId(revision: string): string {
+        const entry = this.resolveInspect(revision);
+        if (entry) {
+            return entry.commitId;
+        }
         return this.exec(['log', '--ignore-working-copy', '-r', revision, '-T', 'commit_id', '--no-graph']).stdout;
     }
 
@@ -577,6 +740,10 @@ export class TestRepo {
         return this.exec(args).stdout;
     }
     getParents(revision: string): string[] {
+        const entry = this.resolveInspect(revision);
+        if (entry) {
+            return [...entry.parents];
+        }
         const output = this.exec([
             'log',
             '--ignore-working-copy',
@@ -940,6 +1107,15 @@ export interface CommitDefinition {
 export interface CommitId {
     changeId: string;
     commitId: string;
+}
+
+/** One commit as read by the batched `jj log` snapshot used by the assertion helpers. */
+interface InspectEntry {
+    changeId: string;
+    commitId: string;
+    description: string;
+    parents: string[];
+    isWorkingCopy: boolean;
 }
 
 /**
