@@ -4,10 +4,10 @@
  */
 import { execFile } from 'node:child_process';
 import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { makeTestTmpDirAsync } from './test-tmp-root';
 
 const execFileAsync = promisify(execFile);
 
@@ -17,7 +17,7 @@ describe('Shell and Batch Scripts', () => {
     const isWin = process.platform === 'win32';
 
     beforeAll(async () => {
-        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jj-script-test-'));
+        tmpDir = await makeTestTmpDirAsync('jj-script-test-');
         scriptsDir = path.resolve(__dirname, '../../scripts');
     });
 

@@ -5,7 +5,6 @@
 
 import * as assert from 'node:assert';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
@@ -15,6 +14,7 @@ import type { Api } from '../vscode/extension';
 import { VsCodeHostEnvironment } from '../vscode/vscode-host-environment';
 import { autoCleanup, ScopedSymlink, ScopedTempDir, ScopedTestRepo } from './scoped-helpers';
 import { TestRepo } from './test-repo';
+import { TEST_TMP_ROOT } from './test-tmp-root';
 import { createMock, createMockLogOutputChannel, exposePrivate } from './test-utils';
 
 suite('JjRepositoryManager Integration Test', () => {
@@ -565,7 +565,7 @@ suite('JjRepositoryManager Integration Test', () => {
     });
 
     test('isPathInOrAncestorOfWorkspace rejects repositories in unrelated directories', async () => {
-        using tempParentDir = new ScopedTempDir(path.join(os.tmpdir(), 'jj-unrelated-'));
+        using tempParentDir = new ScopedTempDir(path.join(TEST_TMP_ROOT, 'jj-unrelated-'));
         const tempParent = tempParentDir.path;
 
         using unrelatedRepo = new ScopedTestRepo(tempParent);

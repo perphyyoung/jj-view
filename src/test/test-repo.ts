@@ -11,6 +11,7 @@ import * as path from 'node:path';
 import { match, P } from 'ts-pattern';
 import which from 'which';
 import { recordCommandTrace } from './perf-trace';
+import { ensureTestTmpRoot, makeTestTmpDir } from './test-tmp-root';
 
 function memoize<T>(fn: () => T): () => T {
     let cached: T | undefined;
@@ -25,7 +26,7 @@ function memoize<T>(fn: () => T): () => T {
 }
 
 const tempDirs = new Set<string>();
-const defaultTestConfigFile = path.join(os.tmpdir(), `jj-view-default-config-${process.pid}.toml`);
+const defaultTestConfigFile = path.join(ensureTestTmpRoot(), `jj-view-default-config-${process.pid}.toml`);
 try {
     fs.writeFileSync(
         defaultTestConfigFile,
@@ -141,7 +142,7 @@ export class TestRepo {
     }
 
     constructor(tmpDir?: string) {
-        const rawPath = tmpDir || fs.mkdtempSync(path.join(os.tmpdir(), 'jj-view-test-'));
+        const rawPath = tmpDir || makeTestTmpDir('jj-view-test-');
         if (tmpDir) {
             fs.mkdirSync(rawPath, { recursive: true });
         }
@@ -275,22 +276,29 @@ export class TestRepo {
         if (TestRepo.templateRoot && fs.existsSync(TestRepo.templateRoot)) {
             return TestRepo.templateRoot;
         }
-        const templateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jj-view-repo-template-'));
-        const start = process.hrtime.bigint();
-        const res = cp.spawnSync(TestRepo.getJjBinary(), ['--config-file', defaultTestConfigFile, 'git', 'init'], {
-            cwd: templateRoot,
-            encoding: 'utf-8',
-            env: { ...process.env, JJ_CONFIG: '' },
-            stdio: ['ignore', 'pipe', 'pipe'],
-            windowsHide: true,
-        });
-        recordCommandTrace('TestRepo', ['template-init'], Number(process.hrtime.bigint() - start) / 1_000_000);
-        if (res.status !== 0 || res.error) {
-            throw new Error(`Failed to create jj test repo template: ${res.error ?? res.stderr}`);
+        // Windows occasionally rejects the very first write in a fresh temp dir (antivirus or
+        // indexing holds the directory). A fresh directory on the next attempt fixes it, so
+        // retry instead of failing the whole worker.
+        let lastError = '';
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const templateRoot = makeTestTmpDir('jj-view-repo-template-');
+            tempDirs.add(templateRoot);
+            const start = process.hrtime.bigint();
+            const res = cp.spawnSync(TestRepo.getJjBinary(), ['--config-file', defaultTestConfigFile, 'git', 'init'], {
+                cwd: templateRoot,
+                encoding: 'utf-8',
+                env: { ...process.env, JJ_CONFIG: '' },
+                stdio: ['ignore', 'pipe', 'pipe'],
+                windowsHide: true,
+            });
+            recordCommandTrace('TestRepo', ['template-init'], Number(process.hrtime.bigint() - start) / 1_000_000);
+            if (res.status === 0 && !res.error) {
+                TestRepo.templateRoot = templateRoot;
+                return templateRoot;
+            }
+            lastError = String(res.error ?? res.stderr);
         }
-        tempDirs.add(templateRoot);
-        TestRepo.templateRoot = templateRoot;
-        return templateRoot;
+        throw new Error(`Failed to create jj test repo template: ${lastError}`);
     }
 
     /**

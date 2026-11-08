@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vite
 import { DirectoryWatcher } from '../core/directory-watcher';
 import type { LoggerChannel } from '../utils/output-channel';
 import { FakeHostEnvironment } from './fake-host-environment';
+import { makeTestTmpDir } from './test-tmp-root';
 import { createMockLogOutputChannel } from './test-utils';
 
 vi.mock('@parcel/watcher', async (importOriginal) => {
@@ -29,7 +30,7 @@ describe('DirectoryWatcher (real @parcel/watcher)', { retry: os.platform() === '
     let watcher: DirectoryWatcher;
 
     beforeEach(() => {
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dw-test-'));
+        tmpDir = makeTestTmpDir('dw-test-');
         outputChannel = createMockLogOutputChannel();
         host = new FakeHostEnvironment();
         callback = vi.fn();

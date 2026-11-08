@@ -4,9 +4,9 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { makeTestTmpDir } from '../src/test/test-tmp-root';
 import { areIconsUpToDate, computeIconsSourceHash } from './build-icons';
 
 describe('build-icons', () => {
@@ -15,7 +15,7 @@ describe('build-icons', () => {
     let outDir: string;
 
     beforeEach(() => {
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'build-icons-test-'));
+        tmpDir = makeTestTmpDir('build-icons-test-');
         srcDir = path.join(tmpDir, 'src');
         outDir = path.join(tmpDir, 'out');
         fs.mkdirSync(srcDir, { recursive: true });
@@ -23,7 +23,12 @@ describe('build-icons', () => {
     });
 
     afterEach(() => {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
+        try {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        } catch {
+            // Harmless: tmp/ is gitignored, and some environments route deletes through a
+            // trash shim that can refuse paths inside the project.
+        }
     });
 
     describe('computeIconsSourceHash', () => {

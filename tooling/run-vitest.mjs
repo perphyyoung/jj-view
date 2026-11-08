@@ -17,6 +17,14 @@ const timeoutIndex = args.indexOf('--timeout');
 const timeoutMs = timeoutIndex >= 0 ? Number(args[timeoutIndex + 1]) : 0;
 const vitestArgs = timeoutIndex >= 0 ? [...args.slice(0, timeoutIndex), ...args.slice(timeoutIndex + 2)] : args;
 
+// `--perf` opts into the subprocess summary (the repo tier always wants it, the unit tier
+// only when explicitly requested).
+const perfIndex = vitestArgs.indexOf('--perf');
+if (perfIndex >= 0) {
+    vitestArgs.splice(perfIndex, 1);
+    process.env.JJ_VIEW_PERF = '1';
+}
+
 const vitestBin = path.join(process.cwd(), 'node_modules', 'vitest', 'vitest.mjs');
 if (!existsSync(vitestBin)) {
     console.error(`vitest binary not found: ${vitestBin}`);

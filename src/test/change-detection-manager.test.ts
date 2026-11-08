@@ -4,7 +4,6 @@
  */
 
 import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, type Mock, type MockInstance, vi } from 'vitest';
 import { ChangeDetectionManager } from '../core/change-detection-manager';
@@ -13,6 +12,7 @@ import type { JjService } from '../core/jj-service';
 import { Uri } from '../core/uri-utils';
 import type { LoggerChannel } from '../utils/output-channel';
 import { FakeHostEnvironment } from './fake-host-environment';
+import { makeTestTmpDirAsync } from './test-tmp-root';
 import { createMock, createMockLogOutputChannel, setPrivate } from './test-utils';
 
 /**
@@ -30,7 +30,7 @@ describe('ChangeDetectionManager polling', () => {
     >;
 
     beforeEach(async () => {
-        repoPath = await fs.mkdtemp(path.join(os.tmpdir(), 'jj-change-detection-'));
+        repoPath = await makeTestTmpDirAsync('jj-change-detection-');
         await fs.mkdir(path.join(repoPath, '.jj', 'repo', 'op_heads', 'heads'), { recursive: true });
 
         jj = createMock<JjService>();

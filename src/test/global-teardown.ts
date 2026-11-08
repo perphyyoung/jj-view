@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 
 // Mocha Root Hook Plugin.
@@ -12,7 +11,11 @@ import * as path from 'node:path';
 // when individual test teardowns delete their repos.
 export const mochaHooks = {
     afterAll() {
-        const tmpDir = os.tmpdir();
+        // Test temporary space lives under the project tmp/ directory (gitignored).
+        const tmpDir = path.join(process.cwd(), 'tmp');
+        if (!fs.existsSync(tmpDir)) {
+            return;
+        }
         const entries = fs.readdirSync(tmpDir);
         for (const entry of entries) {
             if (entry.startsWith('jj-view-test-')) {

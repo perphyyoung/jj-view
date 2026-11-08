@@ -3,12 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { mkdtempSync } from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Frame, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { TestRepo } from '../test-repo';
+import { makeTestTmpDir } from '../test-tmp-root';
 import { getLogWebview, openFileInEditor, test } from './e2e-helpers';
 
 async function getWebviewFrame(page: Page, testId: string, timeout = 20000): Promise<Frame> {
@@ -142,7 +141,7 @@ test.describe('JJ View Container E2E', () => {
 
     test('Commits to the repository shown in Changes when another repo file is open', async ({ vscode }) => {
         // One parent folder, two jj repos inside it, opened as a single workspace folder.
-        const parent = mkdtempSync(path.join(os.tmpdir(), 'jj-view-parent-'));
+        const parent = makeTestTmpDir('jj-view-parent-');
         const alpha = new TestRepo(path.join(parent, 'alpha'));
         const beta = new TestRepo(path.join(parent, 'beta'));
 
@@ -223,7 +222,7 @@ test.describe('JJ View Container E2E', () => {
     });
 
     test('Commits the typed description after switching to another project', async ({ vscode }) => {
-        const parent = mkdtempSync(path.join(os.tmpdir(), 'jj-view-draft-'));
+        const parent = makeTestTmpDir('jj-view-draft-');
         const alpha = new TestRepo(path.join(parent, 'alpha'));
         const beta = new TestRepo(path.join(parent, 'beta'));
 
@@ -278,7 +277,7 @@ test.describe('JJ View Container E2E', () => {
     });
 
     test('Sorts repositories from the title-bar command', async ({ vscode }) => {
-        const parent = mkdtempSync(path.join(os.tmpdir(), 'jj-view-sort-'));
+        const parent = makeTestTmpDir('jj-view-sort-');
         const alpha = new TestRepo(path.join(parent, 'alpha'));
         const beta = new TestRepo(path.join(parent, 'beta'));
 

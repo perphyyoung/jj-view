@@ -6,11 +6,11 @@
 import * as cp from 'node:child_process';
 import * as fsSync from 'node:fs';
 import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { JjService, NO_OP_LOGGER } from '../core/jj-service';
 import { buildGraph, TestRepo } from './test-repo';
+import { makeTestTmpDirAsync } from './test-tmp-root';
 
 describe('JjService Diff Tests', () => {
     let jjService: JjService;
@@ -632,7 +632,7 @@ describe('JjService Diff Tests', () => {
             return; // Unix shell script test
         }
 
-        const tempBase = await fs.mkdtemp(path.join(os.tmpdir(), 'batch-diff-test-'));
+        const tempBase = await makeTestTmpDirAsync('batch-diff-test-');
         try {
             const leftDir = path.join(tempBase, 'left');
             const rightDir = path.join(tempBase, 'right');
@@ -663,7 +663,7 @@ describe('JjService Diff Tests', () => {
             return; // Unix shell script test
         }
 
-        const tempBase = await fs.mkdtemp(path.join(os.tmpdir(), 'batch-diff-success-'));
+        const tempBase = await makeTestTmpDirAsync('batch-diff-success-');
         try {
             const leftDir = path.join(tempBase, 'left');
             const rightDir = path.join(tempBase, 'right');

@@ -8,6 +8,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { resolveJjBinary } from '../../utils/binary-utils';
+import { makeTestTmpDir } from '../test-tmp-root';
 
 // These tests build a fake `jj` binary with the Go toolchain; skip when Go is unavailable.
 const hasGoToolchain = (() => {
@@ -28,7 +29,7 @@ describe.skipIf(!hasGoToolchain)('binary-utils real-file tests', () => {
     let sharedBinaryPath: string;
 
     beforeAll(() => {
-        const sharedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jj-view-binary-shared-'));
+        const sharedDir = makeTestTmpDir('jj-view-binary-shared-');
         const binName = os.platform() === 'win32' ? 'jj.exe' : 'jj';
         sharedBinaryPath = path.join(sharedDir, binName);
 
@@ -63,7 +64,7 @@ func main() {
     });
 
     beforeEach(() => {
-        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jj-view-binary-test-'));
+        tempDir = makeTestTmpDir('jj-view-binary-test-');
         oldHome = process.env.HOME;
         oldPath = process.env.PATH;
         oldUserProfile = process.env.USERPROFILE;

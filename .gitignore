@@ -1,6 +1,6 @@
 node_modules
 out
-/dist
+dist
 .vscode-test
 *.vsix
 .DS_Store
@@ -13,8 +13,10 @@ src/core/webview/themes.generated.ts
 media/themes.generated.css
 build/
 *.log
+tmp*
 tmp/
 temp/
+temp*
 .workspaces/
 web/dist/*
 !web/dist/.gitkeep

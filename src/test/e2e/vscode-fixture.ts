@@ -6,13 +6,13 @@
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { test as baseTest, expect } from '@playwright/test';
 import { downloadAndUnzipVSCode, resolveCliPathFromVSCodeExecutablePath, SilentReporter } from '@vscode/test-electron';
 import { type ElectronApplication, _electron as electron, type Page } from 'playwright';
 import type * as vscodeType from 'vscode';
 import type { Api as ExtensionApi } from '../../vscode/extension';
+import { makeTestTmpDir, makeTestTmpDirAsync } from '../test-tmp-root';
 import { logPerf } from './perf-logger';
 import { VSCODE_TEST_VERSION } from './vscode-version';
 
@@ -214,8 +214,7 @@ export async function launchNewVSCode(
     userDataDir?: string,
 ): Promise<VSCodeContext> {
     const totalStart = Date.now();
-    const finalUserDataDir =
-        userDataDir ?? (await fs.promises.mkdtemp(path.join(os.tmpdir(), 'jj-view-test-user-data-')));
+    const finalUserDataDir = userDataDir ?? (await makeTestTmpDirAsync('jj-view-test-user-data-'));
     const userSettingsDir = path.join(finalUserDataDir, 'User');
 
     const settingsContent = JSON.stringify(
@@ -257,7 +256,7 @@ export async function launchNewVSCode(
 
     const downloadStart = Date.now();
     const [extensionsDir, vscodePath] = await Promise.all([
-        fs.promises.mkdtemp(path.join(os.tmpdir(), 'jj-view-test-extensions-')),
+        makeTestTmpDirAsync('jj-view-test-extensions-'),
         downloadAndUnzipVSCode({ version: VSCODE_TEST_VERSION, reporter: new SilentReporter() }).then((res) => {
             logPerf('launchNewVSCode: downloadAndUnzipVSCode', downloadStart);
             return res;
@@ -500,7 +499,7 @@ export class VSCodeWorker {
             return;
         }
         const totalStart = Date.now();
-        const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jj-view-test-user-data-'));
+        const userDataDir = makeTestTmpDir('jj-view-test-user-data-');
         const emptyFolderDir = path.join(userDataDir, 'empty');
         fs.mkdirSync(emptyFolderDir, { recursive: true });
 
@@ -573,7 +572,7 @@ export class VSCodeWorker {
         }
 
         const setupDirsStart = Date.now();
-        const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jj-view-test-user-data-'));
+        const userDataDir = makeTestTmpDir('jj-view-test-user-data-');
 
         const emptyFolderDir = path.join(userDataDir, 'empty');
         fs.mkdirSync(emptyFolderDir, { recursive: true });

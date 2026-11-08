@@ -1240,6 +1240,7 @@
         "test:screenshots": "node esbuild.js && pnpm build:tests && playwright test",
         "test:e2e": "node esbuild.js && pnpm build:tests && playwright test -c playwright.e2e.config.ts --reporter=list",
         "test:unit": "node tooling/run-vitest.mjs --timeout 120000",
+        "test:unit:perf": "node tooling/run-vitest.mjs --perf --timeout 120000",
         "test:repo": "node tooling/run-vitest.mjs --timeout 180000 -c vitest.repo.config.ts",
         "test:repo:fast": "node tooling/run-vitest.mjs --timeout 60000 -c vitest.repo.config.ts --bail=1 --exclude \"src/test/commands/**\"",
         "test:repo:heavy": "node tooling/run-vitest.mjs --timeout 180000 -c vitest.repo.config.ts src/test/commands",

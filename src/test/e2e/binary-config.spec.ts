@@ -4,10 +4,10 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { expect } from '@playwright/test';
 import { ScopedTestRepo } from '../test-repo';
+import { TEST_TMP_ROOT } from '../test-tmp-root';
 import { clickNotificationButton, expectNotificationToast, expectSettingsOpen, test } from './e2e-helpers';
 
 test.describe('JJ Binary Configuration E2E', () => {
@@ -15,7 +15,7 @@ test.describe('JJ Binary Configuration E2E', () => {
         using repo = new ScopedTestRepo();
         repo.init();
 
-        const invalidPath = path.join(os.tmpdir(), 'non-existent-jj-binary');
+        const invalidPath = path.join(TEST_TMP_ROOT, 'non-existent-jj-binary');
         // Open the workspace with default/valid settings first
         const { page } = await vscode.openWorkspace(repo, {}, {}, true);
 
@@ -60,7 +60,7 @@ test.describe('JJ Binary Configuration E2E', () => {
         const { page } = await vscode.openWorkspace(
             repo,
             { 'jj-view.binaryPath': 'dummy' },
-            { PATH: filteredPath, HOME: path.join(os.tmpdir(), 'jj-empty-home') },
+            { PATH: filteredPath, HOME: path.join(TEST_TMP_ROOT, 'jj-empty-home') },
             true,
             true,
         );

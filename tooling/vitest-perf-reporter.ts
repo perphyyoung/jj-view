@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Reporter, TestModule } from 'vitest/reporters';
 
@@ -30,7 +29,8 @@ export class VitestPerfReporter implements Reporter {
             this.traceFilePath = traceFilePath;
         } else {
             const existing = process.env.JJ_VIEW_PERF_TRACE_FILE;
-            this.traceFilePath = existing || path.join(os.tmpdir(), `jj-view-perf-trace-${process.pid}.jsonl`);
+            // Keep the trace inside the project tmp/ so no test writes outside the repo.
+            this.traceFilePath = existing || path.join(process.cwd(), 'tmp', `jj-view-perf-trace-${process.pid}.jsonl`);
         }
         process.env.JJ_VIEW_PERF_TRACE_FILE = this.traceFilePath;
 

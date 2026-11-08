@@ -10,6 +10,9 @@ import { VitestPerfReporter } from './tooling/vitest-perf-reporter';
 
 const isWindows = process.platform === 'win32';
 const traceFile = path.join(os.tmpdir(), `jj-view-perf-trace-${process.pid}.jsonl`);
+// Unit tests are pure logic, so the subprocess summary is noise by default. Opt in with
+// `pnpm test:unit:perf` when a number is actually needed.
+const perfEnabled = process.env.JJ_VIEW_PERF === '1';
 
 export default defineConfig({
     plugins: [svelte()],
@@ -20,12 +23,10 @@ export default defineConfig({
         // Temporary global setup to provide vscode mock during host abstraction retrofit
         setupFiles: ['./src/test/vitest-setup.ts'],
         globals: true,
-        env: {
-            JJ_VIEW_PERF_TRACE_FILE: traceFile,
-        },
-        // dot: one character per test (fast to scan); the perf reporter adds the CLI
-        // subprocess ranking at the end. A CLI `--reporter=...` would replace this list.
-        reporters: ['dot', new VitestPerfReporter(traceFile)],
+        env: perfEnabled ? { JJ_VIEW_PERF_TRACE_FILE: traceFile } : {},
+        // dot: one character per test (fast to scan). The perf reporter only joins when
+        // explicitly requested; a CLI `--reporter=...` would replace this list anyway.
+        reporters: perfEnabled ? ['dot', new VitestPerfReporter(traceFile)] : ['dot'],
         // Threads start far faster than forked processes, which matters on Windows.
         pool: 'threads',
         // Unit tests are pure logic; anything slower than this belongs in the repo tier.
