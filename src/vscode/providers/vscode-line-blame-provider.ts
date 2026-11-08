@@ -55,7 +55,11 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
     private readonly _parentCache = new Map<string, LineAnnotation[] | undefined>();
     private readonly _diffCache = new Map<string, readonly DiffChunkLike[] | undefined>();
     private readonly _contentCache = new Map<string, string[] | undefined>();
+    /** Last rendered blame per editor, so the relative label can be refreshed without jj. */
+    private readonly _rendered = new Map<string, { line: number; annotation: LineAnnotation; uncommitted: boolean }>();
     private _timer: ReturnType<typeof setTimeout> | undefined;
+    /** Re-renders relative labels ("13 minutes ago") once a minute. */
+    private _agoTimer: ReturnType<typeof setInterval> | undefined;
     private _disposed = false;
     private _requestId = 0;
     /** Last scheduled target, so column-only cursor moves do not restart the update. */
@@ -120,6 +124,11 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         if (vscode.window.activeTextEditor) {
             this._schedule(vscode.window.activeTextEditor, 'selection');
         }
+
+        // Relative labels are computed at render time, so they must be re-rendered to advance.
+        // Only the decoration text is refreshed (no jj call, no request churn that could
+        // invalidate an in-flight hover).
+        this._agoTimer = setInterval(() => this._refreshRelativeLabels(), 60_000);
     }
 
     public dispose(): void {
@@ -129,6 +138,10 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             clearTimeout(this._timer);
             this._timer = undefined;
         }
+        if (this._agoTimer) {
+            clearInterval(this._agoTimer);
+            this._agoTimer = undefined;
+        }
         this._clearAll();
         for (const disposable of this._disposables) {
             disposable.dispose();
@@ -137,6 +150,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         this._decoration.dispose();
         this._cache.clear();
         this._hoverByUri.clear();
+        this._rendered.clear();
     }
 
     private _schedule(editor: vscode.TextEditor, kind: 'selection' | 'document' = 'selection'): void {
@@ -321,6 +335,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
                           ),
                   }
                 : undefined,
+            { line, annotation, uncommitted },
             version,
         );
         this._outputChannel?.debug?.(
@@ -338,6 +353,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         line: number,
         text: string,
         hover?: { markdown: string; resolve?: () => Promise<string> },
+        relativeState?: { line: number; annotation: LineAnnotation; uncommitted: boolean },
         expectedVersion?: number,
     ): void {
         const document = editor.document;
@@ -353,6 +369,9 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         const decoration: vscode.DecorationOptions = { range, renderOptions: { after: { contentText: text } } };
         this._clearAll();
         editor.setDecorations(this._decoration, [decoration]);
+        if (relativeState) {
+            this._rendered.set(document.uri.toString(), relativeState);
+        }
         if (hover === undefined) {
             this._hoverByUri.delete(document.uri.toString());
         } else {
@@ -679,6 +698,43 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
     private _clearEditor(editor: vscode.TextEditor): void {
         editor.setDecorations(this._decoration, []);
         this._hoverByUri.delete(editor.document.uri.toString());
+        this._rendered.delete(editor.document.uri.toString());
+    }
+
+    /**
+     * Re-renders the inline blame text so "13 minutes ago" keeps advancing.
+     *
+     * Only the decoration is touched: annotations come from the last render, so this costs no
+     * jj call and cannot invalidate an in-flight hover resolution.
+     */
+    private _refreshRelativeLabels(): void {
+        if (this._disposed) {
+            return;
+        }
+        for (const editor of vscode.window.visibleTextEditors) {
+            const uri = editor.document.uri.toString();
+            const state = this._rendered.get(uri);
+            if (!state || this._hoverByUri.get(uri)?.pending) {
+                continue;
+            }
+            const document = editor.document;
+            if (state.line < 0 || state.line >= document.lineCount) {
+                continue;
+            }
+            const text = formatLineBlameText(state.annotation, {
+                maxLength: MAX_TEXT_LENGTH,
+                uncommitted: state.uncommitted,
+            });
+            if (!text) {
+                continue;
+            }
+            editor.setDecorations(this._decoration, [
+                {
+                    range: new vscode.Range(state.line, 0, state.line, document.lineAt(state.line).text.length),
+                    renderOptions: { after: { contentText: text } },
+                },
+            ]);
+        }
     }
 }
 

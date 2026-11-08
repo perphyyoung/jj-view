@@ -14,8 +14,13 @@ export interface LineAnnotation {
     shortCommitId: string;
     /** Author name. */
     author: string;
-    /** Relative time reported by jj, e.g. "1 day ago". */
-    ago: string;
+    /**
+     * Commit time in epoch milliseconds (committer timestamp, the one `jj log` shows).
+     *
+     * Stored absolute so the relative label is computed at render time: caching a formatted
+     * "13 minutes ago" made the hover freeze while the clock moved on.
+     */
+    timestamp: number;
     /** First line of the commit description. */
     summary: string;
 }
@@ -31,12 +36,14 @@ export interface FormatLineBlameOptions {
     maxLength?: number;
     /** The line was modified in the working copy and has no committed state yet. */
     uncommitted?: boolean;
+    /** Clock used for the relative time (defaults to `Date.now()`, injectable for tests). */
+    now?: number;
 }
 
 const DEFAULT_MAX_LENGTH = 100;
 
 /**
- * Parses `jj file annotate -T '<line>\t<commit>\t<short>\t<author>\t<ago>\t<summary>'`.
+ * Parses `jj file annotate -T '<line>\t<commit>\t<short>\t<author>\t<epoch>\t<summary>'`.
  * Malformed lines are skipped so a partially rendered template never breaks the view.
  */
 export function parseAnnotationOutput(output: string): LineAnnotation[] {
@@ -45,21 +52,60 @@ export function parseAnnotationOutput(output: string): LineAnnotation[] {
         if (!raw) {
             continue;
         }
-        const [lineText, commitId, shortCommitId, author, ago, summary] = raw.split('\t');
+        const [lineText, commitId, shortCommitId, author, epochSeconds, summary] = raw.split('\t');
         const line = Number.parseInt(lineText ?? '', 10);
         if (!Number.isFinite(line) || line < 1 || !commitId) {
             continue;
         }
+        const seconds = Number.parseInt(epochSeconds ?? '', 10);
         annotations.push({
             line,
             commitId,
             shortCommitId: shortCommitId || commitId.slice(0, 8),
             author: author ?? '',
-            ago: ago ?? '',
+            timestamp: Number.isFinite(seconds) ? seconds * 1000 : 0,
             summary: summary ?? '',
         });
     }
     return annotations;
+}
+
+/**
+ * Formats an epoch timestamp the way `jj log` does ("13 minutes ago").
+ *
+ * Computed on every render: the annotation cache stores only the absolute timestamp, so a
+ * tooltip can never keep showing a relative time frozen at cache time.
+ */
+export function formatRelativeTime(timestamp: number, now: number = Date.now()): string {
+    if (!timestamp) {
+        return '';
+    }
+    const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
+    if (seconds < 45) {
+        return 'just now';
+    }
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) {
+        return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`;
+    }
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) {
+        return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+    }
+    const days = Math.floor(hours / 24);
+    if (days < 7) {
+        return `${days} ${days === 1 ? 'day' : 'days'} ago`;
+    }
+    if (days < 30) {
+        const weeks = Math.floor(days / 7);
+        return `${weeks} ${weeks === 1 ? 'week' : 'weeks'} ago`;
+    }
+    if (days < 365) {
+        const months = Math.floor(days / 30);
+        return `${months} ${months === 1 ? 'month' : 'months'} ago`;
+    }
+    const years = Math.floor(days / 365);
+    return `${years} ${years === 1 ? 'year' : 'years'} ago`;
 }
 
 /** Builds the single-line blame text rendered at the end of the editor line. */
@@ -74,7 +120,8 @@ export function formatLineBlameText(
         return 'Uncommitted';
     }
     const maxLength = options.maxLength ?? DEFAULT_MAX_LENGTH;
-    const text = [annotation.author, annotation.ago, annotation.summary].filter((part) => part.length > 0).join(' · ');
+    const ago = formatRelativeTime(annotation.timestamp, options.now);
+    const text = [annotation.author, ago, annotation.summary].filter((part) => part.length > 0).join(' · ');
     if (!text) {
         return undefined;
     }
@@ -127,8 +174,9 @@ export function formatHoverMarkdown(
     details?: CommitDetails,
     diff?: LineChange,
     lineHistoryLink?: string,
+    now: number = Date.now(),
 ): string {
-    const header = annotationHeader(annotation.author, annotation.ago);
+    const header = annotationHeader(annotation.author, formatRelativeTime(annotation.timestamp, now));
     return formatHoverBlock({
         header: lineHistoryLink ? `${header} · ${lineHistoryLink}` : header,
         notice: diff && isInvisibleOnly(diff) ? invisibleNotice() : undefined,
@@ -154,10 +202,11 @@ export function formatUncommittedHoverMarkdown(
     details?: CommitDetails,
     diff?: LineChange,
     lineHistoryLink?: string,
+    now: number = Date.now(),
 ): string {
     // Header first, exactly like the committed tooltip: the last committed author/time owns
     // the line being edited. For a brand-new line there is no author, only the link.
-    const header = parent ? annotationHeader(parent.author, parent.ago) : undefined;
+    const header = parent ? annotationHeader(parent.author, formatRelativeTime(parent.timestamp, now)) : undefined;
     return formatHoverBlock({
         header: header && lineHistoryLink ? `${header} · ${lineHistoryLink}` : (header ?? lineHistoryLink),
         notice: '> ⚠️ **Uncommitted changes**',

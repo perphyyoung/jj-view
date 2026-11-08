@@ -179,6 +179,8 @@ git config core.autocrlf false   # 仅本仓库
 
 点击/移动光标到某一行时，在该行末尾用灰色斜体显示「最后一次改动该行的提交」：`作者 · 相对时间 · 提交摘要`（如 `py · 1 day ago · feat: …`，超长截断），行为对齐 GitLens 的 current line blame。悬停整行（含行尾的 blame 文本区域）用 Markdown 气泡显示：`作者 · 相对时间` → 行级 diff 代码块 → 完整提交描述（不显示邮箱与 commit id）。
 
+时间口径与 `jj log` 一致：取 **committer** 时间（`jj describe` 等改写只更新 committer，author 不变），annotate 模板输出 epoch 秒，界面在**渲染时**计算相对时间；60s 定时重渲染可见行，标签不会停在缓存时的那一刻。
+
 #### 渲染与触发
 
 - 数据来源：`jj file annotate -r @ -T '…'`，模板使用 `commit.commit_id()` / `commit.author().name()` / `commit.description().first_line()`（annotate 模板的关键字是 `commit`，不是 `commit_id`）

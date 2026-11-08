@@ -7,6 +7,7 @@ import {
     findAnnotation,
     formatHoverMarkdown,
     formatLineBlameText,
+    formatRelativeTime,
     formatUncommittedHoverMarkdown,
     isUncommittedLine,
     lineBlameCacheKey,
@@ -14,12 +15,19 @@ import {
     pickLineChange,
 } from '../core/blame/line-blame';
 
+/** Fixed clock: relative labels must be deterministic in tests. */
+const NOW = Date.parse('2026-11-08T12:00:00Z');
+const minutesAgo = (n: number): number => NOW - n * 60_000;
+const daysAgo = (n: number): number => NOW - n * 86_400_000;
+const seconds = (ms: number): string => String(Math.floor(ms / 1000));
+
 describe('parseAnnotationOutput', () => {
-    it('parses tab-separated annotate rows', () => {
+    it('parses tab-separated annotate rows with an absolute committer time', () => {
+        const day = seconds(daysAgo(1));
         const output = [
-            '1\tabcdef123456\tabcdef12\tperphyyoung\t1 day ago\tinitial commit',
-            '2\tabcdef123456\tabcdef12\tperphyyoung\t1 day ago\tinitial commit',
-            '3\t999999999999\t99999999\talice\t2 hours ago\tfix upload',
+            `1\tabcdef123456\tabcdef12\tperphyyoung\t${day}\tinitial commit`,
+            `2\tabcdef123456\tabcdef12\tperphyyoung\t${day}\tinitial commit`,
+            `3\t999999999999\t99999999\talice\t${seconds(minutesAgo(120))}\tfix upload`,
         ].join('\n');
 
         expect(parseAnnotationOutput(output)).toEqual([
@@ -28,7 +36,7 @@ describe('parseAnnotationOutput', () => {
                 commitId: 'abcdef123456',
                 shortCommitId: 'abcdef12',
                 author: 'perphyyoung',
-                ago: '1 day ago',
+                timestamp: daysAgo(1),
                 summary: 'initial commit',
             },
             {
@@ -36,7 +44,7 @@ describe('parseAnnotationOutput', () => {
                 commitId: 'abcdef123456',
                 shortCommitId: 'abcdef12',
                 author: 'perphyyoung',
-                ago: '1 day ago',
+                timestamp: daysAgo(1),
                 summary: 'initial commit',
             },
             {
@@ -44,7 +52,7 @@ describe('parseAnnotationOutput', () => {
                 commitId: '999999999999',
                 shortCommitId: '99999999',
                 author: 'alice',
-                ago: '2 hours ago',
+                timestamp: minutesAgo(120),
                 summary: 'fix upload',
             },
         ]);
@@ -55,22 +63,42 @@ describe('parseAnnotationOutput', () => {
             'not-a-number\tabc\tdef\tauthor\tago\tsummary',
             '',
             '2\tabc\t\t\t\t',
-            '3\txyz\txyz\tbob\t3 days ago\tdone',
+            `3\txyz\txyz\tbob\t${seconds(daysAgo(3))}\tdone`,
         ].join('\n');
 
         const annotations = parseAnnotationOutput(output);
         expect(annotations).toHaveLength(2);
-        expect(annotations[0]).toMatchObject({ line: 2, commitId: 'abc', ago: '', summary: '' });
-        expect(annotations[1]).toMatchObject({ line: 3, author: 'bob', ago: '3 days ago', summary: 'done' });
+        expect(annotations[0]).toMatchObject({ line: 2, commitId: 'abc', timestamp: 0, summary: '' });
+        expect(annotations[1]).toMatchObject({ line: 3, author: 'bob', timestamp: daysAgo(3), summary: 'done' });
     });
 
     it('derives a short id when the template omits it', () => {
-        const annotations = parseAnnotationOutput('1\t0123456789abcdef\t\tauthor\tnow\tsummary');
+        const annotations = parseAnnotationOutput(`1\t0123456789abcdef\t\tauthor\t${seconds(NOW)}\tsummary`);
         expect(annotations[0].shortCommitId).toBe('01234567');
     });
 
     it('returns an empty array for empty output', () => {
         expect(parseAnnotationOutput('')).toEqual([]);
+    });
+});
+
+describe('formatRelativeTime', () => {
+    it('matches jj log wording across buckets', () => {
+        const at = (secondsAgo: number) => NOW - secondsAgo * 1000;
+        expect(formatRelativeTime(at(10), NOW)).toBe('just now');
+        expect(formatRelativeTime(at(60), NOW)).toBe('1 minute ago');
+        expect(formatRelativeTime(at(13 * 60), NOW)).toBe('13 minutes ago');
+        expect(formatRelativeTime(at(3600), NOW)).toBe('1 hour ago');
+        expect(formatRelativeTime(at(2 * 3600), NOW)).toBe('2 hours ago');
+        expect(formatRelativeTime(at(86_400), NOW)).toBe('1 day ago');
+        expect(formatRelativeTime(at(2 * 86_400), NOW)).toBe('2 days ago');
+        expect(formatRelativeTime(at(8 * 86_400), NOW)).toBe('1 week ago');
+        expect(formatRelativeTime(at(31 * 86_400), NOW)).toBe('1 month ago');
+        expect(formatRelativeTime(at(400 * 86_400), NOW)).toBe('1 year ago');
+    });
+
+    it('returns an empty label for an unknown timestamp', () => {
+        expect(formatRelativeTime(0, NOW)).toBe('');
     });
 });
 
@@ -80,23 +108,25 @@ describe('formatLineBlameText', () => {
         commitId: 'abcdef123456',
         shortCommitId: 'abcdef12',
         author: 'perphyyoung',
-        ago: '1 day ago',
+        timestamp: daysAgo(1),
         summary: 'fix upload stack',
     };
 
     it('renders author, relative time and summary', () => {
-        expect(formatLineBlameText(annotation)).toBe('perphyyoung · 1 day ago · fix upload stack');
+        expect(formatLineBlameText(annotation, { now: NOW })).toBe('perphyyoung · 1 day ago · fix upload stack');
     });
 
     it('omits empty parts', () => {
-        expect(formatLineBlameText({ ...annotation, ago: '' })).toBe('perphyyoung · fix upload stack');
-        expect(formatLineBlameText({ ...annotation, summary: '' })).toBe('perphyyoung · 1 day ago');
+        expect(formatLineBlameText({ ...annotation, timestamp: 0 }, { now: NOW })).toBe(
+            'perphyyoung · fix upload stack',
+        );
+        expect(formatLineBlameText({ ...annotation, summary: '' }, { now: NOW })).toBe('perphyyoung · 1 day ago');
     });
 
     it('truncates long text', () => {
         const text = formatLineBlameText(
-            { ...annotation, author: 'a'.repeat(50), ago: '9'.repeat(50) },
-            { maxLength: 20 },
+            { ...annotation, author: 'a'.repeat(50), summary: 'b'.repeat(50) },
+            { maxLength: 20, now: NOW },
         );
         expect(text).toHaveLength(20);
         expect(text?.endsWith('…')).toBe(true);
@@ -117,14 +147,20 @@ describe('formatHoverMarkdown', () => {
         commitId: 'e7169b517724fe374d04cb5633c987e80b608f70',
         shortCommitId: 'e7169b51',
         author: 'py',
-        ago: '1 day ago',
+        timestamp: daysAgo(1),
         summary: 'feat: 默认本地化运行并收敛刷新链路',
     };
 
     it('keeps author and time on one line, then the complete message only', () => {
-        const markdown = formatHoverMarkdown(annotation, {
-            description: 'feat: 默认本地化运行并收敛刷新链路\n\n- 第二个段落',
-        });
+        const markdown = formatHoverMarkdown(
+            annotation,
+            {
+                description: 'feat: 默认本地化运行并收敛刷新链路\n\n- 第二个段落',
+            },
+            undefined,
+            undefined,
+            NOW,
+        );
 
         expect(markdown.startsWith('**py** · 1 day ago\n\n')).toBe(true);
         expect(markdown).toContain('- 第二个段落');
@@ -133,11 +169,15 @@ describe('formatHoverMarkdown', () => {
     });
 
     it('falls back to the summary when full details are unavailable', () => {
-        expect(formatHoverMarkdown(annotation)).toBe('**py** · 1 day ago\n\nfeat: 默认本地化运行并收敛刷新链路');
+        expect(formatHoverMarkdown(annotation, undefined, undefined, undefined, NOW)).toBe(
+            '**py** · 1 day ago\n\nfeat: 默认本地化运行并收敛刷新链路',
+        );
     });
 
     it('shows a placeholder when the commit has no message', () => {
-        expect(formatHoverMarkdown({ ...annotation, summary: '' })).toBe('**py** · 1 day ago\n\n(no commit message)');
+        expect(formatHoverMarkdown({ ...annotation, summary: '' }, undefined, undefined, undefined, NOW)).toBe(
+            '**py** · 1 day ago\n\n(no commit message)',
+        );
     });
 });
 
@@ -147,7 +187,7 @@ describe('isUncommittedLine', () => {
         commitId: 'wc-commit',
         shortCommitId: 'wc-commi',
         author: 'py',
-        ago: 'now',
+        timestamp: NOW,
         summary: '',
     };
 
@@ -164,7 +204,7 @@ describe('formatUncommittedHoverMarkdown', () => {
         commitId: 'parent-commit',
         shortCommitId: 'parent-c',
         author: 'alice',
-        ago: '2 days ago',
+        timestamp: daysAgo(2),
         summary: 'previous message',
     };
 
@@ -174,6 +214,7 @@ describe('formatUncommittedHoverMarkdown', () => {
             { description: 'previous message\n\nbody' },
             undefined,
             '[Line History](command:jj-view.lineHistory?x)',
+            NOW,
         );
 
         expect(markdown.startsWith('**alice** · 2 days ago · [Line History]')).toBe(true);
@@ -182,13 +223,13 @@ describe('formatUncommittedHoverMarkdown', () => {
     });
 
     it('falls back to the parent summary without full details', () => {
-        expect(formatUncommittedHoverMarkdown(parent)).toBe(
+        expect(formatUncommittedHoverMarkdown(parent, undefined, undefined, undefined, NOW)).toBe(
             '**alice** · 2 days ago\n\n> ⚠️ **Uncommitted changes**\n\nprevious message',
         );
     });
 
     it('shows a placeholder when the parent commit has no message', () => {
-        expect(formatUncommittedHoverMarkdown({ ...parent, summary: '' })).toBe(
+        expect(formatUncommittedHoverMarkdown({ ...parent, summary: '' }, undefined, undefined, undefined, NOW)).toBe(
             '**alice** · 2 days ago\n\n> ⚠️ **Uncommitted changes**\n\n(no commit message)',
         );
     });
@@ -271,7 +312,7 @@ describe('pickLineChange', () => {
 
     it('explains why two lines that look alike still differ', () => {
         const markdown = formatHoverMarkdown(
-            { line: 1, commitId: 'c1', shortCommitId: 'c1', author: 'py', ago: '1 day ago', summary: 's' },
+            { line: 1, commitId: 'c1', shortCommitId: 'c1', author: 'py', timestamp: daysAgo(1), summary: 's' },
             undefined,
             // jj's diff output drops the CR, so both sides arrive identical here.
             { before: '  "version": "0.2.6",', after: '  "version": "0.2.6",' },
@@ -288,7 +329,7 @@ describe('pickLineChange', () => {
 
     it('does not add the note for a normal change', () => {
         const markdown = formatHoverMarkdown(
-            { line: 1, commitId: 'c1', shortCommitId: 'c1', author: 'py', ago: '1 day ago', summary: 's' },
+            { line: 1, commitId: 'c1', shortCommitId: 'c1', author: 'py', timestamp: daysAgo(1), summary: 's' },
             undefined,
             { before: 'old', after: 'new' },
         );
@@ -341,7 +382,7 @@ describe('hover markdown with line diff', () => {
         commitId: 'abc',
         shortCommitId: 'abc',
         author: 'py',
-        ago: '1 day ago',
+        timestamp: daysAgo(1),
         summary: 'version bump',
     };
 
@@ -360,11 +401,13 @@ describe('hover markdown with line diff', () => {
     });
 
     it('includes the working-copy diff for uncommitted lines', () => {
-        const parent = { ...annotation, author: 'alice', ago: '2 days ago', summary: 'previous' };
+        const parent = { ...annotation, author: 'alice', timestamp: daysAgo(2), summary: 'previous' };
         const markdown = formatUncommittedHoverMarkdown(
             parent,
             { description: 'previous' },
             { before: 'x', after: 'y' },
+            undefined,
+            NOW,
         );
 
         expect(markdown.startsWith('**alice** · 2 days ago')).toBe(true);
@@ -376,8 +419,8 @@ describe('hover markdown with line diff', () => {
 
 describe('findAnnotation', () => {
     const annotations = [
-        { line: 1, commitId: 'a', shortCommitId: 'a', author: 'a', ago: '', summary: '' },
-        { line: 2, commitId: 'b', shortCommitId: 'b', author: 'b', ago: '', summary: '' },
+        { line: 1, commitId: 'a', shortCommitId: 'a', author: 'a', timestamp: 0, summary: '' },
+        { line: 2, commitId: 'b', shortCommitId: 'b', author: 'b', timestamp: 0, summary: '' },
     ];
 
     it('maps a 0-based editor line to the 1-based annotation', () => {

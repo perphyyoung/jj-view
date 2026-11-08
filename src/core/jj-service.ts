@@ -1352,7 +1352,10 @@ export class JjService {
         lineRange?: { from: number; to: number },
     ): Promise<LineAnnotation[] | undefined> {
         const record =
-            'line_number ++ "\\t" ++ commit.commit_id() ++ "\\t" ++ commit.commit_id().short() ++ "\\t" ++ commit.author().name() ++ "\\t" ++ commit.author().timestamp().ago() ++ "\\t" ++ commit.description().first_line() ++ "\\n"';
+            // The 5th field is the committer timestamp (epoch seconds): `jj log` shows the
+            // committer time, so using the author time here made the labels disagree after
+            // `jj describe`. Absolute seconds also let the UI recompute the relative label.
+            'line_number ++ "\\t" ++ commit.commit_id() ++ "\\t" ++ commit.commit_id().short() ++ "\\t" ++ commit.author().name() ++ "\\t" ++ commit.committer().timestamp().format("%s") ++ "\\t" ++ commit.description().first_line() ++ "\\n"';
         // Only emit the requested lines: jj still blames the whole file, but the output
         // (and the parsing on this side) stops growing with the file size.
         const template = lineRange

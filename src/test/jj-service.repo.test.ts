@@ -39,6 +39,31 @@ describe('JjService Unit Tests', () => {
         expect(windowed?.map((a) => a.line)).toEqual([5, 6, 7]);
     });
 
+    test('annotateFile reports the committer time, like jj log', async () => {
+        repo.writeFile('stamp.txt', 'stamp\n');
+        repo.describe('first');
+        repo.new();
+        // Rewriting the commit updates only the committer timestamp.
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        repo.describe('rewritten', '@-');
+
+        const annotations = await jjService.annotateFile('stamp.txt');
+        const read = (template: string) =>
+            Number(
+                cp
+                    .execFileSync('jj', ['log', '-r', '@-', '--no-graph', '-T', template], {
+                        cwd: repo.path,
+                        encoding: 'utf8',
+                    })
+                    .trim(),
+            );
+        const committer = read('committer.timestamp().format("%s")');
+        const author = read('author.timestamp().format("%s")');
+
+        expect(committer).not.toBe(author);
+        expect(annotations?.[0].timestamp).toBe(committer * 1000);
+    });
+
     test('whenIdle resolves immediately when no mutation is running', async () => {
         await expect(jjService.whenIdle()).resolves.toBe(true);
     });
