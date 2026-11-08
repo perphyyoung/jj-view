@@ -108,6 +108,8 @@ export class TestRepo {
     private configId?: string;
     /** Lazily created once per worker; `init()` copies it instead of spawning `jj git init`. */
     private static templateRoot?: string;
+    /** Pre-built commit graphs, keyed by name and shared by every copy in this worker. */
+    private static readonly graphTemplates = new Map<string, { path: string; ids: Record<string, CommitId> }>();
 
     private ensureRepoConfig(): { configId: string; repoConfigDir: string; configPath: string } {
         const start = process.hrtime.bigint();
@@ -286,6 +288,44 @@ export class TestRepo {
         tempDirs.add(templateRoot);
         TestRepo.templateRoot = templateRoot;
         return templateRoot;
+    }
+
+    /**
+     * Copies a pre-built commit graph instead of running `jj` for it.
+     *
+     * The graph is built once per worker and then copied (pure file IO), so tests that only
+     * need "some history" stop paying ~180 ms per `jj new`. The returned ids stay valid
+     * because the copied operation store carries the same change ids.
+     */
+    async initWithGraph(name: string, defs: CommitDefinition[]): Promise<Record<string, CommitId>> {
+        let cached = TestRepo.graphTemplates.get(name);
+        if (!cached) {
+            const templateRepo = new TestRepo();
+            templateRepo.init();
+            const ids = await buildGraph(templateRepo, defs);
+            cached = { path: templateRepo.path, ids };
+            TestRepo.graphTemplates.set(name, cached);
+        }
+
+        const start = process.hrtime.bigint();
+        // Replace whatever `init()` copied before: the graph template carries its own store.
+        for (const entry of ['.jj', '.git']) {
+            const target = path.join(this.path, entry);
+            if (fs.existsSync(target)) {
+                fs.rmSync(target, { recursive: true, force: true });
+            }
+        }
+        for (const entry of fs.readdirSync(cached.path)) {
+            fs.cpSync(path.join(cached.path, entry), path.join(this.path, entry), { recursive: true });
+        }
+        // The copy needs its own config id, otherwise `repo.config()` calls would share one
+        // user config file and leak settings between tests.
+        this.configId = crypto.randomBytes(10).toString('hex');
+        fs.writeFileSync(path.join(this.path, '.jj', 'repo', 'config-id'), this.configId, 'utf-8');
+        const { configPath } = this.ensureRepoConfig();
+        fs.writeFileSync(configPath, fs.readFileSync(defaultTestConfigFile, 'utf-8'), 'utf-8');
+        recordCommandTrace('TestRepo', ['graph-template-copy'], Number(process.hrtime.bigint() - start) / 1_000_000);
+        return cached.ids;
     }
 
     init() {

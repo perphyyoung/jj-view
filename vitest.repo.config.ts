@@ -27,7 +27,10 @@ export default defineConfig({
         env: {
             JJ_VIEW_PERF_TRACE_FILE: traceFile,
         },
-        reporters: ['default', new VitestPerfReporter(traceFile)],
+        // verbose prints one line per test with its duration (progress you can actually
+        // follow); the perf reporter adds the jj subprocess ranking at the end. Note that a
+        // CLI `--reporter=...` would replace this whole list, so the scripts must not set it.
+        reporters: ['verbose', new VitestPerfReporter(traceFile)],
         pool: 'threads',
         // Repo tests mostly wait on jj subprocesses, so more workers than cores still helps.
         // 10 workers made the fast tier slower (process/disk thrash); 6 is the measured sweet

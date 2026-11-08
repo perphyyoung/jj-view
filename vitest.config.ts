@@ -23,7 +23,9 @@ export default defineConfig({
         env: {
             JJ_VIEW_PERF_TRACE_FILE: traceFile,
         },
-        reporters: ['default', new VitestPerfReporter(traceFile)],
+        // dot: one character per test (fast to scan); the perf reporter adds the CLI
+        // subprocess ranking at the end. A CLI `--reporter=...` would replace this list.
+        reporters: ['dot', new VitestPerfReporter(traceFile)],
         // Threads start far faster than forked processes, which matters on Windows.
         pool: 'threads',
         // Unit tests are pure logic; anything slower than this belongs in the repo tier.

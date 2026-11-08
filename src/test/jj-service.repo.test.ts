@@ -754,9 +754,11 @@ log = "none()"
     });
 
     test('getLog parses parents correctly', async () => {
-        // Create a parent commit
-        repo.describe('parent');
-        repo.new(['@'], 'child');
+        // Pre-built graph: copied from the worker template, so no `jj new` is needed here.
+        await repo.initWithGraph('parent-child', [
+            { label: 'parent', description: 'parent' },
+            { label: 'child', parents: ['parent'], description: 'child', isCurrentWorkingCopy: true },
+        ]);
 
         const [logEntry] = await jjService.getLog({ revision: '@' });
         expect(logEntry.parents).toBeDefined();
@@ -811,16 +813,18 @@ log = "none()"
     }, 30000);
 
     test('getLog without revisions returns multiple entries', async () => {
-        repo.describe('c1');
-        repo.new([], 'c2');
-        repo.new([], 'c3');
+        await repo.initWithGraph('three-linear', [
+            { label: 'c1', description: 'c1' },
+            { label: 'c2', parents: ['c1'], description: 'c2' },
+            { label: 'c3', parents: ['c2'], description: 'c3' },
+        ]);
 
         const logs = await jjService.getLog();
         expect(logs.length).toBeGreaterThanOrEqual(3);
     });
 
     test('getLog parses extended fields', async () => {
-        repo.describe('test fields');
+        await repo.initWithGraph('single-commit', [{ label: 'c', description: 'test fields' }]);
         const [log] = await jjService.getLog({ revision: '@' });
 
         expect(log.change_id_shortest).toBeDefined();
@@ -883,19 +887,21 @@ log = "none()"
     });
 
     test('getLog detects empty status correctly', async () => {
-        const filePath = path.join(repo.path, 'not-empty.txt');
-        fs.writeFileSync(filePath, 'content');
+        const ids = await repo.initWithGraph('not-empty-then-empty', [
+            { label: 'notEmpty', description: 'not empty', files: { 'not-empty.txt': 'content' } },
+            { label: 'emptyChild', parents: ['notEmpty'], description: 'empty child' },
+        ]);
 
-        repo.describe('not empty');
-        const [log] = await jjService.getLog({ revision: '@' });
-        expect(log.is_empty).toBe(false);
+        const [notEmpty] = await jjService.getLog({ revision: ids.notEmpty.changeId });
+        expect(notEmpty.is_empty).toBe(false);
 
-        repo.new(['@'], 'empty child');
-        const [emptyLog] = await jjService.getLog({ revision: '@' });
+        const [emptyLog] = await jjService.getLog({ revision: ids.emptyChild.changeId });
         expect(emptyLog.is_empty).toBe(true);
     });
 
     test('getLog parses parents_immutable correctly', async () => {
+        // Not templated: the assertion depends on the repository's own initial root commit
+        // (the parent of `@`), which a freshly built graph does not have.
         repo.describe('child of root');
         const [child] = await jjService.getLog({ revision: '@' });
 
@@ -911,23 +917,12 @@ log = "none()"
     });
 
     test('getLog parses tags correctly', async () => {
-        const ids = await buildGraph(repo, [
-            {
-                label: 'commit',
-                description: 'tagged commit',
-            },
-            {
-                label: 'child',
-                parents: ['commit'],
-                description: 'child commit',
-                isCurrentWorkingCopy: true, // moves @ here
-            },
+        const ids = await repo.initWithGraph('tagged-commit', [
+            { label: 'commit', description: 'tagged commit', tags: ['test-tag-1', 'test-tag-2'] },
+            { label: 'child', parents: ['commit'], description: 'child commit' },
         ]);
 
         const changeId = ids.commit.changeId;
-        repo.tag('test-tag-1', changeId);
-        repo.tag('test-tag-2', changeId);
-
         const [log] = await jjService.getLog({ revision: changeId });
 
         expect(log.tags).toBeDefined();
@@ -938,7 +933,7 @@ log = "none()"
     });
 
     test('getLog parses author and committer with full details', async () => {
-        repo.describe('author test');
+        await repo.initWithGraph('single-commit', [{ label: 'c', description: 'author test' }]);
         const [log] = await jjService.getLog({ revision: '@' });
 
         // Verify author structure (values may come from global jj config, not repo-local)
