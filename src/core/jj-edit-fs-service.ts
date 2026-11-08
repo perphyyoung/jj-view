@@ -31,6 +31,20 @@ export function parseEditUri(uri: Uri): { revision: string; filePath: string } {
 
 const WRITE_FLUSH_DEBOUNCE_MS = 100;
 
+/**
+ * Gated diagnostics for the write pipeline. Enabled with `JJ_VIEW_DEBUG_EDIT=1`, which the
+ * repo tests use when a write silently does not reach the target revision.
+ */
+function debugEditEnabled(): boolean {
+    return process.env.JJ_VIEW_DEBUG_EDIT === '1';
+}
+
+function debugEdit(message: string): void {
+    if (debugEditEnabled()) {
+        process.stderr.write(`[JjEditFsService] ${message}\n`);
+    }
+}
+
 export class JjEditFsService implements Disposable {
     private readonly _uriTracker: VirtualFsUriTracker;
     readonly onDidChangeFile: Event<Uri[]>;
@@ -193,8 +207,22 @@ export class JjEditFsService implements Disposable {
                 filesMap.set(w.filePath, w.content);
             }
 
+            debugEdit(
+                `flush revision=${revision} files=${[...filesMap.keys()].join(',')} sizes=${[...filesMap.values()].map((v) => v.length).join(',')}`,
+            );
+
             await repo.jj.setFilesContent(revision, filesMap);
             this._writeVersion++;
+
+            if (debugEditEnabled()) {
+                const [firstPath] = filesMap.keys();
+                if (firstPath) {
+                    const readBack = await repo.jj.getFileContent(firstPath, revision);
+                    debugEdit(
+                        `flush done revision=${revision} readBack=${JSON.stringify(readBack.slice(0, 60))} expected=${JSON.stringify((filesMap.get(firstPath) ?? '').slice(0, 60))}`,
+                    );
+                }
+            }
             this._uriTracker.fireDirectChangeEvents(revWrites.map((w) => w.uri));
 
             for (const w of revWrites) {
@@ -211,6 +239,7 @@ export class JjEditFsService implements Disposable {
                 }
             }
         } catch (err: unknown) {
+            debugEdit(`flush FAILED revision=${revision}: ${String(err)}`);
             for (const w of revWrites) {
                 w.reject(err);
             }

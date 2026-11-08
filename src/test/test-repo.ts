@@ -205,7 +205,7 @@ export class TestRepo {
     // and prevent arbitrary command execution in tests.
     private exec(
         args: string[],
-        options: { trim?: boolean; keepInspectCache?: boolean } = {},
+        options: { trim?: boolean; keepInspectCache?: boolean; attempt?: number } = {},
     ): { stdout: string; stderr: string } {
         this.ensureStore();
         // Any command may change the repository, so assertions must re-read. The inspect query
@@ -251,6 +251,19 @@ export class TestRepo {
         }
 
         if (res.status !== 0) {
+            // Windows sandboxes / AV occasionally deny jj's write of the working-copy
+            // checkout state for a moment. Retrying the same command is safe: jj either wrote
+            // nothing or the operation is idempotent, and the alternative is a flaky suite.
+            const attempt = options.attempt ?? 0;
+            const accessDenied =
+                /os error 5\b|Access is denied|拒绝访问|Failed to write checkout state|Failed to save the working copy state/.test(
+                    stderr,
+                );
+            if (accessDenied && attempt < 4) {
+                TestRepo.sleepSync(150 * (attempt + 1));
+                return this.exec(args, { ...options, attempt: attempt + 1 });
+            }
+
             const stdout = res.stdout || 'undefined';
             throw new Error(
                 `Command failed: jj ${args.join(' ')}\n` +
@@ -288,6 +301,11 @@ export class TestRepo {
             args.push('-r', options.revision);
         }
         this.exec(args);
+    }
+
+    /** Synchronous sleep, used by the access-denied retry inside `exec()`. */
+    private static sleepSync(ms: number): void {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
     }
 
     /**
