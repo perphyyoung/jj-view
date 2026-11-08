@@ -119,8 +119,11 @@ export function formatUncommittedHoverMarkdown(
     parent: LineAnnotation | undefined,
     details?: CommitDetails,
     diff?: LineChange,
+    lineHistoryLink?: string,
 ): string {
-    const sections: string[][] = [['**Uncommitted changes**']];
+    // Same shape as the invisible-diff notice: quoted, icon, bold title.
+    const header = lineHistoryLink ? `> ⚠️ **Uncommitted changes** · ${lineHistoryLink}` : '> ⚠️ **Uncommitted changes**';
+    const sections: string[][] = [[header]];
     if (diff) {
         sections.push(formatDiffBlock(diff));
     }

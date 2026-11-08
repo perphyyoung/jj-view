@@ -411,6 +411,7 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         const start = Date.now();
         const config = vscode.workspace.getConfiguration('jj-view');
         const showDiff = config.get<boolean>('lineBlame.showLineDiff', true);
+        const lineHistoryLink = buildLineHistoryLink(root, relativePath, annotation.line);
         let markdown: string;
         if (uncommitted) {
             const [diff, parentAnnotations] = await Promise.all([
@@ -421,14 +422,13 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
             const parentDetails = parentAnnotation
                 ? await this._getCommitDetails(repo, parentAnnotation.commitId)
                 : undefined;
-            markdown = formatUncommittedHoverMarkdown(parentAnnotation, parentDetails, diff);
+            markdown = formatUncommittedHoverMarkdown(parentAnnotation, parentDetails, diff, lineHistoryLink);
         } else {
             const [diff, details] = await Promise.all([
                 showDiff ? this._getLineChange(repo, annotation.commitId, relativePath, line, document) : undefined,
                 this._getCommitDetails(repo, annotation.commitId),
             ]);
-            const link = buildLineHistoryLink(root, relativePath, annotation.line);
-            markdown = formatHoverMarkdown(annotation, details, diff, link);
+            markdown = formatHoverMarkdown(annotation, details, diff, lineHistoryLink);
         }
         this._outputChannel?.debug?.(`[LineBlame] hover resolved in ${Date.now() - start}ms`);
         return markdown;

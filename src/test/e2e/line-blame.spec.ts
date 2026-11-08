@@ -231,6 +231,72 @@ test.describe('Line Blame E2E', () => {
         await expect(frame.locator('[data-testid="line-history-row"]')).toHaveCount(3, { timeout: 5000 });
     });
 
+    test('Shows the uncommitted notice and Line History link on the first line', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('uncommitted.txt', 'value 1\n');
+        repo.describe('committed line');
+        repo.new();
+        // Same line edited in the working copy: the annotation is `@`.
+        repo.writeFile('uncommitted.txt', 'value 2\n');
+
+        const { page } = await vscode.openWorkspace(repo);
+        await openFileInEditor(vscode, page, 'uncommitted.txt');
+
+        const editor = page.locator('.editor-instance .monaco-editor').first();
+        const line = editor.locator('.view-line').first();
+        await expect(line).toBeVisible({ timeout: 5000 });
+        await line.click();
+        await page.keyboard.press('End');
+
+        await expect
+            .poll(
+                () =>
+                    line.evaluate((el) => {
+                        const isUncommitted = (value: string): boolean => value.includes('Uncommitted');
+                        const walk = (node: Node): boolean => {
+                            if (node.nodeType === Node.TEXT_NODE) {
+                                return isUncommitted(node.textContent ?? '');
+                            }
+                            if (node.nodeType !== Node.ELEMENT_NODE) {
+                                return false;
+                            }
+                            const element = node as Element;
+                            if (isUncommitted(getComputedStyle(element, '::after').content ?? '')) {
+                                return true;
+                            }
+                            return Array.from(element.childNodes).some(walk);
+                        };
+                        return walk(el);
+                    }),
+                { timeout: 5000 },
+            )
+            .toBe(true);
+
+        await line.hover();
+        const hover = page.locator('.monaco-hover').first();
+        await expect(hover).toBeVisible({ timeout: 5000 });
+        await expect(hover).toContainText('Uncommitted changes', { timeout: 5000 });
+        await expect(hover).toContainText('⚠️');
+
+        const text = await hover.innerText();
+        // Notice sits above the diff, and the diff above the committed author line.
+        expect(text.indexOf('Uncommitted changes')).toBeLessThan(text.indexOf('value 1'));
+        expect(text.indexOf('Line History')).toBeLessThan(text.indexOf('value 1'));
+
+        const link = hover.locator('a', { hasText: 'Line History' });
+        await expect(link).toBeVisible({ timeout: 5000 });
+        await link.click();
+
+        await expect(page.getByRole('tab', { name: /Line History: uncommitted\.txt:1/ })).toBeVisible({
+            timeout: 5000,
+        });
+        const frame = await getLineHistoryFrame(page);
+        const rows = frame.locator('[data-testid="line-history-row"]');
+        await expect(rows.first()).toContainText('committed line');
+        await expect(rows.first()).toContainText('value 1');
+    });
+
     test('Shows the blame tooltip for the cursor line', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();

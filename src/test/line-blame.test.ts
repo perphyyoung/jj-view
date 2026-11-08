@@ -171,24 +171,51 @@ describe('formatUncommittedHoverMarkdown', () => {
     it('states the uncommitted state and shows the last committed annotation', () => {
         const markdown = formatUncommittedHoverMarkdown(parent, { description: 'previous message\n\nbody' });
 
-        expect(markdown.startsWith('**Uncommitted changes**\n\n**alice** · 2 days ago\n\n')).toBe(true);
+        expect(markdown.startsWith('> ⚠️ **Uncommitted changes**\n\n**alice** · 2 days ago\n\n')).toBe(true);
         expect(markdown).toContain('body');
     });
 
     it('falls back to the parent summary without full details', () => {
         expect(formatUncommittedHoverMarkdown(parent)).toBe(
-            '**Uncommitted changes**\n\n**alice** · 2 days ago\n\nprevious message',
+            '> ⚠️ **Uncommitted changes**\n\n**alice** · 2 days ago\n\nprevious message',
         );
     });
 
     it('shows a placeholder when the parent commit has no message', () => {
         expect(formatUncommittedHoverMarkdown({ ...parent, summary: '' })).toBe(
-            '**Uncommitted changes**\n\n**alice** · 2 days ago\n\n(no commit message)',
+            '> ⚠️ **Uncommitted changes**\n\n**alice** · 2 days ago\n\n(no commit message)',
         );
     });
 
     it('omits the committed section for newly added lines', () => {
-        expect(formatUncommittedHoverMarkdown(undefined)).toBe('**Uncommitted changes**');
+        expect(formatUncommittedHoverMarkdown(undefined)).toBe('> ⚠️ **Uncommitted changes**');
+    });
+
+    it('puts the Line History link on the first line, above the diff', () => {
+        const markdown = formatUncommittedHoverMarkdown(
+            parent,
+            undefined,
+            { before: 'old', after: 'new' },
+            '[Line History](command:jj-view.lineHistory?x)',
+        );
+
+        const firstLine = markdown.split('\n')[0];
+        expect(firstLine).toContain('⚠️');
+        expect(firstLine).toContain('Line History');
+        expect(markdown.indexOf('Line History')).toBeLessThan(markdown.indexOf('```diff'));
+    });
+
+    it('keeps the notice first and separates the committed section with a rule', () => {
+        const markdown = formatUncommittedHoverMarkdown(
+            parent,
+            undefined,
+            { before: 'old', after: 'new' },
+            '[Line History](command:jj-view.lineHistory?x)',
+        );
+
+        expect(markdown.startsWith('> ⚠️ **Uncommitted changes**')).toBe(true);
+        expect(markdown).toContain('\n---\n');
+        expect(markdown.indexOf('---')).toBeLessThan(markdown.indexOf('**alice**'));
     });
 });
 
@@ -325,7 +352,7 @@ describe('hover markdown with line diff', () => {
             { before: 'x', after: 'y' },
         );
 
-        expect(markdown.startsWith('**Uncommitted changes**')).toBe(true);
+        expect(markdown.startsWith('> ⚠️ **Uncommitted changes**')).toBe(true);
         expect(markdown).toContain('- x');
         expect(markdown).toContain('+ y');
     });
