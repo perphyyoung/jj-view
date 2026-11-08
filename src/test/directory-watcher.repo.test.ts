@@ -9,13 +9,19 @@ import * as path from 'node:path';
 import * as parcelWatcher from '@parcel/watcher';
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { DirectoryWatcher } from '../core/directory-watcher';
+import { NodeHostWatcher } from '../core/host/node-host-system';
 import type { LoggerChannel } from '../utils/output-channel';
 import { FakeHostEnvironment } from './fake-host-environment';
 import { makeTestTmpDir } from './test-tmp-root';
 import { createMockLogOutputChannel } from './test-utils';
 
+const hoisted = vi.hoisted(() => {
+    return { actualSubscribe: undefined as typeof import('@parcel/watcher').subscribe };
+});
+
 vi.mock('@parcel/watcher', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@parcel/watcher')>();
+    hoisted.actualSubscribe = actual.subscribe;
     return {
         ...actual,
         subscribe: vi.fn(actual.subscribe),
@@ -30,6 +36,10 @@ describe('DirectoryWatcher (real @parcel/watcher)', { retry: os.platform() === '
     let watcher: DirectoryWatcher;
 
     beforeEach(() => {
+        // Ensure the mock is in a clean state (other test files may have restored it).
+        vi.mocked(parcelWatcher.subscribe).mockReset();
+        vi.mocked(parcelWatcher.subscribe).mockImplementation(hoisted.actualSubscribe);
+
         tmpDir = makeTestTmpDir('dw-test-');
         outputChannel = createMockLogOutputChannel();
         host = new FakeHostEnvironment();
@@ -217,7 +227,9 @@ describe('DirectoryWatcher (real @parcel/watcher)', { retry: os.platform() === '
         host.ui.setNextWarningResponse('Open README');
 
         const fakeError = new Error("inotify_add_watch on '/some/path' failed: No space left on device (ENOSPC)");
-        vi.mocked(parcelWatcher.subscribe).mockRejectedValueOnce(fakeError);
+        // DirectoryWatcher uses host.system.watcher (NodeHostWatcher) when present,
+        // so mock that instead of parcelWatcher.subscribe.
+        vi.spyOn(NodeHostWatcher.prototype, 'watch').mockRejectedValue(fakeError);
 
         await expect(watcher.start()).rejects.toThrow(fakeError);
 
