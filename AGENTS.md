@@ -8,6 +8,13 @@
 - 写临时脚本验证时，不要修改项目外路径，全部在项目内的 tmp 目录下完成
 - 删除命令禁止添加 force 参数（`Remove-Item -Force`、`rm -f`、`-Recurse -Force` 等），防止误删；命令因缺少 force 而失败时，先确认路径再决定，不得改用其他强制手段绕过
 
+## 工具使用
+
+- `replace_in_file` 必须同时给出 `filePath`、`old_str`、`new_str`；`old_str` 用**唯一且短的锚点**（带 3 行以上上下文），不要整段粘贴
+- 编辑失败后**立刻 `read_file` 核对当前文件内容**再重试；同一文件连续 2 次失败必须重读全文，禁止第 3 次盲改
+- 文件内容写入只用 `write_to_file` / `replace_in_file`；**不用 shell 重定向写文件**（PowerShell 反引号、编码、换行都会破坏模板字符串与 LF 约定）
+- 一次性探针脚本写成项目内 `tmp/*.mjs` 用 `node` 执行，避免 PowerShell 引号、`&&`（PS5 不支持）与编码问题
+
 ## 测试与验证
 
 - 修改代码后必须**先通过 `pnpm lint`（含 `pnpm check-types`）再跑测试**；lint 未通过不得进入测试阶段
