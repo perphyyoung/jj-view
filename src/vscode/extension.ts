@@ -21,6 +21,7 @@ import { VsCodeChangesWebviewProvider } from './providers/vscode-changes-webview
 import { VsCodeCommitDetailsEditorProvider } from './providers/vscode-commit-details-editor-provider';
 import { VsCodeEditFsProvider } from './providers/vscode-edit-fs-provider';
 import { VsCodeLineBlameProvider } from './providers/vscode-line-blame-provider';
+import { initLineHistoryPanel } from './providers/vscode-line-history-panel';
 import { VsCodeLogWebviewProvider } from './providers/vscode-log-webview-provider';
 import { VsCodeProcessMonitorProvider } from './providers/vscode-process-monitor-provider';
 import { VsCodeScmProvider } from './providers/vscode-scm-provider';
@@ -47,6 +48,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
     context.subscriptions.push(hostEnvironment);
 
     prewarmWebviewCssCache(context.extensionUri);
+    initLineHistoryPanel(context.extensionUri);
 
     // Get preferred binary path configuration
     const preferredPath = hostEnvironment.config.get<string>('binaryPath');

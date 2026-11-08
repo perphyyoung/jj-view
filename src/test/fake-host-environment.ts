@@ -4,6 +4,7 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { LineHistoryPanelPayload } from '../core/blame/line-history';
 import type { CommandContext } from '../core/host/command-context';
 import { type Event, EventEmitter } from '../core/host/events';
 import type {
@@ -215,6 +216,7 @@ export class FakeHostNavigation implements HostNavigation {
         changeIdOffset?: number;
         options?: HostOpenOptions;
     }[] = [];
+    public lineHistoryOpened: LineHistoryPanelPayload[] = [];
     public filesOpened: Uri[] = [];
     public filesOpenedWithOptions: { uri: Uri; options?: HostOpenOptions }[] = [];
     public foldersOpened: { folderUri: Uri; forceNewWindow?: boolean }[] = [];
@@ -226,6 +228,10 @@ export class FakeHostNavigation implements HostNavigation {
 
     async openDiff(leftUri: Uri, rightUri: Uri, title: string, options?: HostOpenOptions): Promise<void> {
         this.diffsOpened.push({ leftUri, rightUri, title, options });
+    }
+
+    async openLineHistory(payload: LineHistoryPanelPayload): Promise<void> {
+        this.lineHistoryOpened.push(payload);
     }
 
     async openMultiDiff(

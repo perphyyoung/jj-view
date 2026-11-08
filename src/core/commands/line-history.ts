@@ -5,18 +5,12 @@
 import path from 'pathe';
 import {
     buildLineHistoryArgs,
-    clipDetail,
     extractLineTexts,
-    hasMoreEntries,
     LINE_HISTORY_MAX_ENTRIES,
-    LINE_HISTORY_PAGE_SIZE,
-    type LineHistoryEntry,
     parseLineHistoryOutput,
-    shortSha,
 } from '../blame/line-history';
 import type { CommandContext } from '../host/command-context';
 import { showJjError } from '../host/ui-helpers';
-import { createRevisionUri } from '../uri-utils';
 
 /** Accepts both the hover link shape (`path`/`line`) and the editor context shape. */
 export interface LineHistoryPayload {
@@ -105,22 +99,6 @@ async function resolveGitDir(ctx: CommandContext, root: string): Promise<string 
     return (await fs.exists(store)) ? store : undefined;
 }
 
-function formatItem(entry: LineHistoryEntry): {
-    label: string;
-    description: string;
-    detail?: string;
-    value: LineHistoryEntry;
-} {
-    return {
-        label: `$(git-commit) ${shortSha(entry.sha)} ${entry.summary}`,
-        description: `${entry.author} · ${entry.date.slice(0, 10)}`,
-        // Second row: what the line looked like in this commit. The sha is already in the
-        // label, so repeating it here only wastes the row.
-        ...(entry.text ? { detail: clipDetail(entry.text) } : {}),
-        value: entry,
-    };
-}
-
 /**
  * Shows the committed history of one line.
  *
@@ -171,49 +149,13 @@ export async function lineHistoryCommand(ctx: CommandContext, payload?: LineHist
             await ctx.host.ui.showInformation('No committed history for this line.');
             return;
         }
-        await runPicker(ctx, target, entries);
+        await ctx.host.nav.openLineHistory({
+            root: target.root,
+            path: target.relativePath,
+            line: target.line,
+            entries,
+        });
     } catch (err: unknown) {
         await showJjError(ctx.host.ui, err, 'Error loading line history', ctx.repo.jj, ctx.log);
     }
-}
-
-async function runPicker(ctx: CommandContext, target: ResolvedTarget, entries: LineHistoryEntry[]): Promise<void> {
-    let visible = LINE_HISTORY_PAGE_SIZE;
-    for (;;) {
-        const page = entries.slice(0, visible);
-        const items = page.map(formatItem);
-        if (hasMoreEntries(entries.length, visible)) {
-            items.push({
-                label: '$(ellipsis) Load more…',
-                description: `${entries.length - visible} remaining`,
-                detail: '',
-                value: null as unknown as LineHistoryEntry,
-            });
-        }
-        const picked = await ctx.host.ui.showQuickPick(items, {
-            title: 'Line History',
-            placeHolder: `Line ${target.line}: ${path.basename(target.relativePath)} — ${Math.min(visible, entries.length)} of ${entries.length} commits`,
-            matchOnDescription: true,
-            matchOnDetail: true,
-        });
-        if (!picked) {
-            return;
-        }
-        if (!picked.value) {
-            visible += LINE_HISTORY_PAGE_SIZE;
-            continue;
-        }
-        await openEntryDiff(ctx, target, picked.value);
-        return;
-    }
-}
-
-async function openEntryDiff(ctx: CommandContext, target: ResolvedTarget, entry: LineHistoryEntry): Promise<void> {
-    const left = createRevisionUri(target.root, target.absolutePath, `parents(${entry.sha})`);
-    const right = createRevisionUri(target.root, target.absolutePath, entry.sha);
-    await ctx.host.nav.openDiff(
-        left,
-        right,
-        `${path.basename(target.relativePath)} @ ${shortSha(entry.sha)} — ${entry.summary}`,
-    );
 }

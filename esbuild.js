@@ -77,6 +77,7 @@ async function main() {
             changes: 'src/core/webview/changes/index.ts',
             'commit-details': 'src/core/webview/commit-details/index.ts',
             'process-monitor': 'src/core/webview/process-monitor/index.ts',
+            'line-history': 'src/core/webview/line-history/index.ts',
         },
         bundle: true,
         format: 'iife',

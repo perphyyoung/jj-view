@@ -39,40 +39,44 @@ describe('lineHistoryCommand', () => {
         await repo.dispose();
     });
 
-    it('shows the ten most recent commits and a load-more item', async () => {
+    it('opens the Line History panel with every commit and its line text', async () => {
         await lineHistoryCommand(ctx, { root: repo.path, path: 'line.txt', line: 1 });
 
-        const call = ctx.host.ui.quickPickCalls[0];
-        expect(call.items).toHaveLength(11);
-        expect(call.items.at(-1)?.label).toContain('Load more');
-        expect(call.items.at(-1)?.description).toContain('2 remaining');
-        expect(call.items[0].label).toContain('change 12');
-        expect(call.options?.placeHolder).toContain('10 of 12 commits');
-        // Second row shows the line itself, not the full commit id.
-        expect(call.items[0].detail).toBe('value 12');
-        expect(call.items[1].detail).toBe('value 11');
-        expect(call.items[0].detail).not.toMatch(/^[0-9a-f]{40}$/);
+        expect(ctx.host.nav.lineHistoryOpened).toHaveLength(1);
+        const payload = ctx.host.nav.lineHistoryOpened[0];
+        expect(payload.path).toBe('line.txt');
+        expect(payload.line).toBe(1);
+        expect(payload.entries).toHaveLength(12);
+        expect(payload.entries[0].text).toBe('value 12');
+        expect(payload.entries[1].text).toBe('value 11');
+        expect(payload.entries.at(-1)?.text).toBe('value 1');
     });
 
-    it('loads the next page when the load-more item is selected', async () => {
-        // The picker reopens inside the same command call, so answer the first prompt with
-        // the load-more item (value: null) and let the loop request the next page.
-        ctx.host.ui.setNextQuickPickResponse({ label: 'Load more', value: null });
-
+    it('starts from the last committed state', async () => {
         await lineHistoryCommand(ctx, { root: repo.path, path: 'line.txt', line: 1 });
 
-        expect(ctx.host.ui.quickPickCalls).toHaveLength(2);
-        const last = ctx.host.ui.quickPickCalls.at(-1);
-        expect(last?.items).toHaveLength(12);
-        expect(last?.items.some((item) => item.label.includes('Load more'))).toBe(false);
-        expect(last?.items.at(-1)?.detail).toBe('value 1');
+        const payload = ctx.host.nav.lineHistoryOpened[0];
+        expect(payload.entries[0].sha).toBe(repo.getCommitId('@-'));
     });
 
-    it('starts from the last committed state and matches git', async () => {
-        await lineHistoryCommand(ctx, { root: repo.path, path: 'line.txt', line: 1 });
+    it('does not open the panel when the line has no committed history', async () => {
+        const empty = new TestRepo();
+        empty.init();
+        try {
+            const emptyJj = new JjService(empty.path, NO_OP_LOGGER);
+            const emptyRepo = createMock<JjRepository>({
+                rootUri: Uri.file(empty.path),
+                jj: emptyJj,
+                refresh: async () => {},
+            });
+            const emptyCtx = new FakeCommandContext(emptyRepo, new FakeHostEnvironment());
 
-        const firstLabel = ctx.host.ui.quickPickCalls[0].items[0].label;
-        const headSha = repo.getCommitId('@-');
-        expect(firstLabel).toContain(headSha.slice(0, 8));
+            await lineHistoryCommand(emptyCtx, { root: empty.path, path: 'missing.txt', line: 1 });
+
+            expect(emptyCtx.host.nav.lineHistoryOpened).toHaveLength(0);
+            expect(emptyCtx.host.ui.infoMessages.length + emptyCtx.host.ui.errorMessages.length).toBeGreaterThan(0);
+        } finally {
+            await empty.dispose();
+        }
     });
 });

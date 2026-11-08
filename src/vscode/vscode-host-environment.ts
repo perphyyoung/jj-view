@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import * as vscode from 'vscode';
+import type { LineHistoryPanelPayload } from '../core/blame/line-history';
 import { type Event, EventEmitter } from '../core/host/events';
 import type {
     HostAuth,
@@ -33,6 +34,7 @@ import { createCommitDetailsUri, type Uri } from '../core/uri-utils';
 import { formatCommitTitle } from '../utils/jj-utils';
 import type { LoggerChannel } from '../utils/output-channel';
 import { getJjViewConfig } from './config-utils';
+import { openLineHistoryPanel } from './providers/vscode-line-history-panel';
 
 export class VsCodeHostUi implements HostUi {
     async showInputBox(options?: {
@@ -254,6 +256,10 @@ export class VsCodeHostNavigation implements HostNavigation {
         await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title, {
             preview: options?.preview,
         });
+    }
+
+    async openLineHistory(payload: LineHistoryPanelPayload): Promise<void> {
+        openLineHistoryPanel(payload);
     }
 
     async openMultiDiff(

@@ -8,19 +8,9 @@ import {
     buildLineHistoryArgs,
     clipDetail,
     extractLineTexts,
-    hasMoreEntries,
-    LINE_HISTORY_PAGE_SIZE,
     parseLineHistoryOutput,
     shortSha,
-    sliceLineHistoryPage,
 } from '../core/blame/line-history';
-
-const entry = (n: number) => ({
-    sha: `${n}`.padStart(40, 'a'),
-    author: `author${n}`,
-    date: '2026-11-07T10:00:00+08:00',
-    summary: `commit ${n}`,
-});
 
 describe('buildLineHistoryArgs', () => {
     it('targets one line with --no-patch and an explicit revision', () => {
@@ -71,31 +61,6 @@ describe('parseLineHistoryOutput', () => {
 
     it('ignores empty and malformed lines', () => {
         expect(parseLineHistoryOutput('\nnot-a-commit\n')).toEqual([]);
-    });
-});
-
-describe('paging', () => {
-    it('slices the first page and reports the remainder', () => {
-        const entries = Array.from({ length: 12 }, (_, i) => entry(i));
-        const page = sliceLineHistoryPage(entries, 0);
-
-        expect(page.entries).toHaveLength(LINE_HISTORY_PAGE_SIZE);
-        expect(page.hasMore).toBe(true);
-        expect(page.remaining).toBe(2);
-    });
-
-    it('returns the rest without more when the list ends', () => {
-        const entries = Array.from({ length: 12 }, (_, i) => entry(i));
-        const page = sliceLineHistoryPage(entries, LINE_HISTORY_PAGE_SIZE);
-
-        expect(page.entries).toHaveLength(2);
-        expect(page.hasMore).toBe(false);
-        expect(page.remaining).toBe(0);
-    });
-
-    it('exactly fills one page without a load-more item', () => {
-        const entries = Array.from({ length: LINE_HISTORY_PAGE_SIZE }, (_, i) => entry(i));
-        expect(hasMoreEntries(entries.length, LINE_HISTORY_PAGE_SIZE)).toBe(false);
     });
 });
 

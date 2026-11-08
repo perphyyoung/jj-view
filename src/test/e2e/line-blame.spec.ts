@@ -3,9 +3,27 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { expect } from '@playwright/test';
+import { expect, type Frame, type Page } from '@playwright/test';
 import { TestRepo } from '../test-repo';
 import { openFileInEditor, rightClickAndSelect, test } from './e2e-helpers';
+
+/** Finds the Line History webview frame (a panel tab, not a sidebar view). */
+async function getLineHistoryFrame(page: Page): Promise<Frame> {
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+        for (const frame of page.frames()) {
+            try {
+                if ((await frame.locator('[data-testid="line-history-root"]').count()) > 0) {
+                    return frame;
+                }
+            } catch {
+                // Frame may be navigating; retry.
+            }
+        }
+        await page.waitForTimeout(200);
+    }
+    throw new Error('Line History webview frame was not found');
+}
 
 test.describe('Line Blame E2E', () => {
     test('Shows the full tooltip on the first hover', async ({ vscode }) => {
@@ -162,20 +180,27 @@ test.describe('Line Blame E2E', () => {
         await expect(link).toBeVisible({ timeout: 5000 });
         await link.click();
 
-        const input = page.locator('.quick-input-widget input').first();
-        // Ten of twelve commits are shown first; the list is virtualized, so assert on the
-        // placeholder rather than the rendered row count.
-        await expect(input).toHaveAttribute('placeholder', /10 of 12 commits/, { timeout: 5000 });
-        const firstRow = page.locator('.quick-input-list .monaco-list-row').first();
-        await expect(firstRow).toContainText('change 12');
-        // Second row is the line content; the full commit id must not be repeated there.
-        await expect(firstRow).toContainText('value 12');
-        await expect(page.locator('.quick-input-widget')).not.toContainText(/[0-9a-f]{40}/);
+        await expect(page.getByRole('tab', { name: /Line History: history\.txt:1/ })).toBeVisible({
+            timeout: 5000,
+        });
 
-        // The load-more entry is below the fold; filter to it, then select it.
-        await page.keyboard.type('Load more');
-        await page.keyboard.press('Enter');
-        await expect(input).toHaveAttribute('placeholder', /12 of 12 commits/, { timeout: 5000 });
+        const frame = await getLineHistoryFrame(page);
+        const rows = frame.locator('[data-testid="line-history-row"]');
+        await expect(rows).toHaveCount(10, { timeout: 5000 });
+        await expect(rows.first()).toContainText('change 12');
+        await expect(rows.first()).toContainText('value 12');
+
+        // Paging appends in place: the already rendered row must not move.
+        const firstRowBox = await rows.first().boundingBox();
+        await frame.locator('[data-testid="line-history-more"]').click();
+        await expect(rows).toHaveCount(12, { timeout: 5000 });
+        const afterBox = await rows.first().boundingBox();
+        expect(afterBox?.y).toBe(firstRowBox?.y);
+
+        // Opening an entry shows the commit diff and keeps the Line History tab open.
+        await rows.first().click();
+        await expect(page.getByRole('tab', { name: /history\.txt @/ })).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('tab', { name: /Line History: history\.txt:1/ })).toBeVisible();
     });
 
     test('Opens Line History from the editor context menu', async ({ vscode }) => {
@@ -198,10 +223,12 @@ test.describe('Line Blame E2E', () => {
 
         await rightClickAndSelect(page, line, 'Show Line History');
 
-        // Reproduces the reported bug: with a payload the command never received, the menu
-        // only shows an informational toast and no picker appears.
-        const input = page.locator('.quick-input-widget input').first();
-        await expect(input).toHaveAttribute('placeholder', /3 of 3 commits/, { timeout: 5000 });
+        // The menu must open the panel, not just show a toast.
+        await expect(page.getByRole('tab', { name: /Line History: menu\.txt:1/ })).toBeVisible({
+            timeout: 5000,
+        });
+        const frame = await getLineHistoryFrame(page);
+        await expect(frame.locator('[data-testid="line-history-row"]')).toHaveCount(3, { timeout: 5000 });
     });
 
     test('Shows the blame tooltip for the cursor line', async ({ vscode }) => {

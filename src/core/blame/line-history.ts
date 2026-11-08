@@ -16,9 +16,6 @@ export interface LineHistoryEntry {
     text?: string;
 }
 
-/** Entries shown before the "Load more" item. */
-export const LINE_HISTORY_PAGE_SIZE = 10;
-
 /**
  * Upper bound for one query. `git log -L` walks history itself, so a single call is cheap;
  * fetching everything up front keeps paging local and the "N remaining" count exact.
@@ -165,27 +162,12 @@ export function extractLineTexts(stdout: string, startLine: number): Map<string,
     return texts;
 }
 
-/** True when another page exists for the given number of visible entries. */
-export function hasMoreEntries(total: number, visible: number): boolean {
-    return visible < total;
-}
-
-export interface LineHistoryPage {
+/** Everything the Line History panel needs for one file:line target. */
+export interface LineHistoryPanelPayload {
+    root: string;
+    /** Repo-relative path. */
+    path: string;
+    /** 1-based line number. */
+    line: number;
     entries: LineHistoryEntry[];
-    hasMore: boolean;
-    remaining: number;
-}
-
-/** Slices one page out of the full list (paging is local: the query is a single call). */
-export function sliceLineHistoryPage(
-    entries: readonly LineHistoryEntry[],
-    visible: number,
-    pageSize: number = LINE_HISTORY_PAGE_SIZE,
-): LineHistoryPage {
-    const end = Math.min(visible + pageSize, entries.length);
-    return {
-        entries: entries.slice(visible, end),
-        hasMore: end < entries.length,
-        remaining: Math.max(entries.length - end, 0),
-    };
 }

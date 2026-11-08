@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { LineHistoryPanelPayload } from '../blame/line-history';
 import type { Uri } from '../uri-utils';
 import type { Event } from './events';
 import type { HostSystem } from './host-system';
@@ -78,6 +79,8 @@ export interface HostNavigation {
         changeIdOffset?: number,
         options?: HostOpenOptions,
     ): Promise<void>;
+    /** Opens (or retargets) the Line History editor tab. */
+    openLineHistory(payload: LineHistoryPanelPayload): Promise<void>;
     openFile(uri: Uri, options?: HostOpenOptions): Promise<void>;
     openFolder(folderUri: Uri, forceNewWindow?: boolean): Promise<void>;
     openExternal(target: Uri): Promise<void>;
