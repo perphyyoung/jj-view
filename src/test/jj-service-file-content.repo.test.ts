@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import * as path from 'node:path';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { JjService, NO_OP_LOGGER } from '../core/jj-service';
 import { TestRepo } from './test-repo';
@@ -48,6 +49,21 @@ describe('JjService file content', () => {
         // Verify the parent revision has the new content
         const parentContent = repo.getFileContent(parentId, 'edit-me.txt');
         expect(parentContent).toBe('updated content');
+    });
+
+    test('setFilesContent writes nested paths in a repo under the project tmp directory', async () => {
+        // Regression: this repo is nested inside the enclosing py-code jj repo. A diffedit tool
+        // target computed against the enclosing root gains a `tmp/<repo>/` prefix and is lost.
+        repo.writeFile('nested/dir/file.txt', 'old\n');
+        repo.describe('base');
+        const revision = repo.getChangeId('@');
+
+        await jjService.setFilesContent(
+            revision,
+            new Map([[path.join(repo.path, 'nested', 'dir', 'file.txt'), 'new content\n']]),
+        );
+
+        expect(repo.getFileContent(revision, 'nested/dir/file.txt')).toBe('new content\n');
     });
 
     test('setFilesContent writes multiple files to a specific revision atomically', async () => {

@@ -45,6 +45,11 @@ function debugEdit(message: string): void {
     }
 }
 
+/** Short, allocation-free fingerprint so logs can tell two contents apart without dumping them. */
+function fingerprint(content: string): string {
+    return `${content.length}:${content.slice(0, 24).replace(/\n/g, '\\n')}|${content.slice(-24).replace(/\n/g, '\\n')}`;
+}
+
 export class JjEditFsService implements Disposable {
     private readonly _uriTracker: VirtualFsUriTracker;
     readonly onDidChangeFile: Event<Uri[]>;
@@ -140,14 +145,21 @@ export class JjEditFsService implements Disposable {
 
         const repoKey = repo.rootUri.fsPath;
         const inMemoryContent = this.getPendingOrActiveContent(repoKey, revision, filePath);
+        debugEdit(
+            `read enter rev=${revision} file=${path.basename(filePath)} repo=${path.basename(repoKey)} inMemory=${inMemoryContent !== undefined ? fingerprint(inMemoryContent) : 'MISS'}`,
+        );
         if (inMemoryContent !== undefined) {
+            debugEdit(`read branch=inMemory rev=${revision} out=${fingerprint(inMemoryContent)}`);
             return new TextEncoder().encode(inMemoryContent);
         }
 
         if (revision === '@') {
             try {
                 if (repo.host.system?.fs) {
-                    return await repo.host.system.fs.readBinaryFile(filePath);
+                    const bytes = await repo.host.system.fs.readBinaryFile(filePath);
+                    const asString = new TextDecoder().decode(bytes);
+                    debugEdit(`read branch=disk rev=@ out=${fingerprint(asString)}`);
+                    return bytes;
                 }
             } catch {
                 // Fallback to jj file show if disk file is missing/unreadable
@@ -155,6 +167,7 @@ export class JjEditFsService implements Disposable {
         }
 
         const content = await repo.jj.getFileContent(filePath, revision);
+        debugEdit(`read branch=jj rev=${revision} out=${fingerprint(content)}`);
         return new TextEncoder().encode(content);
     }
 
@@ -208,21 +221,13 @@ export class JjEditFsService implements Disposable {
             }
 
             debugEdit(
-                `flush revision=${revision} files=${[...filesMap.keys()].join(',')} sizes=${[...filesMap.values()].map((v) => v.length).join(',')}`,
+                `flush begin rev=${revision} writes=${revWrites.length} fingerprints=${[...filesMap.values()].map(fingerprint).join(' ;; ')}`,
             );
 
             await repo.jj.setFilesContent(revision, filesMap);
+            debugEdit(`flush setFilesContent done rev=${revision}`);
             this._writeVersion++;
 
-            if (debugEditEnabled()) {
-                const [firstPath] = filesMap.keys();
-                if (firstPath) {
-                    const readBack = await repo.jj.getFileContent(firstPath, revision);
-                    debugEdit(
-                        `flush done revision=${revision} readBack=${JSON.stringify(readBack.slice(0, 60))} expected=${JSON.stringify((filesMap.get(firstPath) ?? '').slice(0, 60))}`,
-                    );
-                }
-            }
             this._uriTracker.fireDirectChangeEvents(revWrites.map((w) => w.uri));
 
             // Editing the working-copy revision must also land on disk: `readFile('@')` prefers
@@ -244,10 +249,12 @@ export class JjEditFsService implements Disposable {
             // run right after a flush would otherwise see the old file. Drop it so the next
             // read rebuilds from the settled repository state.
             await repo.jj.clearCache().catch(() => {});
+            debugEdit(`flush cleared cache rev=${revision}`);
 
             for (const w of revWrites) {
                 w.resolve();
             }
+            debugEdit(`flush resolved rev=${revision} writes=${revWrites.length}`);
 
             if (this.onDidWrite) {
                 try {
@@ -352,8 +359,12 @@ export class JjEditFsService implements Disposable {
 
     private async _flushPendingWrites(): Promise<void> {
         if (this._isFlushing || this._isDisposed) {
+            debugEdit(
+                `flush SKIPPED isFlushing=${this._isFlushing} disposed=${this._isDisposed} pending=${this._pendingWrites.size}`,
+            );
             return;
         }
+        debugEdit(`flush START pending=${[...this._pendingWrites.values()].reduce((n, list) => n + list.length, 0)}`);
         this._isFlushing = true;
         if (this._writeTimer) {
             clearTimeout(this._writeTimer);

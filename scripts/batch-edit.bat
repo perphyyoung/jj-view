@@ -32,6 +32,10 @@ for %%I in ("%dest_path%") do set "dest_dir=%%~dpI"
 if not exist "%dest_dir%" mkdir "%dest_dir%"
 
 copy "%tmp_file%" "%dest_path%" > nul
+if errorlevel 1 (
+    echo Failed to copy "%tmp_file%" to "%dest_path%" 1>&2
+    exit /B 1
+)
 
 shift
 shift

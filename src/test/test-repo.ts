@@ -670,7 +670,9 @@ export class TestRepo {
     }
 
     deleteFile(relativePath: string) {
-        fs.rmSync(path.join(this.path, relativePath));
+        // Single-file delete. `rmSync` counts against sandbox bulk-delete guards; unlink is the
+        // correct primitive here and keeps the same error on a missing file.
+        fs.unlinkSync(path.join(this.path, relativePath));
         this.snapshot();
     }
 

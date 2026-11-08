@@ -287,23 +287,39 @@ export class JjService {
         return filePath;
     }
 
+    /**
+     * Path relative to THIS workspace, not the enclosing repository root.
+     *
+     * `jj diffedit` runs in `workspaceRoot` and builds `$left`/`$right` with these paths. Using
+     * `getRepoRoot()` here breaks nested working copies (test repos under `<project>/tmp`): the
+     * enclosing repo is found and paths gain a `tmp/<repo>/` prefix, so the tool writes to a
+     * file diffedit never collects.
+     */
     private async toRepoRelative(filePath: string): Promise<string> {
+        const abs = path.isAbsolute(filePath) ? filePath : path.resolve(this.workspaceRoot, filePath);
+        const hasOwnStore = await this.system.fs.exists(path.join(this.workspaceRoot, '.jj')).catch(() => false);
+        if (hasOwnStore) {
+            // Independent working copy (including test repos nested under the enclosing repo):
+            // `jj diffedit` builds $left/$right relative to this workspace, not the enclosing root.
+            const rel = path.relative(this.workspaceRoot, abs);
+            if (!rel.startsWith('..')) {
+                return path.normalize(rel);
+            }
+        }
+
+        // JjService was constructed in a subdirectory of a repository: keep the repo-relative
+        // layout (including the workspace prefix) that diffedit expects there.
         const repoRoot = await this.getRepoRoot();
         const repoReal = await this.system.fs.realpath(repoRoot).catch(() => repoRoot);
         const workspaceReal = await this.system.fs.realpath(this.workspaceRoot).catch(() => this.workspaceRoot);
-
         if (!path.isAbsolute(filePath)) {
-            const repoToWorkspace = path.relative(repoReal, workspaceReal);
-            return path.normalize(path.join(repoToWorkspace, filePath));
+            return path.normalize(path.join(path.relative(repoReal, workspaceReal), filePath));
         }
-
-        const rel = path.relative(repoReal, filePath);
+        const rel = path.relative(repoReal, abs);
         if (!rel.startsWith('..')) {
             return path.normalize(rel);
         }
-
-        const fileReal = await this.resolveRealPath(filePath);
-        return path.normalize(path.relative(repoReal, fileReal));
+        return path.normalize(path.relative(repoReal, await this.resolveRealPath(abs)));
     }
 
     private async resolveRealPath(filePath: string): Promise<string> {
@@ -913,15 +929,33 @@ export class JjService {
                 const argsTemplate = ['$left', '$right'];
                 for (const f of fileList) {
                     argsTemplate.push(path.normalize(f.tmpPath));
+                    // `toRepoRelative` resolves the layout diffedit uses: workspace-relative
+                    // for an independent working copy, repo-relative for a subdirectory service.
                     argsTemplate.push(path.normalize(f.repoRelPath));
                 }
                 const toolConfig = this.getToolConfigArgs(toolName, normalizedScriptPath, argsTemplate);
-
-                await this.runInternal(
-                    'diffedit',
-                    ['-r', revision, '--tool', toolName, ...toolConfig, ...fileList.map((f) => f.workspaceRelPath)],
-                    { isMutation: true, label: 'setFilesContent' },
+                const dbg = (msg: string): void => {
+                    if (process.env.JJ_VIEW_DEBUG_EDIT === '1') {
+                        process.stderr.write(`[JjService.setFilesContent] ${msg}\n`);
+                    }
+                };
+                dbg(
+                    `before diffedit rev=${revision} script=${normalizedScriptPath} files=${fileList
+                        .map((f) => `${f.repoRelPath}<-${path.basename(f.tmpPath)}`)
+                        .join(' ;; ')} config=${JSON.stringify(toolConfig)}`,
                 );
+
+                try {
+                    const result = await this.runInternal(
+                        'diffedit',
+                        ['-r', revision, '--tool', toolName, ...toolConfig, ...fileList.map((f) => f.workspaceRelPath)],
+                        { isMutation: true, label: 'setFilesContent' },
+                    );
+                    dbg(`diffedit ok rev=${revision} out=${JSON.stringify(String(result).slice(0, 200))}`);
+                } catch (err: unknown) {
+                    dbg(`diffedit FAILED rev=${revision} err=${String(err).slice(0, 500)}`);
+                    throw err;
+                }
             } finally {
                 await this.system.fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
             }

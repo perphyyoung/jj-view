@@ -25,7 +25,10 @@ while [ "$#" -gt 0 ]; do
     dest_path="$right/$dest_file"
     dest_dir=$(dirname "$dest_path")
     
-    mkdir -p "$dest_dir"
-    cp "$tmp_file" "$dest_path"
+    mkdir -p "$dest_dir" || exit 1
+    if ! cp "$tmp_file" "$dest_path"; then
+        echo "Failed to copy $tmp_file to $dest_path" >&2
+        exit 1
+    fi
 done
 exit 0
