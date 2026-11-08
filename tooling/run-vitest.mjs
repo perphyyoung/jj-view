@@ -31,7 +31,7 @@ if (!existsSync(vitestBin)) {
     process.exit(1);
 }
 
-const child = spawn(process.execPath, [vitestBin, ...vitestArgs], {
+const child = spawn(process.execPath, [vitestBin, '--run', ...vitestArgs], {
     stdio: 'inherit',
     detached: process.platform !== 'win32',
 });
