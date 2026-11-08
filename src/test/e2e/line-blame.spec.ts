@@ -279,10 +279,14 @@ test.describe('Line Blame E2E', () => {
         await expect(hover).toContainText('Uncommitted changes', { timeout: 5000 });
         await expect(hover).toContainText('⚠️');
 
+        // The first paint is the summary; wait until the async diff/message are merged in.
+        await expect(hover).toContainText('value 1', { timeout: 5000 });
+
         const text = await hover.innerText();
-        // Notice sits above the diff, and the diff above the committed author line.
+        // Same order as a committed hover: author · time · link, then the notice, then the diff.
+        expect(text.indexOf('Line History')).toBeLessThan(text.indexOf('Uncommitted changes'));
+        expect(text.indexOf('py')).toBeLessThan(text.indexOf('Uncommitted changes'));
         expect(text.indexOf('Uncommitted changes')).toBeLessThan(text.indexOf('value 1'));
-        expect(text.indexOf('Line History')).toBeLessThan(text.indexOf('value 1'));
 
         const link = hover.locator('a', { hasText: 'Line History' });
         await expect(link).toBeVisible({ timeout: 5000 });

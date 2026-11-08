@@ -81,9 +81,46 @@ export function formatLineBlameText(
     return text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 1))}…` : text;
 }
 
+/** One hover tooltip, in the order every tooltip must follow. */
+interface HoverBlock {
+    /** `author · time` plus the optional Line History link. */
+    header?: string;
+    /** Quoted, icon-prefixed block (`> ⚠️ …`), shown above the diff. */
+    notice?: string;
+    diff?: LineChange;
+    message?: string;
+}
+
+/**
+ * Renders a tooltip with a fixed order: header → notice → diff → rule → message.
+ *
+ * Committed and uncommitted hovers share this so their paragraphs always line up, and the
+ * commit message can never be mistaken for part of the diff explanation.
+ */
+function formatHoverBlock(block: HoverBlock): string {
+    const sections: string[][] = [];
+    if (block.header) {
+        sections.push([block.header]);
+    }
+    if (block.notice) {
+        sections.push([block.notice]);
+    }
+    if (block.diff) {
+        sections.push(formatDiffLines(block.diff));
+    }
+    if (block.diff && block.message) {
+        sections.push(['---']);
+    }
+    if (block.message) {
+        sections.push([block.message]);
+    }
+    return joinSections(sections);
+}
+
 /**
  * Builds the multi-line Markdown tooltip shown when hovering the annotated line:
- * a single "author · relative time" header followed by the complete commit message.
+ * `author · time · Line History`, an optional invisible-difference notice, the line diff,
+ * then the complete commit message.
  */
 export function formatHoverMarkdown(
     annotation: LineAnnotation,
@@ -92,15 +129,12 @@ export function formatHoverMarkdown(
     lineHistoryLink?: string,
 ): string {
     const header = annotationHeader(annotation.author, annotation.ago);
-    const sections: string[][] = [[lineHistoryLink ? `${header} · ${lineHistoryLink}` : header]];
-    if (diff) {
-        sections.push(formatDiffBlock(diff));
-        // Separates the diff (and its notice) from the commit message, so the message is not
-        // mistaken for part of the explanation.
-        sections.push(['---']);
-    }
-    sections.push([resolveDescription(details, annotation.summary)]);
-    return joinSections(sections);
+    return formatHoverBlock({
+        header: lineHistoryLink ? `${header} · ${lineHistoryLink}` : header,
+        notice: diff && isInvisibleOnly(diff) ? invisibleNotice() : undefined,
+        diff,
+        message: resolveDescription(details, annotation.summary),
+    });
 }
 
 /**
@@ -121,20 +155,15 @@ export function formatUncommittedHoverMarkdown(
     diff?: LineChange,
     lineHistoryLink?: string,
 ): string {
-    // Same shape as the invisible-diff notice: quoted, icon, bold title.
-    const header = lineHistoryLink ? `> ⚠️ **Uncommitted changes** · ${lineHistoryLink}` : '> ⚠️ **Uncommitted changes**';
-    const sections: string[][] = [[header]];
-    if (diff) {
-        sections.push(formatDiffBlock(diff));
-    }
-    if (parent) {
-        if (diff) {
-            sections.push(['---']);
-        }
-        sections.push([annotationHeader(parent.author, parent.ago)]);
-        sections.push([resolveDescription(details, parent.summary)]);
-    }
-    return joinSections(sections);
+    // Header first, exactly like the committed tooltip: the last committed author/time owns
+    // the line being edited. For a brand-new line there is no author, only the link.
+    const header = parent ? annotationHeader(parent.author, parent.ago) : undefined;
+    return formatHoverBlock({
+        header: header && lineHistoryLink ? `${header} · ${lineHistoryLink}` : (header ?? lineHistoryLink),
+        notice: '> ⚠️ **Uncommitted changes**',
+        diff,
+        message: parent ? resolveDescription(details, parent.summary) : undefined,
+    });
 }
 
 /** Minimal shape of a parsed unified-diff chunk (structurally compatible with parse-diff). */
@@ -194,23 +223,24 @@ function annotationHeader(author: string, ago: string): string {
     return ago ? `**${author}** · ${ago}` : `**${author}**`;
 }
 
-function formatDiffBlock(diff: LineChange): string[] {
-    // A CRLF rewrite is a real change: keep the diff visible. When the parser dropped the
-    // invisible characters it can look like the same line twice, so explain that case instead
-    // of hiding the block.
-    const looksInvisible =
-        diff.before !== undefined && (diff.before === diff.after || differsOnlyInvisibly(diff.before, diff.after));
+const INVISIBLE_NOTICE =
+    '> ⚠️ **Notice** — the two lines differ in characters that are not visible here (line endings or trailing spaces).';
 
-    const lines: string[] = [];
-    if (looksInvisible) {
-        // Above the diff, quoted, with an icon and bold prefix: the hover renderer has no
-        // custom colors, and a quotation block is the closest theme-aware separation.
-        lines.push(
-            '> ⚠️ **Notice** — the two lines differ in characters that are not visible here (line endings or trailing spaces).',
-        );
-        lines.push('');
-    }
-    lines.push('```diff');
+/**
+ * A CRLF rewrite is a real change: the diff stays visible. When the parser dropped the
+ * invisible characters it can look like the same line twice, so the caller adds a notice.
+ */
+function isInvisibleOnly(diff: LineChange): boolean {
+    return diff.before !== undefined && (diff.before === diff.after || differsOnlyInvisibly(diff.before, diff.after));
+}
+
+function invisibleNotice(): string {
+    return INVISIBLE_NOTICE;
+}
+
+/** The diff fence only; notices and separators are handled by `formatHoverBlock`. */
+function formatDiffLines(diff: LineChange): string[] {
+    const lines = ['```diff'];
     if (diff.before !== undefined) {
         lines.push(`- ${clipDiffLine(diff.before)}`);
     }

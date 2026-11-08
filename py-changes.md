@@ -203,7 +203,8 @@ git config core.autocrlf false   # 仅本仓库
 
 #### 未提交行
 
-- 行末显示 `Uncommitted`；悬停首行为 `> ⚠️ **Uncommitted changes**`（与不可见差异 Notice 同款引用块），并带 `· [Line History](…)` 入口；随后是该行在 `@` 的行级 diff、`---`、`@-` 的作者/相对时间/完整描述（新增行没有最后一段）
+- 行末显示 `Uncommitted`；悬停与已提交行同一套段落顺序：`@-` 的 `作者 · 时间 · [Line History](…)` → `> ⚠️ **Uncommitted changes**` → 该行在 `@` 的行级 diff → `---` → `@-` 的完整描述
+- 纯新增行没有可用的 `@-` 作者，首行为 `[Line History](…)`（仅链接），其后仍是 Notice → diff
 - 未提交行的 Line History 从 `@-` 开始，展示已提交部分的历史；纯新增行打开后按现有逻辑提示无历史
 
 #### 行历史（Line History）

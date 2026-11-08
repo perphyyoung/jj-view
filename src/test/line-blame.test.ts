@@ -168,22 +168,28 @@ describe('formatUncommittedHoverMarkdown', () => {
         summary: 'previous message',
     };
 
-    it('states the uncommitted state and shows the last committed annotation', () => {
-        const markdown = formatUncommittedHoverMarkdown(parent, { description: 'previous message\n\nbody' });
+    it('puts the last committed author and link first, then the notice', () => {
+        const markdown = formatUncommittedHoverMarkdown(
+            parent,
+            { description: 'previous message\n\nbody' },
+            undefined,
+            '[Line History](command:jj-view.lineHistory?x)',
+        );
 
-        expect(markdown.startsWith('> ⚠️ **Uncommitted changes**\n\n**alice** · 2 days ago\n\n')).toBe(true);
+        expect(markdown.startsWith('**alice** · 2 days ago · [Line History]')).toBe(true);
+        expect(markdown.indexOf('**alice**')).toBeLessThan(markdown.indexOf('Uncommitted changes'));
         expect(markdown).toContain('body');
     });
 
     it('falls back to the parent summary without full details', () => {
         expect(formatUncommittedHoverMarkdown(parent)).toBe(
-            '> ⚠️ **Uncommitted changes**\n\n**alice** · 2 days ago\n\nprevious message',
+            '**alice** · 2 days ago\n\n> ⚠️ **Uncommitted changes**\n\nprevious message',
         );
     });
 
     it('shows a placeholder when the parent commit has no message', () => {
         expect(formatUncommittedHoverMarkdown({ ...parent, summary: '' })).toBe(
-            '> ⚠️ **Uncommitted changes**\n\n**alice** · 2 days ago\n\n(no commit message)',
+            '**alice** · 2 days ago\n\n> ⚠️ **Uncommitted changes**\n\n(no commit message)',
         );
     });
 
@@ -191,7 +197,7 @@ describe('formatUncommittedHoverMarkdown', () => {
         expect(formatUncommittedHoverMarkdown(undefined)).toBe('> ⚠️ **Uncommitted changes**');
     });
 
-    it('puts the Line History link on the first line, above the diff', () => {
+    it('follows header → notice → diff → rule → message', () => {
         const markdown = formatUncommittedHoverMarkdown(
             parent,
             undefined,
@@ -199,23 +205,32 @@ describe('formatUncommittedHoverMarkdown', () => {
             '[Line History](command:jj-view.lineHistory?x)',
         );
 
-        const firstLine = markdown.split('\n')[0];
-        expect(firstLine).toContain('⚠️');
-        expect(firstLine).toContain('Line History');
-        expect(markdown.indexOf('Line History')).toBeLessThan(markdown.indexOf('```diff'));
+        const order = [
+            markdown.indexOf('**alice**'),
+            markdown.indexOf('Uncommitted changes'),
+            markdown.indexOf('```diff'),
+            markdown.indexOf('---'),
+            markdown.indexOf('previous message'),
+        ];
+        expect(order.every((value) => value >= 0)).toBe(true);
+        expect([...order].sort((a, b) => a - b)).toEqual(order);
     });
 
-    it('keeps the notice first and separates the committed section with a rule', () => {
+    it('omits the rule when there is no diff', () => {
+        const markdown = formatUncommittedHoverMarkdown(parent);
+        expect(markdown).not.toContain('---');
+    });
+
+    it('keeps only the link as the header for a brand-new line', () => {
         const markdown = formatUncommittedHoverMarkdown(
-            parent,
             undefined,
-            { before: 'old', after: 'new' },
+            undefined,
+            { before: undefined, after: 'new' },
             '[Line History](command:jj-view.lineHistory?x)',
         );
 
-        expect(markdown.startsWith('> ⚠️ **Uncommitted changes**')).toBe(true);
-        expect(markdown).toContain('\n---\n');
-        expect(markdown.indexOf('---')).toBeLessThan(markdown.indexOf('**alice**'));
+        expect(markdown.startsWith('[Line History](command:jj-view.lineHistory?x)\n\n> ⚠️')).toBe(true);
+        expect(markdown).not.toContain('---');
     });
 });
 
@@ -352,7 +367,8 @@ describe('hover markdown with line diff', () => {
             { before: 'x', after: 'y' },
         );
 
-        expect(markdown.startsWith('> ⚠️ **Uncommitted changes**')).toBe(true);
+        expect(markdown.startsWith('**alice** · 2 days ago')).toBe(true);
+        expect(markdown).toContain('> ⚠️ **Uncommitted changes**');
         expect(markdown).toContain('- x');
         expect(markdown).toContain('+ y');
     });

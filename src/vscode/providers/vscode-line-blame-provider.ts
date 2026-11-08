@@ -294,9 +294,11 @@ export class VsCodeLineBlameProvider implements vscode.Disposable {
         // the commit message and the line diff takes a few jj calls, so it only happens when
         // someone actually hovers (see _provideHover).
         const showHover = config.get<boolean>('lineBlame.showHover', true);
+        // The link only needs the path and line, so the first paint can already show it.
+        const summaryLink = buildLineHistoryLink(root, relativePath, annotation.line);
         const summaryMarkdown = uncommitted
-            ? formatUncommittedHoverMarkdown(undefined)
-            : formatHoverMarkdown(annotation);
+            ? formatUncommittedHoverMarkdown(undefined, undefined, undefined, summaryLink)
+            : formatHoverMarkdown(annotation, undefined, undefined, summaryLink);
         this._applyDecoration(
             editor,
             line,
