@@ -449,6 +449,7 @@ export class JjService {
             const execOptions: ProcessExecOptions = {
                 cwd: options.cwd ?? this.workspaceRoot,
                 env: {
+                    JJ_CONFIG: '',
                     JJ_EDITOR: noOpEditor,
                     EDITOR: noOpEditor,
                     JJ_VIEW_EXTENSION: '1',
