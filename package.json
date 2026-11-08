@@ -3,7 +3,7 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.3.31",
+    "version": "3.3.32",
     "license": "Apache-2.0",
     "author": "perphyyoung",
     "repository": {
@@ -159,11 +159,11 @@
                     "minimum": 1,
                     "description": "Minimum number of characters to display for change IDs. This affects the unique prefix calculation and UI truncation."
                 },
-                "jj-view.maxMutableAncestors": {
+                "jj-view.changesDepth": {
                     "type": "number",
-                    "default": 10,
+                    "default": 0,
                     "minimum": 0,
-                    "description": "Maximum number of mutable ancestors to display in the SCM view."
+                    "description": "How many mutable ancestor commits to show in the Changes view. 0 shows all."
                 },
                 "jj-view.remoteLogDepth": {
                     "type": "number",

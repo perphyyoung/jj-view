@@ -162,19 +162,18 @@ export class ScmModel implements Disposable {
             // Non-focused repositories only need the working copy status (used for the
             // Repositories view counts); the mutable ancestor graph and children are skipped.
             const isFocused = this.repo.isFocused;
-            const maxMutableAncestors = isFocused
-                ? (this.repo.host.config.get<number>('maxMutableAncestors', 10) ?? 10)
-                : 0;
+            const changesDepth = isFocused ? (this.repo.host.config.get<number>('changesDepth', 0) ?? 0) : 0;
             const minChangeIdLength = this.repo.host.config.get<number>('minChangeIdLength', 1) ?? 1;
-            const limit = maxMutableAncestors + 1;
+            // 0 = no limit: fetch every mutable ancestor. Otherwise fetch depth + 1 to
+            // capture the immutable parent boundary.
+            const limit = changesDepth > 0 ? changesDepth + 1 : undefined;
 
-            const bulkLogPromise =
-                maxMutableAncestors > 0
-                    ? this.jj.getLog({
-                          revision: `(::@ & mutable()) | parents(roots(::@ & mutable()))`,
-                          limit,
-                      })
-                    : Promise.resolve<JjLogEntry[]>([]);
+            const bulkLogPromise = isFocused
+                ? this.jj.getLog({
+                      revision: `(::@ & mutable()) | parents(roots(::@ & mutable()))`,
+                      limit,
+                  })
+                : Promise.resolve<JjLogEntry[]>([]);
 
             const [bulkLog, workingCopyEntries, children] = await Promise.all([
                 bulkLogPromise,
@@ -193,12 +192,7 @@ export class ScmModel implements Disposable {
             this._parentMutable = this.isParentMutable(currentEntry);
             this._hasChild = children.length > 0;
 
-            const ancestors = this.computeMutableAncestors(
-                currentEntry,
-                bulkLogMap,
-                maxMutableAncestors,
-                minChangeIdLength,
-            );
+            const ancestors = this.computeMutableAncestors(currentEntry, bulkLogMap, changesDepth, minChangeIdLength);
 
             const workingCopyChanges = currentEntry?.changes || [];
             this._workingCopyStatuses = this.buildWorkingCopyStatusMap(workingCopyChanges, conflictedPaths);
@@ -261,7 +255,7 @@ export class ScmModel implements Disposable {
     private computeMutableAncestors(
         currentEntry: JjLogEntry | undefined,
         bulkLogMap: Map<string, JjLogEntry>,
-        maxMutableAncestors: number,
+        changesDepth: number,
         minChangeIdLength: number,
     ): ScmAncestorEntry[] {
         if (!currentEntry) {
@@ -272,7 +266,7 @@ export class ScmModel implements Disposable {
         let currentFocus: JjLogEntry | undefined = currentEntry;
         let ancestorDepth = 1;
 
-        while (currentFocus && ancestorsToDisplay.length < maxMutableAncestors) {
+        while (currentFocus && (changesDepth <= 0 || ancestorsToDisplay.length < changesDepth)) {
             const parents: CommitParent[] | undefined = currentFocus.parents;
             if (!parents || parents.length === 0) {
                 break;

@@ -16,7 +16,7 @@ import { makeTestTmpDir } from './test-tmp-root';
 import { createMockLogOutputChannel } from './test-utils';
 
 const hoisted = vi.hoisted(() => {
-    return { actualSubscribe: undefined as typeof import('@parcel/watcher').subscribe };
+    return { actualSubscribe: undefined as unknown as typeof import('@parcel/watcher').subscribe };
 });
 
 vi.mock('@parcel/watcher', async (importOriginal) => {

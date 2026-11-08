@@ -26,15 +26,13 @@ function changeWithStats(overrides: Partial<JjFileChangeWithStats> = {}): JjFile
         path: 'file.txt',
         status: 'modified',
         conflicted: false,
-        additions: 1,
-        deletions: 0,
         ...overrides,
     };
 }
 
 describe('JjFileChange field parsing (fixtures)', () => {
     it('identifies files with spaces in their names', () => {
-        const c = change({ path: 'file with a space.txt', status: 'added', additions: 1, deletions: 0 });
+        const c = change({ path: 'file with a space.txt', status: 'added' });
 
         expect(c.path).toBe('file with a space.txt');
         expect(c.status).toBe('added');

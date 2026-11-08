@@ -314,7 +314,7 @@ suite('JJ SCM Provider Integration Test', () => {
             },
         ]);
 
-        stubConfig(sandbox, { maxMutableAncestors: 3 });
+        stubConfig(sandbox, { changesDepth: 3 });
 
         await scmProvider.refresh({ forceSnapshot: true });
 
@@ -603,7 +603,7 @@ suite('JJ SCM Provider Integration Test', () => {
     });
 
     test('Parent group context value updates when switching between immutable and mutable parents', async () => {
-        stubConfig(sandbox, { maxMutableAncestors: 1 });
+        stubConfig(sandbox, { changesDepth: 1 });
 
         // Scenario:
         // 1. Edit C1 (Parent is Root). Root is Immutable. Group should be 'jjAncestorGroup'.

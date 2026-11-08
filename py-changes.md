@@ -275,7 +275,7 @@ Commit Details 的状态 chip 顺序：Immutable → Empty → Conflicted → bo
 | `jj-view.fileWatcherMode`              | `watch` | 事件驱动；watcher 启动失败自动回退 `polling`（5s/仓库） |
 | `jj-view.refreshDebounceMillis`        | `100`   | 文件事件防抖                                            |
 | `jj-view.refreshDebounceMaxMultiplier` | `4`     | 持续事件时的最大放大倍数                                |
-| `jj-view.maxMutableAncestors`          | `10`    | 快照里抓取的祖先数量，影响单次刷新耗时                  |
+| `jj-view.changesDepth`                  | `0`     | Changes 视图显示多少层 mutable 祖先。0 = 全显示                  |
 | `jj-view.autoRepositoryDetection`      | `true`  | 设为 `subFolders` / `openEditors` 可减少被监控仓库数    |
 | `jj-view.binaryPath`                   | `""`    | jj 可执行文件绝对路径                                   |
 | `jj-view.remoteLogDepth`               | `10`    | JJ Log 在本地提交下方显示的远端提交数，`0` = 不显示     |
