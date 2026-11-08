@@ -5,40 +5,35 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { LogViewController } from '../core/controllers/log-view-controller';
-import { JjRepositoryManager } from '../core/jj-repository-manager';
+import type { JjRepository } from '../core/jj-repository';
+import type { JjService } from '../core/jj-service';
 import type { JjLogEntry } from '../core/jj-types';
 import { Uri } from '../core/uri-utils';
 import { findMatchingCommit } from '../core/webview/log/utils/commit-utils';
 import { VsCodeHostNavigation } from '../vscode/vscode-host-environment';
 import { FakeHostEnvironment } from './fake-host-environment';
-import { TestRepo } from './test-repo';
-import { createMock, createMockLogOutputChannel } from './test-utils';
+import { createMock } from './test-utils';
+
+/**
+ * Highlight routing is pure state: the controller only needs `rootUri`, so no real repository
+ * (and no jj process) is required here.
+ */
+const REPO_ROOT = Uri.file('/repo');
 
 describe('QuickPick Commit Highlight', () => {
-    let testRepo: TestRepo;
-    let repositoryManager: JjRepositoryManager;
     let fakeHost: FakeHostEnvironment;
     let controller: LogViewController;
     let postedMessages: { type: string; [key: string]: unknown }[];
 
-    beforeEach(async () => {
+    beforeEach(() => {
         vi.clearAllMocks();
         postedMessages = [];
-        testRepo = new TestRepo();
-        testRepo.init();
-
-        const outputChannel = createMockLogOutputChannel({
-            appendLine: () => {},
-        });
-
         fakeHost = new FakeHostEnvironment();
-        fakeHost.workspace.addFolder(Uri.file(testRepo.path));
 
-        repositoryManager = new JjRepositoryManager(outputChannel, fakeHost);
-        const repo = await repositoryManager.maybeRegisterRepositoryContainingUri(Uri.file(testRepo.path));
-        if (!repo) {
-            throw new Error('Failed to register repo in test');
-        }
+        const repo = {
+            rootUri: REPO_ROOT,
+            jj: createMock<JjService>(),
+        } as unknown as JjRepository;
 
         controller = new LogViewController(repo, fakeHost, {
             messenger: {
@@ -47,9 +42,8 @@ describe('QuickPick Commit Highlight', () => {
         });
     });
 
-    afterEach(async () => {
+    afterEach(() => {
         controller.dispose();
-        await repositoryManager.dispose();
     });
 
     test('LogViewController dispatches setHighlight IPC and tracks highlightedCommitId', () => {
@@ -87,20 +81,18 @@ describe('QuickPick Commit Highlight', () => {
             calls.push({ repoRoot, changeId });
         });
 
-        const repoUri = Uri.file(testRepo.path);
-        nav.highlightCommit(repoUri, 'rev123');
-        expect(calls).toEqual([{ repoRoot: repoUri, changeId: 'rev123' }]);
+        nav.highlightCommit(REPO_ROOT, 'rev123');
+        expect(calls).toEqual([{ repoRoot: REPO_ROOT, changeId: 'rev123' }]);
 
-        nav.highlightCommit(repoUri, undefined);
+        nav.highlightCommit(REPO_ROOT, undefined);
         expect(calls).toEqual([
-            { repoRoot: repoUri, changeId: 'rev123' },
-            { repoRoot: repoUri, changeId: undefined },
+            { repoRoot: REPO_ROOT, changeId: 'rev123' },
+            { repoRoot: REPO_ROOT, changeId: undefined },
         ]);
     });
 
     test('Delegate forwards to matching LogViewController and ignores other repositories', () => {
         const nav = new VsCodeHostNavigation();
-        const repoUri = Uri.file(testRepo.path);
         const otherUri = Uri.file('/different/repo');
 
         nav.setHighlightDelegate((repoRoot, changeId) => {
@@ -114,11 +106,11 @@ describe('QuickPick Commit Highlight', () => {
         expect(controller.highlightedCommitId).toBeUndefined();
 
         // Call with matching repo
-        nav.highlightCommit(repoUri, 'c1');
+        nav.highlightCommit(REPO_ROOT, 'c1');
         expect(controller.highlightedCommitId).toBe('c1');
 
         // Clear highlight
-        nav.highlightCommit(repoUri, undefined);
+        nav.highlightCommit(REPO_ROOT, undefined);
         expect(controller.highlightedCommitId).toBeUndefined();
     });
 

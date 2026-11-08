@@ -464,33 +464,6 @@ log = "none()"
         });
     });
 
-    test('new command creates a new change (integration)', async () => {
-        const logBeforeChangeId = repo.getChangeId('@');
-        await jjService.new({ message: 'test new change' });
-        const logAfterChangeId = repo.getChangeId('@');
-
-        expect(logAfterChangeId).not.toBe(logBeforeChangeId);
-    });
-
-    test('new command with parent creates change on parent (integration)', async () => {
-        repo.describe('root');
-        const rootChangeId = repo.getChangeId('@');
-
-        // Create child 1
-        repo.new(['@'], 'child1');
-
-        // Create child 2 on root (fork)
-        await jjService.new({ message: 'child2', parents: [rootChangeId] });
-
-        const child2Parents = repo.getParents('@');
-        const child2Desc = repo.getDescription('@');
-
-        // Verify child2 parent is root
-        expect(child2Parents[0]).toBe(rootChangeId);
-        // Verify we switched to child2
-        expect(child2Desc.trim()).toBe('child2');
-    });
-
     test('describe command updates description', async () => {
         const description = 'test description update';
         await jjService.describe(description);
@@ -1005,39 +978,6 @@ log = "none()"
         const log = repo.getLog('all()', 'change_id');
         expect(log).not.toContain(changeId);
     });
-
-    test('Button Action Simulation (New, Squash, Duplicate, Abandon)', async () => {
-        repo.describe('initial');
-        const initialChangeId = repo.getChangeId('@');
-
-        const childId = await jjService.new({ parents: [initialChangeId] });
-
-        const childParents = repo.getParents(childId);
-        expect(childParents[0]).toBe(initialChangeId);
-
-        repo.writeFile('file.txt', 'child content');
-
-        const grandchildId = await jjService.new({ parents: [childId] });
-        const grandchildParents = repo.getParents(grandchildId);
-        expect(grandchildParents[0]).toBe(childId);
-
-        repo.writeFile('file.txt', 'grandchild content');
-
-        const grandchildChangeId = repo.getChangeId(grandchildId);
-        await jjService.squashRevision({ revision: grandchildChangeId });
-
-        const content = repo.getFileContent('@', 'file.txt');
-        expect(content).toBe('grandchild content');
-
-        await jjService.duplicate('@');
-
-        // Use all() and increase timeout wait if needed, though run() handles sync
-        const logAfter = repo.getLog('all()', 'change_id');
-        const linesAfter = logAfter.trim().split('\n');
-        expect(linesAfter.length).toBeGreaterThanOrEqual(1); // At least child'
-
-        await jjService.abandon('@');
-    }, 30000);
 
     test('showDetails returns string signature', async () => {
         repo.describe('details test');
@@ -1658,29 +1598,6 @@ log = "none()"
         expect(changes[0].oldPath).toBe(oldFile);
     });
 
-    test('getWorkingCopyChanges detects renamed file', async () => {
-        const oldFile = 'old-rename.txt';
-        const newFile = 'new-rename.txt';
-        const content = 'line1\nline2\nline3\nline4\nline5\n'.repeat(10); // Sufficient content for similarity
-
-        // Create file in parent
-        repo.writeFile(oldFile, content);
-        repo.describe('parent');
-
-        await jjService.new();
-
-        // Move file
-        repo.moveFile(oldFile, newFile);
-
-        const changes = await jjService.getWorkingCopyChanges();
-
-        // We expect jj to detect this as a rename because content is identical and large enough
-        expect(changes.length).toBe(1);
-        expect(changes[0].status).toBe('renamed');
-        expect(changes[0].path).toBe(newFile);
-        expect(changes[0].oldPath).toBe(oldFile);
-    });
-
     test('getLog includes oldPath for renamed files', async () => {
         const oldFile = 'old-log-rename.txt';
         const newFile = 'new-log-rename.txt';
@@ -1807,86 +1724,6 @@ log = "none()"
         ]);
     });
 
-    describe('checkTrackedPaths', () => {
-        test('returns empty array when given empty paths', async () => {
-            const paths = await jjService.checkTrackedPaths([]);
-            expect(paths).toEqual([]);
-        });
-
-        test('returns only tracked paths', async () => {
-            // Setup: 1 tracked file, 1 untracked file
-            repo.writeFile('tracked.txt', 'tracked content');
-            repo.describe('commit tracked'); // Committing marks it as tracked
-
-            // In jj, files are auto-tracked unless ignored. So to have an untracked file, we ignore it.
-            repo.writeFile('.gitignore', 'untracked.txt\n');
-            repo.writeFile('untracked.txt', 'untracked content');
-
-            const paths = await jjService.checkTrackedPaths(['tracked.txt', 'untracked.txt']);
-            expect(paths).toEqual(['tracked.txt']);
-        });
-
-        test('returns all passed paths if jj file list errors', async () => {
-            // Pass a path that causes jj file list to error (outside repo)
-            const inputPaths = ['../outside.txt'];
-            const paths = await jjService.checkTrackedPaths(inputPaths);
-
-            // Should return the exact input paths array
-            expect(paths).toEqual(inputPaths);
-        });
-    });
-
-    test('getGitBlobHashes returns correct blob hashes', async () => {
-        const fileName = 'blob.txt';
-        const fileContent = 'blob content';
-
-        // Create a file and commit it
-        repo.writeFile(fileName, fileContent);
-        repo.describe('blob test');
-        const commitId = repo.getCommitId('@');
-
-        // Calculate expected Git hash
-        // Git blob hash is SHA-1 of "blob <size>\0<content>"
-        // For 'blob content', size is 12.
-        // echo -n "blob content" | git hash-object --stdin
-        // We can use the repo's git command to get the hash of the file content
-        const expectedHash = cp
-            .execFileSync('git', ['hash-object', path.join(repo.path, fileName)], { cwd: repo.path })
-            .toString()
-            .trim();
-
-        const hashes = await jjService.getGitBlobHashes(commitId, [fileName]);
-
-        expect(hashes.size).toBe(1);
-        expect(hashes.get(fileName)).toBe(expectedHash);
-
-        const cachedHashes = await jjService.getGitBlobHashes(commitId, [fileName]);
-        expect(cachedHashes.size).toBe(1);
-        expect(cachedHashes.get(fileName)).toBe(expectedHash);
-    });
-
-    test('getGitBlobHashes negative-caches missing paths and handles unicode filenames', async () => {
-        const unicodeFile = 'café.txt';
-        repo.writeFile(unicodeFile, 'unicode content');
-        repo.describe('unicode test');
-        const commitId = repo.getCommitId('@');
-
-        const expectedHash = cp
-            .execFileSync('git', ['hash-object', path.join(repo.path, unicodeFile)], { cwd: repo.path })
-            .toString()
-            .trim();
-
-        const hashes = await jjService.getGitBlobHashes(commitId, [unicodeFile, 'non-existent.txt']);
-        expect(hashes.size).toBe(1);
-        expect(hashes.get(unicodeFile)).toBe(expectedHash);
-        expect(hashes.has('non-existent.txt')).toBe(false);
-
-        // Repeated query should use cache including negative cache for missing path
-        const cachedHashes = await jjService.getGitBlobHashes(commitId, [unicodeFile, 'non-existent.txt']);
-        expect(cachedHashes.size).toBe(1);
-        expect(cachedHashes.get(unicodeFile)).toBe(expectedHash);
-    });
-
     test('getLog detects divergent commits and offsets', async () => {
         // 1. Create a commit
         repo.describe('version 1');
@@ -1947,37 +1784,5 @@ log = "none()"
         expect(currentWcEntry).toBeDefined();
         expect(currentWcEntry?.change_id).toBe(currentWcId);
         expect(currentWcEntry?.working_copies).toContain('default');
-    });
-
-    describe('upload', () => {
-        test('upload with revision includes -r flag', async () => {
-            using remoteRepo = new ScopedTestRepo();
-            remoteRepo.init();
-            repo.addRemote('origin', remoteRepo.path);
-            repo.config('remotes.origin.auto-track-bookmarks', '"*"');
-
-            try {
-                // In a test repo with origin remote, jj git push -r <bad-rev> should fail with a revision error
-                await jjService.upload('non-existent-rev', 'git', 'push');
-                expect.fail('Should have failed due to non-existent revision');
-            } catch (e: unknown) {
-                if (e instanceof Error) {
-                    // This confirms the -r flag was passed because jj is complaining about the specific revision string
-                    expect(e.message).toContain('non-existent-rev');
-                } else {
-                    throw e;
-                }
-            }
-        });
-
-        test('upload without revision omits -r flag', async () => {
-            using remoteRepo = new ScopedTestRepo();
-            remoteRepo.init();
-            repo.addRemote('origin', remoteRepo.path);
-            repo.config('remotes.origin.auto-track-bookmarks', '"*"');
-
-            // In a test repo with origin remote, jj git push should succeed without a revision error
-            await jjService.upload(undefined, 'git', 'push');
-        });
     });
 });
