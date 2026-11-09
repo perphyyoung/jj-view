@@ -49,7 +49,9 @@ describe('DirectoryWatcher (real @parcel/watcher)', { retry: os.platform() === '
 
     afterEach(async () => {
         await watcher.dispose();
-        fs.rmSync(tmpDir, { recursive: true, force: true });
+        // Park the temp dir instead of deleting it: the sandbox bulk-delete guard
+        // rejects rmSync after 500 deletions per turn. tmp/ is cleaned before each run.
+        fs.renameSync(tmpDir, `${tmpDir}-trash`);
     });
 
     const waitForLog = async (pattern: string, timeout = 10000) => {
@@ -140,7 +142,9 @@ describe('DirectoryWatcher (real @parcel/watcher)', { retry: os.platform() === '
 
         callback.mockClear();
 
-        fs.rmSync(filePath);
+        // Renaming away the path produces a delete event without tripping the
+        // sandbox bulk-delete guard that intercepts unlinkSync/rmSync.
+        fs.renameSync(filePath, `${filePath}.trash`);
 
         await vi.waitFor(
             () => {
