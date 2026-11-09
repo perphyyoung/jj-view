@@ -15,6 +15,7 @@
         "noUnusedParameters": true /* Report errors on unused parameters. */,
         "noUnusedLocals": true
     },
+    "include": ["src"],
     "exclude": [
         "vitest.config.ts",
         "vitest.repo.config.ts",
