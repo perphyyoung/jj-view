@@ -3,10 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { beforeEach, describe, expect, test, vi } from 'vitest';
-import type { ProcessExecOptions } from '../core/host/host-system';
+import { beforeEach, describe, expect, type Mock, test, vi } from 'vitest';
+import type { ProcessExecOptions, ProcessResult } from '../core/host/host-system';
 import { JjService, NO_OP_LOGGER } from '../core/jj-service';
 import { FakeHostEnvironment } from './fake-host-environment';
+
+type ExecFileFn = (file: string, args: readonly string[], options?: ProcessExecOptions) => Promise<ProcessResult>;
 
 /**
  * jj derives the author / committer of a commit from `user.name` / `user.email`
@@ -16,18 +18,18 @@ import { FakeHostEnvironment } from './fake-host-environment';
  */
 describe('JjService commit identity environment', () => {
     const workspaceRoot = '/mock/root';
-    let execFileSpy: ReturnType<typeof vi.fn>;
+    let execFileSpy: Mock<ExecFileFn>;
     let jjService: JjService;
 
-    const capturedOptions = (): { args: string[]; options: ProcessExecOptions } => {
+    const capturedOptions = (): { args: readonly string[]; options: ProcessExecOptions } => {
         expect(execFileSpy).toHaveBeenCalledTimes(1);
-        const [, args, options] = execFileSpy.mock.calls[0] as [string, string[], ProcessExecOptions];
-        return { args, options };
+        const [, args, options] = execFileSpy.mock.calls[0];
+        return { args, options: options ?? {} };
     };
 
     beforeEach(() => {
         const host = new FakeHostEnvironment();
-        execFileSpy = vi.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+        execFileSpy = vi.fn<ExecFileFn>(async () => ({ stdout: '', stderr: '', exitCode: 0 }));
         vi.spyOn(host.system.process, 'execFile').mockImplementation(execFileSpy);
         jjService = new JjService(workspaceRoot, NO_OP_LOGGER, { system: host.system });
     });
