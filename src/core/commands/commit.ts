@@ -13,17 +13,14 @@ export interface CommitPayload {
 export interface CommitResult {
     /** False when there was nothing to commit (idempotent no-op). */
     committed: boolean;
-    /** Change id of the commit that now sits at `@-`. */
-    changeId?: string;
 }
 
 /**
  * Commits the working copy.
  *
  * Idempotent: an empty working copy is a no-op, so clicking the commit button twice cannot
- * create an empty commit. After the commit it verifies the working copy is really empty and
- * reveals the new commit in the Changes view, so "committed" always means "the view can show
- * the post-commit state".
+ * create an empty commit. After the commit it verifies the working copy is really empty, so
+ * "committed" always means "the view can show the post-commit state".
  */
 export async function commitCommand(ctx: CommandContext, payload?: CommitPayload): Promise<CommitResult> {
     let description = payload?.description?.trim() ?? '';
@@ -52,20 +49,7 @@ export async function commitCommand(ctx: CommandContext, payload?: CommitPayload
             await ctx.repo.refresh({ forceSnapshot: true, checkVersion: true, reason: 'after commit (retry)' });
         }
 
-        const committed = await jj.getLog({ revision: '@-', limit: 1 });
-        const changeId = committed[0]?.change_id;
-        if (changeId) {
-            // Expand and scroll to the commit the Changes view must now show.
-            try {
-                await ctx.host.commands.executeCommand('jj-view.revealChangesGroup', {
-                    root: ctx.repo.rootUri.fsPath,
-                    changeId,
-                });
-            } catch {
-                // The Changes view may not be registered (headless runs); not an error.
-            }
-        }
-        return { committed: true, changeId };
+        return { committed: true };
     } catch (err: unknown) {
         await showJjError(ctx.host.ui, err, 'Error committing change', ctx.repo.jj, ctx.log);
         return { committed: false };

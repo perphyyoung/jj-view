@@ -49,6 +49,14 @@ async function splitFileIntoNewCommit(
         placement === 'above' ? ctx.repo.jj.getChildren(rev) : ctx.repo.jj.getParents(rev);
 
     try {
+        // Splitting the only file would just move the whole commit, leaving an empty one
+        // behind. Tell the user instead of creating that empty commit.
+        const [sourceEntry] = await ctx.repo.jj.getLog({ revision, limit: 1 });
+        if ((sourceEntry?.changes?.length ?? 0) <= 1) {
+            await ctx.host.ui.showInformation('This commit has only one file, so there is nothing to split.');
+            return;
+        }
+
         // The new commit has no id we know upfront: it is whatever neighbour appears
         // around the source revision after the operation.
         const before = await neighbourOf(revision).catch(() => [] as string[]);
@@ -65,11 +73,20 @@ async function splitFileIntoNewCommit(
 
         const after = await neighbourOf(revision).catch(() => [] as string[]);
         const newChangeId = after.find((id) => !before.includes(id));
-        if (newChangeId) {
-            await ctx.host.commands.executeCommand('jj-view.revealChangesGroup', {
-                root: ctx.repo.rootUri.fsPath,
-                changeId: newChangeId,
-            });
+        // Reveal both groups: the source keeps the other files, the new commit owns the
+        // split-out file. Identifying the new commit needs the id diff above.
+        const changeIds = [sourceEntry?.change_id, newChangeId].filter(
+            (id): id is string => typeof id === 'string' && id.length > 0,
+        );
+        if (changeIds.length > 0) {
+            try {
+                await ctx.host.commands.executeCommand('jj-view.revealChangesGroup', {
+                    root: ctx.repo.rootUri.fsPath,
+                    changeIds,
+                });
+            } catch {
+                // The Changes view may not be registered (headless runs); not an error.
+            }
         }
     } catch (e: unknown) {
         await showJjError(ctx.host.ui, e, `Error splitting file into a new commit ${placement}`, ctx.repo.jj, ctx.log);

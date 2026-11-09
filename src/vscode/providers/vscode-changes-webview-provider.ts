@@ -82,8 +82,8 @@ type HostMessage =
 export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
     private _view?: vscode.WebviewView;
     private _disposed = false;
-    /** One-shot change id the webview must expand and scroll to on the next state push. */
-    private _revealChangeId: string | undefined;
+    /** Change ids the webview must expand on the next state push (one-shot, cleared when sent). */
+    private _revealChangeIds: string[] = [];
     private readonly _disposables: vscode.Disposable[] = [];
     private _viewDisposables: vscode.Disposable[] = [];
     private readonly _snapshotSubscriptions = new Map<string, { dispose(): void }>();
@@ -188,6 +188,23 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         }
     }
 
+    /**
+     * Expands the given change groups on the next state push. Used after a split so both the
+     * source commit and the commit created next to it are visible.
+     */
+    private _revealChangesGroup(args: unknown): void {
+        const payload = (args ?? {}) as { root?: string; changeIds?: string[] };
+        const changeIds = (payload.changeIds ?? []).filter((id) => typeof id === 'string' && id.length > 0);
+        if (changeIds.length === 0) {
+            return;
+        }
+        if (payload.root) {
+            this._focus(payload.root);
+        }
+        this._revealChangeIds = [...new Set([...this._revealChangeIds, ...changeIds])];
+        this._postState();
+    }
+
     private get _repoSortKey(): RepoSortKey {
         const stored = this._context.globalState.get<string>(
             VsCodeChangesWebviewProvider.REPO_SORT_KEY,
@@ -220,22 +237,6 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
 
     private _setRepoSort(key: RepoSortKey): void {
         void this._context.globalState.update(VsCodeChangesWebviewProvider.REPO_SORT_KEY, key);
-        this._postState();
-    }
-
-    /**
-     * Expands (and scrolls to) the changes group of the given change. Used after a split so
-     * the newly created commit is not hidden inside a collapsed ancestor group.
-     */
-    private _revealChangesGroup(args: unknown): void {
-        const payload = (args ?? {}) as { root?: string; changeId?: string };
-        if (!payload.changeId) {
-            return;
-        }
-        if (payload.root) {
-            this._focus(payload.root);
-        }
-        this._revealChangeId = payload.changeId;
         this._postState();
     }
 
@@ -477,7 +478,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         focusedRoot: string | undefined;
         snapshot: ChangesWireSnapshot | undefined;
         viewMode: 'list' | 'tree';
-        revealChangeId: string | undefined;
+        revealChangeIds: string[];
         revision: number;
     } {
         const rows = this._repositoryManager.repositories.map((repo) => {
@@ -499,16 +500,16 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         const focusedRoot = this._repositoryManager.focusedRepository?.rootUri.fsPath;
         const focusedSnapshot = focusedRoot ? this._scmProviders.get(focusedRoot)?.scmModel.snapshot : undefined;
 
-        // One-shot: the webview consumes it and the next push must not re-expand.
-        const revealChangeId = this._revealChangeId;
-        this._revealChangeId = undefined;
+        // One-shot: the webview expands these groups once and the next push must not repeat.
+        const revealChangeIds = this._revealChangeIds;
+        this._revealChangeIds = [];
 
         return {
             repos,
             focusedRoot,
             snapshot: this._mode === 'changes' && focusedSnapshot ? toWireSnapshot(focusedSnapshot) : undefined,
             viewMode: this._viewMode,
-            revealChangeId,
+            revealChangeIds,
             // Lets the webview drop a state that arrives after a newer one.
             revision: focusedSnapshot?.revision ?? 0,
         };

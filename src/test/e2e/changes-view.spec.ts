@@ -8,7 +8,7 @@ import type { Frame, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { TestRepo } from '../test-repo';
 import { makeTestTmpDir } from '../test-tmp-root';
-import { getLogWebview, openFileInEditor, test } from './e2e-helpers';
+import { expectNotificationToast, getLogWebview, openFileInEditor, test } from './e2e-helpers';
 
 async function getWebviewFrame(page: Page, testId: string, timeout = 20000): Promise<Frame> {
     const deadline = Date.now() + timeout;
@@ -101,7 +101,52 @@ test.describe('JJ View Container E2E', () => {
         expect(repo.getFileContent('@', 'b.txt')).toBe('b\n');
     });
 
-    test('Expands the group of a commit created by splitting an ancestor file', async ({ vscode }) => {
+    test('Expands the source commit and the new commit after splitting', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('base.txt', 'base\n');
+        repo.describe('base');
+        repo.new();
+        repo.writeFile('a.txt', 'a\n');
+        repo.writeFile('b.txt', 'b\n');
+        repo.describe('target');
+        repo.new();
+
+        const targetId = repo.getChangeId('@-');
+
+        const { page } = await vscode.openWorkspace(repo);
+
+        await vscode.executeCommand('jj-view.changesView.focus');
+
+        // Collapse the JJ Log pane: the sidebar is short, and with both panes open the
+        // Changes list only shows one ancestor group, hiding the commit created by the split.
+        const logPane = page.locator('.pane-header', { hasText: 'JJ Log' }).first();
+        if ((await logPane.getAttribute('aria-expanded')) !== 'false') {
+            await logPane.click();
+        }
+        await expect(logPane).toHaveAttribute('aria-expanded', 'false');
+
+        const frame = await getWebviewFrame(page, 'jj-changes-root');
+
+        // Real flow: the file row only exists after the user expands the group.
+        const targetHeader = frame.locator(`[data-change-id="${targetId}"]`);
+        await expect(targetHeader).toBeVisible({ timeout: 5000 });
+        await targetHeader.locator('.chevron-icon').click();
+
+        const row = frame.locator('.scm-resource-item', { hasText: 'a.txt' }).first();
+        await expect(row).toBeVisible({ timeout: 5000 });
+        await row.click({ button: 'right' });
+        await frame.locator('button.menu-item', { hasText: 'Split File into New Commit Below' }).click();
+
+        // Behaviour only: each file is visible exactly once, which can only happen when both
+        // ancestor groups (the source keeping b.txt and the new one owning a.txt) are expanded.
+        await expect(frame.locator('.scm-resource-item', { hasText: 'a.txt' })).toHaveCount(1);
+        await expect(frame.locator('.scm-resource-item', { hasText: 'b.txt' })).toHaveCount(1);
+        // Exactly the two ancestor groups are expanded; the older base stays collapsed.
+        await expect(frame.locator('[data-change-id] .codicon-chevron-down')).toHaveCount(2);
+    });
+
+    test('Refuses to split when the commit has only one file', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();
         repo.writeFile('base.txt', 'base\n');
@@ -112,15 +157,17 @@ test.describe('JJ View Container E2E', () => {
         repo.new();
 
         const targetId = repo.getChangeId('@-');
-        const baseId = repo.getChangeId('@--');
 
-        const { page } = await vscode.openWorkspace(repo);
-
+        const { page } = await vscode.openWorkspace(repo, {}, {}, true);
         await vscode.executeCommand('jj-view.changesView.focus');
+
+        const logPane = page.locator('.pane-header', { hasText: 'JJ Log' }).first();
+        if ((await logPane.getAttribute('aria-expanded')) !== 'false') {
+            await logPane.click();
+        }
+
         const frame = await getWebviewFrame(page, 'jj-changes-root');
 
-        // Ancestor groups start collapsed: expand the one that owns the file. Click the
-        // chevron: the header centre is covered by the inline action buttons.
         const targetHeader = frame.locator(`[data-change-id="${targetId}"]`);
         await expect(targetHeader).toBeVisible({ timeout: 5000 });
         await targetHeader.locator('.chevron-icon').click();
@@ -130,13 +177,11 @@ test.describe('JJ View Container E2E', () => {
         await row.click({ button: 'right' });
         await frame.locator('button.menu-item', { hasText: 'Split File into New Commit Below' }).click();
 
-        // The new commit lands between base and target and must be shown expanded.
-        await expect.poll(() => repo.getChildren(baseId).length, { timeout: 5000 }).toBe(1);
-        const [newId] = repo.getChildren(baseId);
-        const newHeader = frame.locator(`[data-change-id="${newId}"]`);
-        await expect(newHeader).toBeVisible({ timeout: 5000 });
-        await expect(newHeader.locator('.codicon-chevron-down')).toBeVisible();
-        await expect(frame.locator('.scm-resource-item', { hasText: 'a.txt' })).toHaveCount(1);
+        // The source commit still holds its only file: nothing was emptied out.
+        expect(repo.getFileContent(targetId, 'a.txt')).toBe('a\n');
+
+        // And the command explains why it did nothing.
+        await expectNotificationToast(page, 'nothing to split');
     });
 
     test('Commits to the repository shown in Changes when another repo file is open', async ({ vscode }) => {
@@ -315,6 +360,28 @@ test.describe('JJ View Container E2E', () => {
         await expect(rows.first()).toContainText('alpha');
     });
 
+    test('Keeps a newly committed group collapsed', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('a.txt', 'a\n');
+
+        const { page } = await vscode.openWorkspace(repo);
+        await vscode.executeCommand('jj-view.changesView.focus');
+        const frame = await getWebviewFrame(page, 'jj-changes-root');
+
+        await frame.locator('[data-testid="scm-input-textarea"]').fill('commit it');
+        await vscode.executeCommand('jj-view.commit');
+
+        await expect.poll(() => repo.getLog('@-', 'description'), { timeout: 5000 }).toContain('commit it');
+        const committedId = repo.getChangeId('@-');
+        const committedHeader = frame.locator(`[data-change-id="${committedId}"]`);
+        await expect(committedHeader).toBeVisible({ timeout: 5000 });
+        await expect(committedHeader.locator('.codicon-chevron-right')).toBeVisible();
+
+        // The Working Copy group stays expanded.
+        await expect(frame.locator('[data-testid="scm-group-working-copy"] .codicon-chevron-down')).toBeVisible();
+    });
+
     test('Clears the Changes view right after committing', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();
@@ -324,8 +391,8 @@ test.describe('JJ View Container E2E', () => {
         await vscode.executeCommand('jj-view.changesView.focus');
         const frame = await getWebviewFrame(page, 'jj-changes-root');
 
-        // Scope to the Working Copy group: after the commit the same file appears in the
-        // (auto-expanded) commit group, which is not what this test asserts.
+        // Scope to the Working Copy group: after the commit the same file belongs to the
+        // new ancestor group, which this test does not assert.
         const row = frame.locator('[data-testid="scm-group-working-copy"] .scm-resource-item', { hasText: 'a.txt' });
         await expect(row).toBeVisible({ timeout: 5000 });
 

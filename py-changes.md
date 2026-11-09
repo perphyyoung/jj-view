@@ -92,15 +92,15 @@ git config core.autocrlf false   # 仅本仓库
 | 行为           | 实现                                                                                                                                                                                                                                                        |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 只显示当前仓库 | provider 只推送 `focusedRoot` 的快照；切换仓库由 `onDidChangeFocusedRepository` 驱动                                                                                                                                                                        |
-| 分组           | Merge Conflicts / Working Copy / ancestors；**ancestors 默认折叠**（`ScmPane` 的 `expandAncestors=false`），但拆分产生的新提交所在组会自动展开并滚入视口                                                                                                    |
+| 分组           | Merge Conflicts / Working Copy 恒展开；ancestors 默认折叠。split 后源提交与新提交都展开（一次性 `revealChangeIds`），`is_empty` 的空提交也展开；展开状态不累积  |
 | 写操作         | 资源级走 `state.command`（`vscode.diff` / `vscode.open`；合并编辑器已移除，见 2.5）；分组级重建 `{ id, rootUri, ancestor, resourceStates }` 后调用既有命令（absorb / squash / abandon / show details / edit / multi-file diff / split above / split below） |
 | 右键菜单       | 复用 web 侧 `MenuRegistry` + `WhenEvaluator` + `ContextMenu.svelte`，菜单数据由扩展在 `init` 时注入真实 `package.json` contributes                                                                                                                          |
 | 提交输入框     | 单行（约 26px）按行增高，240px 后内部滚动；不拦截 Ctrl+Enter；只有标题栏 ✓ 提交                                                                                                                                                                             |
 | 提交链路       | 输入通过 `draft` 消息写入 provider 的**草稿**（`setDraft()`，带 dirty 标记）；标题栏 ✓ 执行 `jj-view.commit`（视图级命令，作用于聚焦仓库）读取该草稿                                                                                                        |
 | 草稿不丢       | 刷新/状态推送**不会**覆盖脏草稿（`renderSnapshot` 见 `_draftDirty` 直接跳过）；只有真实 input 事件才上报 draft（挂载/属性同步只重算高度）；提交成功或 `setDescription` 成功后 `clearDraft()`，旧文案不会被下次复用                                          |
 | 禁止空提交     | `@` 无改动时一律拒绝提交（与描述是否变化无关）：命令返回 `{ committed: false }`，草稿保留，并通过 `host.ui.showInformation` 提示 `Empty commits are not allowed.`；这也让提交按钮天然幂等 |
-| 拆分为新提交   | 文件右键 `Split File into New Commit Above` / `Below`（`jj-view.splitFileIntoCommitAbove/Below`）：`jj squash --from <rev> -A\|-B <rev> -- <file>` + `--keep-emptied`；源提交被搬空也保留，新提交描述留空                                                   |
-| 新提交自动展开 | 拆分后比较操作前后 `children`/`parents` 差集得到新 change id，调用 `jj-view.revealChangesGroup`；provider 在 state 里带一次性 `revealChangeId`，webview 展开该组并 `scrollIntoView`                                                                         |
+| 拆分为新提交   | 文件右键 `Split File into New Commit Above` / `Below`（`jj-view.splitFileIntoCommitAbove/Below`）：`jj squash --from <rev> -A\|-B <rev> -- <file>`；源提交保留其余文件，新提交只含被拆出的文件，描述留空。源提交只有 1 个文件时拒绝执行并提示 `nothing to split`，因此不会产生被搬空的提交 |
+| 分组展开       | `ScmPane` 的 `expanded = is_empty \|\| revealedChangeIds.includes(change_id)`。split 通过 `jj-view.revealChangesGroup` 传 `changeIds`（源提交 + 新提交），provider 在 state 里带一次性 `revealChangeIds`，webview 每次推送覆盖该列表，因此展开不累积；commit 不触发 reveal，新提交保持折叠 |
 | View as Tree   | 命令 `jj-view.changesAsTree` / `jj-view.changesAsList`，按上下文键 `jj.changesViewAsTree` 互斥显示，模式存 `globalState`（`jj-view.changesViewMode`，默认 `list`）                                                                                          |
 | 目录树         | `src/core/webview/ui/scm/file-tree.ts` 构建；单链目录折叠成 `src \ core \ webview` 一行（与原生 compact folders 一致）                                                                                                                                       |
 
@@ -295,7 +295,7 @@ Commit Details 的状态 chip 顺序：Immutable → Empty → Conflicted → bo
 
 | 文件                                                                  | 职责                                                                                                                                                                                                                                                       |
 | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/vscode/providers/vscode-changes-webview-provider.ts`             | `repos` / `changes` 双模式 provider：聚合各仓库 `ScmModel` 快照、消息路由、用 `createJjResourceState()` 重建命令参数；`draft` → `setDraft()`，提交/设置描述后 `clearDraft()`；`jj-view.revealChangesGroup` 通过一次性 `revealChangeId` 让 webview 展开新组 |
+| `src/vscode/providers/vscode-changes-webview-provider.ts`             | `repos` / `changes` 双模式 provider：聚合各仓库 `ScmModel` 快照、消息路由、用 `createJjResourceState()` 重建命令参数；`draft` → `setDraft()`，提交/设置描述后 `clearDraft()` |
 | `src/core/blame/line-map.ts`                                          | 提交版本全文与编辑器 buffer 的行号映射（先 `stripCarriageReturn`，再 `diffArrays`），供行级 blame 的 diff 定位                                                                                                                                             |
 | `src/vscode/register-commands.ts` 的 `registerViewCommandWithPayload` | 视图级命令包装：按**聚焦仓库**解析仓库并用该仓库的草稿做 payload，`jj-view.commit` / `commitPrompt` / `setDescription` 用它                                                                                                                                |
 | `design.md`                                                           | chip 类型、渲染条件、顺序与配色规则                                                                                                                                                                                                                        |
@@ -309,7 +309,7 @@ Commit Details 的状态 chip 顺序：Immutable → Empty → Conflicted → bo
 
 | 文件                             | 改动                                                                                                                                      |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/core/webview/ui/scm/ScmPane.svelte`     | 新增 `showHeader` / `compactInput` / `viewMode` / `expandAncestors` / `onDescriptionChange` / `revealedChangeId`，默认值保持原行为        |
+| `src/core/webview/ui/scm/ScmPane.svelte`     | 新增 `showHeader` / `compactInput` / `viewMode` / `onDescriptionChange`；ancestor 展开由 `entry.is_empty` 决定        |
 | `src/core/webview/ui/scm/ScmInputBox.svelte` | `compact` 模式（单行自适应、不拦截 Ctrl+Enter）；**只有真实 input 事件**才 `onValueChange`，挂载/属性同步只重算高度（否则空值会覆盖草稿） |
 
 | `src/core/webview/ui/scm/ScmResourceGroup.svelte` / `ScmResourceItem.svelte` | tree/list 切换、隐藏目录后缀；组头 `data-change-id` + `expanded` 变 true 时强制展开（不反向折叠） |

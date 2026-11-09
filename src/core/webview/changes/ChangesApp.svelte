@@ -38,8 +38,8 @@ interface StatePayload {
     focusedRoot?: string;
     snapshot?: WireSnapshot;
     viewMode?: 'list' | 'tree';
-    /** Change whose group must be expanded and scrolled into view (one shot). */
-    revealChangeId?: string;
+    /** Change groups to expand for this push only (one shot). */
+    revealChangeIds?: string[];
     /** Monotonic snapshot revision; older pushes are dropped. */
     revision?: number;
 }
@@ -94,9 +94,12 @@ function hydrate(wire: WireSnapshot | undefined): ScmSnapshot | undefined {
     return { ...(wire as unknown as ScmSnapshot), workingCopyStatuses: new Map() };
 }
 
-let revealedChangeId = $state<string | undefined>(undefined);
-
 let lastRevision = 0;
+/**
+ * Change groups expanded by the latest push only. Each state push overwrites this list,
+ * so a split reveals its groups once and later refreshes do not keep re-expanding them.
+ */
+let revealedChangeIds = $state<string[]>([]);
 
 function applyState(payload: StatePayload): void {
     // Revisions are per repository snapshot, so they restart when the view switches to
@@ -114,21 +117,8 @@ function applyState(payload: StatePayload): void {
     focusedRoot = payload.focusedRoot;
     snapshot = hydrate(payload.snapshot);
     viewMode = payload.viewMode ?? viewMode;
-    if (payload.revealChangeId) {
-        revealedChangeId = payload.revealChangeId;
-    }
+    revealedChangeIds = payload.revealChangeIds ?? [];
 }
-
-$effect(() => {
-    const changeId = revealedChangeId;
-    if (!changeId) {
-        return;
-    }
-    requestAnimationFrame(() => {
-        const header = document.querySelector<HTMLElement>(`[data-change-id="${CSS.escape(changeId)}"]`);
-        header?.scrollIntoView({ block: 'nearest' });
-    });
-});
 
 useMessageListener<Record<string, unknown>>((raw) => {
     const type = raw?.type;
@@ -326,8 +316,7 @@ $effect(() => {
                 showHeader={false}
                 compactInput
                 {viewMode}
-                expandAncestors={false}
-                {revealedChangeId}
+                {revealedChangeIds}
                 onOpenResource={(state) => openResource(state)}
                 onDescriptionChange={(message) =>
                     post({ type: 'draft', payload: { root: focusedRoot, description: message } })}

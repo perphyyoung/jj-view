@@ -271,9 +271,10 @@ describe('Web SCM Components (SSR & Rendering)', () => {
             expect(html).toContain('Working Copy - qpv');
             expect(html).toContain('modified.ts');
 
-            // Ancestor group
+            // Ancestor group: only empty commits expand, so a non-empty one shows
+            // the header but not its file rows.
             expect(html).toContain('@-1: krs - feat: parent commit');
-            expect(html).toContain('parent-file.ts');
+            expect(html).not.toContain('parent-file.ts');
         });
 
         it('deduplicates conflicted paths so they do not appear in working copy group', () => {
