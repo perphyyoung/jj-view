@@ -6,13 +6,14 @@
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { test as baseTest, expect } from '@playwright/test';
 import { downloadAndUnzipVSCode, resolveCliPathFromVSCodeExecutablePath, SilentReporter } from '@vscode/test-electron';
 import { type ElectronApplication, _electron as electron, type Page } from 'playwright';
 import type * as vscodeType from 'vscode';
 import type { Api as ExtensionApi } from '../../vscode/extension';
-import { makeTestTmpDir, makeTestTmpDirAsync } from '../test-tmp-root';
+import { makeTestTmpDirAsync } from '../test-tmp-root';
 import { logPerf } from './perf-logger';
 import { VSCODE_TEST_VERSION } from './vscode-version';
 
@@ -499,7 +500,9 @@ export class VSCodeWorker {
             return;
         }
         const totalStart = Date.now();
-        const userDataDir = makeTestTmpDir('jj-view-test-user-data-');
+        // Outside the repository: the `empty` folder below would otherwise resolve
+        // `jj root` to this project and steal focus from the repository under test.
+        const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jj-view-e2e-user-data-'));
         const emptyFolderDir = path.join(userDataDir, 'empty');
         fs.mkdirSync(emptyFolderDir, { recursive: true });
 
@@ -572,7 +575,9 @@ export class VSCodeWorker {
         }
 
         const setupDirsStart = Date.now();
-        const userDataDir = makeTestTmpDir('jj-view-test-user-data-');
+        // Outside the repository: the `empty` folder below would otherwise resolve
+        // `jj root` to this project and steal focus from the repository under test.
+        const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jj-view-e2e-user-data-'));
 
         const emptyFolderDir = path.join(userDataDir, 'empty');
         fs.mkdirSync(emptyFolderDir, { recursive: true });
@@ -1133,8 +1138,14 @@ export class VSCodeFixtureImpl implements VSCodeFixture {
         const syncDetails = (await this.evaluate(async (vscode, api, targetPath) => {
             const start = Date.now();
             let focusedFoundStart = 0;
+            let lastFocusedRoot = '<none>';
+            let lastRefreshError = '<none>';
+            if (!api) {
+                throw new Error('jj-view extension returned no API: activate() failed or the extension is missing.');
+            }
             while (Date.now() - start < 15000) {
                 const focused = api.repositoryManager.focusedRepository;
+                lastFocusedRoot = focused?.rootUri.fsPath ?? '<none>';
                 if (typeof targetPath === 'string') {
                     // VS Code may normalize drive letters to lower case on Windows
                     // (e.g. `c:\Users\...` vs `C:\Users\...`), so compare normalized paths.
@@ -1204,12 +1215,17 @@ export class VSCodeFixtureImpl implements VSCodeFixture {
                                 };
                             }
                             // Otherwise, it might be a lock error. Let it loop and retry.
+                            lastRefreshError = msg;
                         }
                     }
                 }
                 await new Promise((resolve) => setTimeout(resolve, 10));
             }
-            throw new Error(`Timeout waiting for repository at ${targetPath} to be focused and refreshed.`);
+            throw new Error(
+                `Timeout waiting for repository at ${targetPath} to be focused and refreshed. ` +
+                    `repositories=[${api.repositoryManager.repositories.map((r) => r.rootUri.fsPath).join(' | ')}] ` +
+                    `focused=${lastFocusedRoot} lastRefreshError=${lastRefreshError}`,
+            );
         }, repo.path)) as {
             status: string;
             refreshDuration: number;
