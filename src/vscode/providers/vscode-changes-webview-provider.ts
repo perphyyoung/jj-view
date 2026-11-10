@@ -107,6 +107,9 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     private _pushSeq = 0;
     /** Roots whose repository summary was already requested by the Repositories view. */
     private readonly _summaryRoots = new Set<string>();
+    /** Bounded wait so a hung first scan never leaves the view on "Loading" forever. */
+    private _initialLoadTimedOut = false;
+    private _initialLoadTimer: ReturnType<typeof setTimeout> | undefined;
 
     constructor(
         private readonly _extensionUri: Uri,
@@ -193,6 +196,21 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 vscode.commands.registerCommand('jj-view.reposSort', (arg?: unknown) => this._pickRepoSort(arg)),
             );
         }
+
+        this._initialLoadTimer = setTimeout(() => {
+            this._initialLoadTimer = undefined;
+            this._initialLoadTimedOut = true;
+            this._postState();
+        }, 8000);
+    }
+
+    /** True until the initial repository scan settles (or the bounded wait expires). */
+    private _isReposLoading(): boolean {
+        return (
+            !this._initialLoadTimedOut &&
+            !this._repositoryManager.isInitialScanComplete &&
+            this._repositoryManager.repositories.length === 0
+        );
     }
 
     /**
@@ -296,6 +314,10 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
 
     public dispose(): void {
         this._disposed = true;
+        if (this._initialLoadTimer !== undefined) {
+            clearTimeout(this._initialLoadTimer);
+            this._initialLoadTimer = undefined;
+        }
         this._snapshotGuard.dispose();
         this._clearViewDisposables();
         for (const subscription of this._snapshotSubscriptions.values()) {
@@ -524,6 +546,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         snapshot: ChangesWireSnapshot | undefined;
         viewMode: 'list' | 'tree';
         revealChangeIds: string[];
+        reposLoading: boolean;
         seq: number;
     } {
         const rows = this._repositoryManager.repositories.map((repo) => {
@@ -554,6 +577,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
             snapshot: this._mode === 'changes' && focusedSnapshot ? toWireSnapshot(focusedSnapshot) : undefined,
             viewMode: this._viewMode,
             revealChangeIds,
+            reposLoading: this._isReposLoading(),
             // Lets the webview drop a state that arrives after a newer one. Provider-scoped,
             // so recreating an ScmModel cannot restart the counter and freeze the view.
             seq: ++this._pushSeq,

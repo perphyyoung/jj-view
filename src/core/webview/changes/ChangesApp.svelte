@@ -40,6 +40,8 @@ interface StatePayload {
     viewMode?: 'list' | 'tree';
     /** Change groups to expand for this push only (one shot). */
     revealChangeIds?: string[];
+    /** True while the first repository scan is still running. */
+    reposLoading?: boolean;
     /** Monotonic provider push sequence; older pushes are dropped. */
     seq?: number;
 }
@@ -83,6 +85,8 @@ let focusedRoot = $state<string | undefined>(undefined);
 let snapshot = $state<ScmSnapshot | undefined>(undefined);
 let viewMode = $state<'list' | 'tree'>('list');
 let openDiffOnClick = $state(true);
+// Starts true: the very first paint must not claim "no repositories" before the scan result.
+let reposLoading = $state(true);
 let contributionsLoaded = false;
 
 let contextMenu = $state<ContextMenuState>({ visible: false, x: 0, y: 0, groups: [] });
@@ -109,6 +113,7 @@ function applyState(payload: StatePayload): void {
     }
     lastSeq = Math.max(lastSeq, seq);
     repos = payload.repos ?? [];
+    reposLoading = payload.reposLoading ?? false;
     focusedRoot = payload.focusedRoot;
     snapshot = hydrate(payload.snapshot);
     viewMode = payload.viewMode ?? viewMode;
@@ -258,7 +263,11 @@ $effect(() => {
     </div>
 {:else if mode === 'repos'}
     <div class="repos-root" data-testid="jj-repos-root">
-        {#if repos.length === 0}
+        {#if reposLoading}
+            <div class="empty-state" data-testid="jj-repos-loading">
+                <p>Loading repositories…</p>
+            </div>
+        {:else if repos.length === 0}
             <div class="empty-state" data-testid="jj-repos-empty">
                 <p>No Jujutsu repositories detected.</p>
                 <p class="hint">Open a folder containing a <code>.jj</code> directory.</p>
@@ -298,7 +307,11 @@ $effect(() => {
     </div>
 {:else}
     <div class="changes-root" data-testid="jj-changes-root">
-        {#if !focusedRoot}
+        {#if reposLoading}
+            <div class="empty-state" data-testid="jj-changes-loading">
+                <p>Loading…</p>
+            </div>
+        {:else if !focusedRoot}
             <div class="empty-state" data-testid="jj-changes-empty">
                 <p>No repository selected.</p>
                 <p class="hint">Select a repository in the Repositories view.</p>

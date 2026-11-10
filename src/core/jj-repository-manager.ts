@@ -38,6 +38,8 @@ export class JjRepositoryManager implements HostDisposable {
     private readonly _pendingRepoRoots = new Map<string, Promise<string | undefined>>();
     private readonly _scanQueue = new CoalescingQueue(() => this.doScan());
     private _disposed = false;
+    /** True once the first scan finished, so the views can tell "loading" from "empty". */
+    private _initialScanComplete = false;
     private _normalizedWorkspaceFolders: string[] | undefined;
     private readonly _realNormalizedPathCache = new AsyncCache<string, string>({ maxEntries: 250 });
 
@@ -112,6 +114,11 @@ export class JjRepositoryManager implements HostDisposable {
 
     get repositories(): readonly JjRepository[] {
         return this._repositories;
+    }
+
+    /** Whether the initial repository discovery finished. */
+    get isInitialScanComplete(): boolean {
+        return this._initialScanComplete;
     }
 
     get focusedRepository(): JjRepository | undefined {
@@ -489,6 +496,7 @@ export class JjRepositoryManager implements HostDisposable {
             this.fireEvent(this._onDidOpenRepository, repo);
         }
 
+        this._initialScanComplete = true;
         this.fireEvent(this._onDidChangeRepositories, this._repositories);
         this._outputChannel.info(`[RepositoryManager] Total registered repositories: ${this._repositories.length}`);
 
