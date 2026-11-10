@@ -42,11 +42,18 @@ describe('Shell and Batch Scripts', () => {
             // The script copies to out folders
             try {
                 if (isWin) {
-                    await execFileAsync(
+                    // cmd.exe runs the batch file. `shell: true` with an args array is
+                    // deprecated by Node (DEP0190).
+                    await execFileAsync('cmd.exe', [
+                        '/d',
+                        '/s',
+                        '/c',
                         path.join(scriptsDir, 'batch-diff.bat'),
-                        [leftDir, rightDir, outLeftDir, outRightDir],
-                        { shell: true },
-                    );
+                        leftDir,
+                        rightDir,
+                        outLeftDir,
+                        outRightDir,
+                    ]);
                 } else {
                     await execFileAsync(path.join(scriptsDir, 'batch-diff.sh'), [
                         leftDir,
@@ -83,11 +90,18 @@ describe('Shell and Batch Scripts', () => {
 
             try {
                 if (isWin) {
-                    await execFileAsync(
+                    await execFileAsync('cmd.exe', [
+                        '/d',
+                        '/s',
+                        '/c',
                         path.join(scriptsDir, 'batch-edit.bat'),
-                        [leftDir, rightDir, src1, dest1, src2, dest2],
-                        { shell: true },
-                    );
+                        leftDir,
+                        rightDir,
+                        src1,
+                        dest1,
+                        src2,
+                        dest2,
+                    ]);
                 } else {
                     await execFileAsync(path.join(scriptsDir, 'batch-edit.sh'), [
                         leftDir,

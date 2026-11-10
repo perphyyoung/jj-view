@@ -70,9 +70,9 @@ const displayOffset = $derived(
     offsetPart || (isDivergent && changeIdOffset !== undefined ? String(changeIdOffset) : undefined),
 );
 
-let draftDescription = $state(description);
-let prevDescription = $state(description);
-let prevChangeId = $state(changeId);
+let draftDescription = $state(untrack(() => description));
+let prevDescription = $state(untrack(() => description));
+let prevChangeId = $state(untrack(() => changeId));
 let isSaving = $state(false);
 let isApplyingExtensionEdit = false;
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;

@@ -41,7 +41,13 @@ function formatFile(filePath, { ignoreUnmatched = false } = {}) {
         if (ignoreUnmatched) {
             args.push('--no-errors-on-unmatched');
         }
-        execFileSync(pnpmCmd, args, { stdio: 'inherit', shell: isWin });
+        // `shell: true` with an args array is deprecated by Node (DEP0190). cmd.exe runs
+        // the .cmd shim on Windows instead.
+        if (isWin) {
+            execFileSync('cmd.exe', ['/d', '/s', '/c', pnpmCmd, ...args], { stdio: 'inherit' });
+        } else {
+            execFileSync(pnpmCmd, args, { stdio: 'inherit' });
+        }
         console.log(`[build] Formatted ${filePath}`);
     } catch (e) {
         console.error(`[build] Failed to format ${filePath}: ${e.message}`);

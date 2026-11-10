@@ -3,6 +3,7 @@
   SPDX-License-Identifier: Apache-2.0
 -->
 <script lang="ts">
+import { untrack } from 'svelte';
 import {
     type CommitDetailsHostToWebviewMessage,
     CommitDetailsHostToWebviewMessageSchema,
@@ -40,7 +41,7 @@ function getInitialCommit(): CommitDetailsPayload | null {
     return null;
 }
 
-let detailsCommit = $state<CommitDetailsPayload | null>(initialCommit ?? getInitialCommit());
+let detailsCommit = $state<CommitDetailsPayload | null>(untrack(() => initialCommit ?? getInitialCommit()));
 
 $effect(() => {
     if (initialCommit) {
