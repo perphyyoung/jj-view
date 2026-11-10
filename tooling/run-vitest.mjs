@@ -4,7 +4,7 @@
  * The repo tier already has per-test timeouts, but a suite can still drag on for many
  * minutes. This wrapper stops the run at the deadline, kills the process tree (jj children
  * included) and reports that the suite was cut short, so a slow suite fails fast instead of
- * hanging. The files that did not finish are the ones missing a result in the verbose log.
+ * hanging. The files that did not finish are the ones without a dot in the reporter output.
  *
  * Usage: node tooling/run-vitest.mjs --timeout <ms> [vitest args...]
  */
@@ -67,7 +67,7 @@ child.on('exit', (code, signal) => {
         clearTimeout(timer);
     }
     if (timedOut) {
-        console.error('[TIMEOUT] The files without a result in the verbose output did not finish.');
+        console.error('[TIMEOUT] The files without a dot in the reporter output did not finish.');
         console.error('[TIMEOUT] Optimize them (fewer jj invocations, shared templates) instead of waiting.');
         process.exit(1);
     }
