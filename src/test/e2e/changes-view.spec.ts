@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Frame, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
@@ -474,6 +475,34 @@ test.describe('JJ View Container E2E', () => {
 
         expect(repo.getChangeId('@')).toBe(workingCopyAfterFirst);
         expect(repo.getChangeId('@-')).toBe(headAfterFirst);
+    });
+
+    test('Untracks a working-copy folder from the tree context menu', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('keep.txt', 'keep\n');
+        repo.writeFile('src/a.txt', 'a\n');
+        repo.writeFile('src/nested/b.txt', 'b\n');
+
+        const { page } = await vscode.openWorkspace(repo);
+        await vscode.executeCommand('jj-view.changesView.focus');
+        const frame = await getWebviewFrame(page, 'jj-changes-root');
+        await vscode.executeCommand('jj-view.changesAsTree');
+
+        const folder = frame.locator('[data-testid="scm-tree-folder-src"]');
+        await expect(folder).toBeVisible({ timeout: 5000 });
+        await folder.click({ button: 'right' });
+
+        const untrack = frame.locator('[data-testid="menu-item-jj-view.untrack"]');
+        await expect(untrack).toBeVisible({ timeout: 5000 });
+        await untrack.click();
+
+        await expect(frame.locator('.scm-resource-item', { hasText: 'a.txt' })).toHaveCount(0, { timeout: 5000 });
+        await expect(frame.locator('.scm-resource-item', { hasText: 'b.txt' })).toHaveCount(0, { timeout: 5000 });
+        expect(fs.readFileSync(path.join(repo.path, '.gitignore'), 'utf8')).toContain('/src/');
+
+        // Leave the shared window on the list layout for the other tests.
+        await vscode.executeCommand('jj-view.changesAsList');
     });
 
     test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {

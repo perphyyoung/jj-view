@@ -787,6 +787,15 @@ export class JjService {
         await this.run('restore', cmdArgs, { isMutation: true, label: 'restore' });
     }
 
+    /** Stops tracking the given paths. jj requires them to be ignored already. */
+    async fileUntrack(paths: string[]): Promise<void> {
+        if (paths.length === 0) {
+            return;
+        }
+        const relativePaths = paths.map((p) => this.toRelative(p));
+        await this.run('file', ['untrack', '--', ...relativePaths], { isMutation: true, label: 'untrack' });
+    }
+
     /**
      * Get the left (auto-merged parents) and right (revision) content for a file's diff.
      * Uses the bulk cache, warming it if necessary.

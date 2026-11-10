@@ -58,4 +58,5 @@ export enum ScmContextValue {
     ResourceAllowSquashIntoChild = 'jj.resource.allowSquashIntoChild',
     ResourceAllowSplitCommit = 'jj.resource.allowSplitCommit',
     ResourceAllowOpen = 'jj.resource.allowOpen',
+    ResourceAllowUntrack = 'jj.resource.allowUntrack',
 }

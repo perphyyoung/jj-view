@@ -44,6 +44,7 @@ import {
 } from '../core/commands/squash-revision';
 import { squashHunkIntoParentCommand, squashSelectionIntoParentCommand } from '../core/commands/squash-selection';
 import { undoCommand } from '../core/commands/undo';
+import { untrackCommand } from '../core/commands/untrack';
 import { uploadCommand } from '../core/commands/upload';
 import { uploadStackCommand } from '../core/commands/upload-stack';
 import { viewFileAtRevisionCommand } from '../core/commands/view-file-at-revision';
@@ -96,6 +97,7 @@ import {
     createSquashHunkIntoParentPayload,
     createSquashSelectionIntoParentPayload,
 } from './payloads/squash-selection.payload';
+import { createUntrackPayload } from './payloads/untrack.payload';
 import { createUploadPayload, createUploadStackPayload } from './payloads/upload.payload';
 import { createViewFileAtRevisionPayload } from './payloads/view-file-at-revision.payload';
 import { createWorkspaceDeletePayload } from './payloads/workspace-delete.payload';
@@ -286,6 +288,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     context.subscriptions.push(
         registerCommandWithPayload('jj-view.abandon', createAbandonPayload, abandonCommand),
         registerCommandWithPayload('jj-view.restore', createRestorePayload, restoreCommand),
+        registerCommandWithPayload('jj-view.untrack', createUntrackPayload, untrackCommand),
         registerCommandWithPayload(
             'jj-view.squashRevisionIntoParent',
             createSquashRevisionIntoParentPayload,

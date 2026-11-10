@@ -6,7 +6,7 @@
 import type { JjResourceState } from '../../../scm-resource-state';
 import type { IContextKeyService } from '../menu/context-key-service';
 import type { MenuRegistry } from '../menu/menu-registry';
-import type { FileTreeFolderNode, FileTreeNode } from './file-tree';
+import { collectFilePaths, type FileTreeNode } from './file-tree';
 import ScmResourceItem from './ScmResourceItem.svelte';
 import Self from './ScmTreeItem.svelte';
 
@@ -44,6 +44,25 @@ const itemContext = $derived(
         : undefined,
 );
 
+/** Folders carry their file list so the host can untrack the whole subtree in one call. */
+const folderVsCodeContext = $derived.by(() => {
+    if (node.type !== 'folder' || context.get<string>('scmResourceGroupId') !== 'working-copy') {
+        return undefined;
+    }
+    const paths = collectFilePaths(node);
+    if (paths.length === 0) {
+        return undefined;
+    }
+    return JSON.stringify({
+        menuId: 'jvl/resourceState/context',
+        scmResourceState: 'jj.resource.allowUntrack',
+        scmResourceGroupId: 'working-copy',
+        preventDefaultContextMenuItems: true,
+        paths,
+        folder: node.path,
+    });
+});
+
 function toggle(): void {
     expanded = !expanded;
 }
@@ -53,6 +72,7 @@ function toggle(): void {
     <div
         class="tree-folder"
         data-testid={`scm-tree-folder-${node.path}`}
+        data-vscode-context={folderVsCodeContext}
         role="button"
         tabindex="0"
         style:padding-left={`${depth * 10 + 8}px`}

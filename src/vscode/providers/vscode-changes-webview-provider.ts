@@ -65,6 +65,10 @@ type HostMessage =
               command: string;
               state?: ChangesWireResourceState;
               groupId?: string;
+              /** Tree folder: untrack every file under this repository-relative folder. */
+              paths?: string[];
+              /** Tree folder path, ignored as a whole so future files stay untracked. */
+              folder?: string;
           };
       }
     | { type: 'commit'; payload: { root: string; description: string } }
@@ -634,8 +638,8 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 return;
             }
             case 'action': {
-                const { root, command, state, groupId } = message.payload;
-                const args = this._buildCommandArguments(root, state, groupId);
+                const { root, command, state, groupId, paths, folder } = message.payload;
+                const args = this._buildCommandArguments(root, state, groupId, paths, folder);
                 if (args === undefined) {
                     return;
                 }
@@ -692,7 +696,13 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         root: string,
         state: ChangesWireResourceState | undefined,
         groupId: string | undefined,
+        paths?: string[],
+        folder?: string,
     ): unknown[] | undefined {
+        if (paths && paths.length > 0) {
+            // Carries `root` so the command resolves the focused repository, not the editor.
+            return [{ root, paths, ...(folder ? { folder } : {}) }];
+        }
         if (groupId) {
             const group = this._buildResourceGroup(root, groupId);
             return group ? [group] : undefined;

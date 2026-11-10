@@ -32,6 +32,14 @@ export function getResourceRelativePath(state: JjResourceState, workspaceRoot?: 
     return fullPath;
 }
 
+/** Repository-relative paths of every file below `node`. */
+export function collectFilePaths(node: FileTreeNode): string[] {
+    if (node.type === 'file') {
+        return [getResourceRelativePath(node.state)];
+    }
+    return node.children.flatMap(collectFilePaths);
+}
+
 function sortChildren(children: FileTreeNode[]): void {
     children.sort((a, b) => {
         if (a.type !== b.type) {

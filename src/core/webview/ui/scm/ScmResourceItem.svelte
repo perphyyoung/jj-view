@@ -88,6 +88,7 @@ const vscodeContext = $derived(
     JSON.stringify({
         menuId: 'jvl/resourceState/context',
         scmResourceState: resourceState.contextValue || '',
+        scmResourceGroupId: context.get<string>('scmResourceGroupId') ?? '',
         resourceFilename: fileName,
         resourceScheme: resourceState.resourceUri.scheme,
         preventDefaultContextMenuItems: true,

@@ -86,6 +86,7 @@ const workingCopyItems: JjResourceState[] = $derived(
                 openDiffOnClick,
                 hasChild: snapshot?.hasChild,
                 workingCopyChangeId: currentChangeId,
+                allowUntrack: true,
             }),
         ),
 );

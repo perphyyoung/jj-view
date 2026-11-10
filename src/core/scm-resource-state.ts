@@ -42,6 +42,8 @@ export function createJjResourceState(
         openDiffOnClick?: boolean;
         hasChild?: boolean;
         inConflictGroup?: boolean;
+        /** Working-copy entries only: `jj file untrack` can stop tracking this path. */
+        allowUntrack?: boolean;
     } = {},
 ): JjResourceState {
     const isCurrentWorkingCopy = isWorkingCopyRevision(revision, options.workingCopyChangeId);
@@ -72,6 +74,9 @@ export function createJjResourceState(
     flags.push(ScmContextValue.ResourceAllowRestore);
 
     flags.push(ScmContextValue.ResourceAllowOpen);
+    if (options.allowUntrack) {
+        flags.push(ScmContextValue.ResourceAllowUntrack);
+    }
     if (options.squashable) {
         flags.push(ScmContextValue.ResourceAllowSquashIntoParent);
         // Splitting rewrites the owning commit, so it needs the same mutability as squashing.

@@ -197,6 +197,20 @@ function dispatchAction(command: string, payload?: unknown): void {
         return;
     }
 
+    // Tree folders carry their file list instead of a single resource state.
+    const paths =
+        typeof target === 'object' && target !== null && Array.isArray((target as { paths?: unknown }).paths)
+            ? (target as { paths: unknown[] }).paths.filter((p): p is string => typeof p === 'string' && p.length > 0)
+            : undefined;
+    const folder =
+        typeof target === 'object' && target !== null && typeof (target as { folder?: unknown }).folder === 'string'
+            ? (target as { folder: string }).folder
+            : undefined;
+    if (paths && paths.length > 0) {
+        post({ type: 'action', payload: { root: focusedRoot, command, paths, ...(folder ? { folder } : {}) } });
+        return;
+    }
+
     const groupId =
         typeof target === 'object' && target !== null
             ? ((target as { scmResourceGroupId?: string }).scmResourceGroupId ??

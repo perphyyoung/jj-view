@@ -3,7 +3,7 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.3.37",
+    "version": "3.3.38",
     "packageManager": "pnpm@12.18.0",
     "license": "Apache-2.0",
     "author": "perphyyoung",
@@ -535,6 +535,12 @@
                 "icon": "$(diff-multiple)"
             },
             {
+                "command": "jj-view.untrack",
+                "title": "Untrack",
+                "category": "JJ View Local",
+                "icon": "$(circle-slash)"
+            },
+            {
                 "command": "jj-view.workspaceAdd",
                 "title": "Add Workspace",
                 "category": "JJ View Local",
@@ -883,6 +889,11 @@
                     "command": "jj-view.restore",
                     "group": "inline@2",
                     "when": "scmResourceState =~ /\\bjj\\.resource\\.allowRestore\\b/"
+                },
+                {
+                    "command": "jj-view.untrack",
+                    "group": "2_modify@1",
+                    "when": "scmResourceGroupId == 'working-copy' && scmResourceState =~ /\\bjj\\.resource\\.allowUntrack\\b/"
                 },
                 {
                     "command": "jj-view.squashFilesIntoAncestor",
