@@ -65,6 +65,12 @@ export class VsCodeScmProvider implements vscode.Disposable {
         public readonly editProvider?: VsCodeEditFsProvider,
         public readonly isFocused: () => boolean = () => true,
         scmModel?: ScmModel,
+        /**
+         * Builds the first snapshot right away. Non-focused repositories skip it: the
+         * Repositories view requests their summaries once it becomes visible, which keeps
+         * activation from spawning a jj process per repository at once.
+         */
+        initialRefresh = true,
     ) {
         this.scmModel = scmModel ?? new ScmModel(repo, outputChannel);
         this.disposables.push(this.scmModel);
@@ -107,14 +113,16 @@ export class VsCodeScmProvider implements vscode.Disposable {
             }),
         );
 
-        // Initial refresh
-        this.refresh({ forceSnapshot: true, reason: 'initialization' }).catch((err) => {
-            try {
-                this.outputChannel.error(`[VsCodeScmProvider] Initial refresh failed: ${err}`);
-            } catch {
-                // Ignore channel closed errors
-            }
-        });
+        // Initial refresh. Only the focused repository forces a snapshot during activation.
+        if (initialRefresh) {
+            this.refresh({ forceSnapshot: this.isFocused(), reason: 'initialization' }).catch((err) => {
+                try {
+                    this.outputChannel.error(`[VsCodeScmProvider] Initial refresh failed: ${err}`);
+                } catch {
+                    // Ignore channel closed errors
+                }
+            });
+        }
     }
 
     public async refresh(options: { forceSnapshot?: boolean; reason?: string } = {}): Promise<void> {

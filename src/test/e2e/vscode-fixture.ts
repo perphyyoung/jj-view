@@ -69,6 +69,10 @@ export const DEFAULT_SETTINGS: Record<string, unknown> = {
     'jj-view.fileWatcherMode': 'watch',
     'jj-view.minChangeIdLength': 3,
     'jj-view.detectSubRepositories': false,
+    // Test workspaces live under `<project>/tmp`, which is inside the extension's own jj
+    // repository. Without this, `jj root` walks up from the test folder and registers the
+    // project repo as an extra ancestor repository.
+    'jj-view.ignoredRepositories': [process.cwd()],
     'telemetry.telemetryLevel': 'off',
     'update.mode': 'none',
     'extensions.autoCheckUpdates': false,

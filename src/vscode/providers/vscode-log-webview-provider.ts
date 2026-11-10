@@ -45,6 +45,11 @@ export class VsCodeLogWebviewProvider implements vscode.WebviewViewProvider, vsc
         return this.controller.repository;
     }
 
+    /** Whether the log view is on screen. Hidden views do not query jj. */
+    public get isVisible(): boolean {
+        return this._view?.visible === true;
+    }
+
     public async updateRepository(repo: JjRepository | undefined): Promise<void> {
         this.controller.repository = repo;
         this._updateTitle();
@@ -89,15 +94,34 @@ export class VsCodeLogWebviewProvider implements vscode.WebviewViewProvider, vsc
             webviewView.onDidChangeVisibility(() => {
                 if (webviewView.visible) {
                     this.controller.setCommits(this.controller.commits);
-                    this.controller.refresh('becameVisible').catch((e) => {
-                        this.outputChannel?.error(`[VsCodeLogWebviewProvider] Visibility refresh error: ${e}`);
-                    });
+                    void this._refreshIfStale('becameVisible');
                 }
             }),
             webviewView.webview.onDidReceiveMessage(async (message: unknown) => {
                 return await this.controller.handleMessage(message);
             }),
         );
+    }
+
+    /**
+     * Refreshes only when the repository moved since the last query. Hidden views skip the
+     * status-change refreshes, so this reconciles them cheaply (one op_heads listing) instead
+     * of re-running `jj log` unconditionally.
+     */
+    private async _refreshIfStale(reason: string): Promise<void> {
+        const repo = this.controller.repository;
+        if (!repo) {
+            return;
+        }
+        try {
+            const version = await repo.getOpHeadsVersion();
+            if (version && version === this.controller.commitsVersion) {
+                return;
+            }
+            await this.controller.refresh(reason);
+        } catch (e) {
+            this.outputChannel?.error(`[VsCodeLogWebviewProvider] Visibility refresh error: ${e}`);
+        }
     }
 
     private _clearViewDisposables(): void {

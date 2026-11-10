@@ -25,6 +25,7 @@ import type { ScmSnapshot } from '../../core/scm-model';
 import { createJjResourceState, type JjResourceState } from '../../core/scm-resource-state';
 import type { Uri } from '../../core/uri-utils';
 import type { LoggerChannel } from '../../utils/output-channel';
+import { runWithConcurrency } from '../../utils/run-with-concurrency';
 import { getWebviewHtml } from '../vscode-webview-html';
 import type { VsCodeScmProvider } from './vscode-scm-provider';
 
@@ -99,7 +100,13 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     });
 
     private static readonly VIEW_MODE_KEY = 'jj-view.changesViewMode';
-    private static readonly REPO_SORT_KEY = 'jj-view.reposSortBy';
+
+    /** Session-only ordering: no persistence, so a reload starts from the default. */
+    private _repoSortKey: RepoSortKey = DEFAULT_REPO_SORT;
+    /** Monotonic push sequence; survives ScmModel instances, unlike the snapshot revision. */
+    private _pushSeq = 0;
+    /** Roots whose repository summary was already requested by the Repositories view. */
+    private readonly _summaryRoots = new Set<string>();
 
     constructor(
         private readonly _extensionUri: Uri,
@@ -205,14 +212,6 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         this._postState();
     }
 
-    private get _repoSortKey(): RepoSortKey {
-        const stored = this._context.globalState.get<string>(
-            VsCodeChangesWebviewProvider.REPO_SORT_KEY,
-            DEFAULT_REPO_SORT,
-        );
-        return isRepoSortKey(stored) ? stored : DEFAULT_REPO_SORT;
-    }
-
     /**
      * Repositories title-bar action: pick how the rows are ordered. An explicit key is
      * accepted so the same command works from the palette and from tests.
@@ -236,7 +235,8 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     }
 
     private _setRepoSort(key: RepoSortKey): void {
-        void this._context.globalState.update(VsCodeChangesWebviewProvider.REPO_SORT_KEY, key);
+        this._repoSortKey = key;
+        this._updateTitle();
         this._postState();
     }
 
@@ -396,6 +396,50 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
             },
         });
         this._ensureFocusedSnapshot();
+        this._ensureRepoSummaries();
+    }
+
+    /**
+     * The Repositories view needs one snapshot per repository for its counts. Load them only
+     * after that view resolves, two at a time: refreshing every repository during activation
+     * made the extension host compete for the jj working-copy lock.
+     */
+    private _ensureRepoSummaries(): void {
+        if (this._mode !== 'repos') {
+            return;
+        }
+        const current = new Set(this._repositoryManager.repositories.map((repo) => repo.rootUri.fsPath));
+        for (const root of this._summaryRoots) {
+            if (!current.has(root)) {
+                this._summaryRoots.delete(root);
+            }
+        }
+        const pending = this._repositoryManager.repositories.filter(
+            (repo) => !this._summaryRoots.has(repo.rootUri.fsPath),
+        );
+        if (pending.length === 0) {
+            return;
+        }
+        for (const repo of pending) {
+            this._summaryRoots.add(repo.rootUri.fsPath);
+        }
+        void runWithConcurrency(pending, 2, async (repo) => {
+            const root = repo.rootUri.fsPath;
+            const scm = this._scmProviders.get(root) ?? this._ensureScmProvider?.(repo);
+            if (!scm) {
+                this._summaryRoots.delete(root);
+                return;
+            }
+            try {
+                await scm.refresh({ forceSnapshot: false, reason: 'repos view summaries' });
+            } catch (err) {
+                this._summaryRoots.delete(root);
+                this._outputChannel?.error(
+                    `[ReposView] Summary refresh failed for ${root}`,
+                    err instanceof Error ? err : new Error(String(err)),
+                );
+            }
+        });
     }
 
     /**
@@ -464,11 +508,12 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         // subscribed, so snapshot events would not reach the webview.
         this._syncSnapshotSubscriptions();
         this._requestFocusedSnapshot();
+        this._ensureRepoSummaries();
         this._updateTitle();
         const payload = this._statePayload();
         this._post({ type: 'state', payload });
         this._outputChannel?.info?.(
-            `[Changes] push ${this._mode} epoch=${payload.revision} version=${payload.snapshot?.version?.slice(0, 8) ?? '-'} wc=${payload.snapshot?.workingCopyCount ?? '-'} ancestors=${payload.snapshot?.ancestors.length ?? '-'} first=${payload.snapshot?.ancestors[0]?.entry.change_id ?? '-'}`,
+            `[Changes] push ${this._mode} seq=${payload.seq} version=${payload.snapshot?.version?.slice(0, 8) ?? '-'} wc=${payload.snapshot?.workingCopyCount ?? '-'} ancestors=${payload.snapshot?.ancestors.length ?? '-'} first=${payload.snapshot?.ancestors[0]?.entry.change_id ?? '-'}`,
         );
         this._verifyConsistency();
     }
@@ -479,7 +524,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         snapshot: ChangesWireSnapshot | undefined;
         viewMode: 'list' | 'tree';
         revealChangeIds: string[];
-        revision: number;
+        seq: number;
     } {
         const rows = this._repositoryManager.repositories.map((repo) => {
             const root = repo.rootUri.fsPath;
@@ -492,10 +537,9 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 changeCount: snapshot ? snapshot.workingCopyCount : undefined,
                 conflictCount: snapshot ? snapshot.conflictedPaths.length : 0,
                 lastCommitAt: snapshot?.currentEntry?.committer.timestamp,
-                lastUsedAt: this._repositoryManager.getLastUsedAt(root),
             };
         });
-        const repos = sortRepos(rows, this._repoSortKey).map(({ lastUsedAt: _unused, ...row }) => row);
+        const repos = sortRepos(rows, this._repoSortKey);
 
         const focusedRoot = this._repositoryManager.focusedRepository?.rootUri.fsPath;
         const focusedSnapshot = focusedRoot ? this._scmProviders.get(focusedRoot)?.scmModel.snapshot : undefined;
@@ -510,8 +554,9 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
             snapshot: this._mode === 'changes' && focusedSnapshot ? toWireSnapshot(focusedSnapshot) : undefined,
             viewMode: this._viewMode,
             revealChangeIds,
-            // Lets the webview drop a state that arrives after a newer one.
-            revision: focusedSnapshot?.revision ?? 0,
+            // Lets the webview drop a state that arrives after a newer one. Provider-scoped,
+            // so recreating an ScmModel cannot restart the counter and freeze the view.
+            seq: ++this._pushSeq,
         };
     }
 

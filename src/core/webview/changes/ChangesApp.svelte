@@ -40,8 +40,8 @@ interface StatePayload {
     viewMode?: 'list' | 'tree';
     /** Change groups to expand for this push only (one shot). */
     revealChangeIds?: string[];
-    /** Monotonic snapshot revision; older pushes are dropped. */
-    revision?: number;
+    /** Monotonic provider push sequence; older pushes are dropped. */
+    seq?: number;
 }
 
 interface InitPayload extends StatePayload {
@@ -94,7 +94,7 @@ function hydrate(wire: WireSnapshot | undefined): ScmSnapshot | undefined {
     return { ...(wire as unknown as ScmSnapshot), workingCopyStatuses: new Map() };
 }
 
-let lastRevision = 0;
+let lastSeq = 0;
 /**
  * Change groups expanded by the latest push only. Each state push overwrites this list,
  * so a split reveals its groups once and later refreshes do not keep re-expanding them.
@@ -102,17 +102,12 @@ let lastRevision = 0;
 let revealedChangeIds = $state<string[]>([]);
 
 function applyState(payload: StatePayload): void {
-    // Revisions are per repository snapshot, so they restart when the view switches to
-    // another repository; comparing across that boundary would drop every later state.
-    if (payload.focusedRoot !== focusedRoot) {
-        lastRevision = 0;
-    }
-    const revision = payload.revision ?? 0;
-    if (revision > 0 && revision < lastRevision) {
+    const seq = payload.seq ?? 0;
+    if (seq > 0 && seq < lastSeq) {
         // A slower refresh finished after a newer one; keep the newer UI.
         return;
     }
-    lastRevision = Math.max(lastRevision, revision);
+    lastSeq = Math.max(lastSeq, seq);
     repos = payload.repos ?? [];
     focusedRoot = payload.focusedRoot;
     snapshot = hydrate(payload.snapshot);
@@ -291,7 +286,9 @@ $effect(() => {
                                 {repo.conflictCount}
                             </span>
                         {/if}
-                        {#if (repo.changeCount ?? 0) > 0}
+                        {#if repo.changeCount === undefined}
+                            <span class="badge badge-pending" aria-hidden="true"></span>
+                        {:else if repo.changeCount > 0}
                             <span class="badge" title={`${repo.changeCount} changes`}>{repo.changeCount}</span>
                         {/if}
                     </div>
@@ -416,6 +413,14 @@ $effect(() => {
 .badge-conflict {
     background-color: var(--vscode-editorWarning-foreground, #cca700);
     color: var(--vscode-editor-background, #000);
+}
+
+/* Same footprint as a count badge, so the row does not resize when the count arrives. */
+.badge-pending {
+    width: 18px;
+    height: 10px;
+    padding: 0;
+    opacity: 0.35;
 }
 
 .changes-root :global(.scm-pane) {

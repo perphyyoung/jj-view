@@ -345,7 +345,7 @@ test.describe('JJ View Container E2E', () => {
         await expect.poll(() => rows.count(), { timeout: 5000 }).toBe(2);
 
         const header = page.locator('.pane-header', { hasText: 'Repositories' }).first();
-        await expect(header).toContainText('Workspace', { timeout: 5000 });
+        await expect(header).toContainText('Name A→Z', { timeout: 5000 });
 
         // Two changes in alpha, none in beta.
         await vscode.executeCommand('jj-view.reposSort', 'changeCount');
@@ -356,7 +356,7 @@ test.describe('JJ View Container E2E', () => {
         await expect(rows.first()).toContainText('beta');
 
         // Leave the shared window on the default ordering for the other tests.
-        await vscode.executeCommand('jj-view.reposSort', 'workspace');
+        await vscode.executeCommand('jj-view.reposSort', 'name');
         await expect(rows.first()).toContainText('alpha');
     });
 

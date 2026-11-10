@@ -320,16 +320,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
             editFileSystemProvider,
             () => repositoryManager.focusedRepository?.rootUri.fsPath === repo.rootUri.fsPath,
             undefined,
+            // Non-focused repositories are refreshed on demand by the Repositories view.
+            repositoryManager.focusedRepository?.rootUri.fsPath === repo.rootUri.fsPath,
         );
 
         const decorationProvider = vscode.window.registerFileDecorationProvider(scmProvider.decorationProvider);
         const repoStatusSub = repo.onDidStatusChange((event) => {
             if (repositoryManager.focusedRepository?.rootUri.fsPath === repo.rootUri.fsPath) {
-                // Refresh webview and commit details panel in parallel
-                Promise.all([
-                    logWebviewProvider.controller.refresh(event.reason),
-                    commitDetailsProvider.refresh(),
-                ]).catch((err) => {
+                // Refresh the log only while it is visible; a hidden view reconciles its
+                // version when it becomes visible again instead of spawning jj in the
+                // background on every status change.
+                const jobs: Promise<unknown>[] = [commitDetailsProvider.refresh()];
+                if (logWebviewProvider.isVisible) {
+                    jobs.push(logWebviewProvider.controller.refresh(event.reason));
+                }
+                Promise.all(jobs).catch((err) => {
                     outputChannel.error('[Extension] Failed to refresh views on status change', toError(err));
                 });
             }
@@ -487,7 +492,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
 
     // Activation barrier: after a VSIX upgrade the views can resolve before the watchers are
     // ready, and the first snapshot would then miss later operations. Wait for the watchers,
-    // then force one version-checked snapshot per restored repository.
+    // then force one version-checked snapshot for the focused repository only. Refreshing
+    // every repository here spawned one jj process per repository before the user even
+    // opened a view; the Repositories view loads the remaining summaries on demand.
     void (async () => {
         for (const repo of repositoryManager.repositories) {
             try {
@@ -496,15 +503,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
                 outputChannel.error('[Extension] Watcher readiness check failed', toError(err));
             }
         }
-        await Promise.all(
-            repositoryManager.repositories.map(async (repo) => {
-                try {
-                    await repo.refresh({ forceSnapshot: true, checkVersion: true, reason: 'activation barrier' });
-                } catch (err: unknown) {
-                    outputChannel.error('[Extension] Activation refresh failed', toError(err));
-                }
-            }),
-        );
+        const focused = repositoryManager.focusedRepository;
+        if (!focused) {
+            return;
+        }
+        try {
+            await focused.refresh({ forceSnapshot: true, checkVersion: true, reason: 'activation barrier' });
+        } catch (err: unknown) {
+            outputChannel.error('[Extension] Activation refresh failed', toError(err));
+        }
     })();
 
     // Trigger initial scan (non-blocking)

@@ -29,8 +29,6 @@ interface DetectedRepoInfo {
 export class JjRepositoryManager implements HostDisposable {
     private _repositories: JjRepository[] = [];
     private _focusedRepository: JjRepository | undefined;
-    /** Epoch ms of the last focus per normalized root, used by the "Recently Used" sort. */
-    private readonly _lastUsedAt = new Map<string, number>();
     private _binaryPath: string | undefined;
     private _disposables: HostDisposable[] = [];
     private readonly _dirToRepoRoot = new LruCache<string, string | null>({ maxEntries: 500 });
@@ -120,11 +118,6 @@ export class JjRepositoryManager implements HostDisposable {
         return this._focusedRepository;
     }
 
-    /** Epoch ms of the last time the repository was focused, or `undefined` if never. */
-    getLastUsedAt(rootPath: string): number | undefined {
-        return this._lastUsedAt.get(this.normalizePath(rootPath));
-    }
-
     get workspaceState(): HostStorage {
         return this._host.storage;
     }
@@ -186,10 +179,6 @@ export class JjRepositoryManager implements HostDisposable {
         }
 
         this._focusedRepository = repo;
-        if (repo) {
-            // Feeds the "Recently Used" ordering in the Repositories view.
-            this._lastUsedAt.set(this.normalizePath(repo.rootUri.fsPath), Date.now());
-        }
         this._outputChannel.info(`[RepositoryManager] Focused repository: ${repo?.rootUri.fsPath ?? 'none'}`);
         this.fireEvent(this._onDidChangeFocusedRepository, repo);
         this.syncRepositoryFocus();
