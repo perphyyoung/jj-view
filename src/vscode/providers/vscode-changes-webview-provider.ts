@@ -20,8 +20,7 @@ import {
     type RepoSortKey,
     sortRepos,
 } from '../../core/repos/sort-repos';
-import { StateCoordinator, type VerifiableState } from '../../core/repos/state-coordinator';
-import type { ScmSnapshot } from '../../core/scm-model';
+import type { ScmModel, ScmSnapshot } from '../../core/scm-model';
 import { createJjResourceState, type JjResourceState } from '../../core/scm-resource-state';
 import type { Uri } from '../../core/uri-utils';
 import type { LoggerChannel } from '../../utils/output-channel';
@@ -91,17 +90,16 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     private _revealChangeIds: string[] = [];
     private readonly _disposables: vscode.Disposable[] = [];
     private _viewDisposables: vscode.Disposable[] = [];
-    private readonly _snapshotSubscriptions = new Map<string, { dispose(): void }>();
+    /**
+     * Snapshot subscriptions carry the model they belong to. A provider can be recreated for
+     * the same root, and a subscription kept for the old model would silently never fire.
+     */
+    private readonly _snapshotSubscriptions = new Map<string, { model: ScmModel; subscription: { dispose(): void } }>();
     private readonly _snapshotGuard: FocusedSnapshotGuard;
-    private readonly _stateCoordinator = new StateCoordinator({
-        onError: (message: string, error?: unknown) => {
-            if (error) {
-                this._outputChannel?.error(message, error instanceof Error ? error : new Error(String(error)));
-            } else {
-                this._outputChannel?.info?.(message);
-            }
-        },
-    });
+    /** Last state pushed to the webview, used by the visible-view recovery timer. */
+    private _lastPushedRoot: string | undefined;
+    private _lastPushedVersion: string | undefined;
+    private _viewMissingLogged = false;
 
     private static readonly VIEW_MODE_KEY = 'jj-view.changesViewMode';
 
@@ -114,6 +112,8 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     /** Bounded wait so a hung first scan never leaves the view on "Loading" forever. */
     private _initialLoadTimedOut = false;
     private _initialLoadTimer: ReturnType<typeof setTimeout> | undefined;
+    /** Repairs snapshots that a missed change event left behind while the view is visible. */
+    private _consistencyTimer: ReturnType<typeof setInterval> | undefined;
 
     constructor(
         private readonly _extensionUri: Uri,
@@ -206,6 +206,23 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
             this._initialLoadTimedOut = true;
             this._postState();
         }, 8000);
+
+        // Recovery net for the Changes view: if an event or the subscription was lost, rebuild
+        // the binding and push the focused snapshot. The version check keeps an idle view from
+        // re-rendering every 5 seconds.
+        if (this._mode === 'changes') {
+            this._consistencyTimer = setInterval(() => {
+                if (this._disposed || !this._view?.visible) {
+                    return;
+                }
+                this._syncSnapshotSubscriptions();
+                const root = this._repositoryManager.focusedRepository?.rootUri.fsPath;
+                const version = root ? this._scmProviders.get(root)?.scmModel.snapshot?.version : undefined;
+                if (root !== this._lastPushedRoot || version !== this._lastPushedVersion) {
+                    this._postState();
+                }
+            }, 5000);
+        }
     }
 
     /** True until the initial repository scan settles (or the bounded wait expires). */
@@ -275,6 +292,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     public resolveWebviewView(webviewView: vscode.WebviewView): void {
         this._clearViewDisposables();
         this._view = webviewView;
+        this._viewMissingLogged = false;
         this._updateTitle();
 
         webviewView.webview.options = {
@@ -322,10 +340,14 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
             clearTimeout(this._initialLoadTimer);
             this._initialLoadTimer = undefined;
         }
+        if (this._consistencyTimer !== undefined) {
+            clearInterval(this._consistencyTimer);
+            this._consistencyTimer = undefined;
+        }
         this._snapshotGuard.dispose();
         this._clearViewDisposables();
-        for (const subscription of this._snapshotSubscriptions.values()) {
-            subscription.dispose();
+        for (const entry of this._snapshotSubscriptions.values()) {
+            entry.subscription.dispose();
         }
         this._snapshotSubscriptions.clear();
         for (const disposable of this._disposables) {
@@ -387,24 +409,42 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 continue;
             }
             alive.add(root);
-            if (this._snapshotSubscriptions.has(root)) {
-                continue;
-            }
 
-            const scm = this._scmProviders.get(root) ?? this._ensureScmProvider?.(repo);
-            if (!scm) {
-                continue;
-            }
+            try {
+                const scm = this._scmProviders.get(root) ?? this._ensureScmProvider?.(repo);
+                if (!scm) {
+                    this._outputChannel?.info?.(
+                        `[ChangesView] No SCM provider for ${root}; will retry on the next sync`,
+                    );
+                    continue;
+                }
 
-            const subscription = scm.scmModel.onDidChangeSnapshot(() => {
-                this._guard('post state', () => this._postState());
-            });
-            this._snapshotSubscriptions.set(root, subscription);
+                const existing = this._snapshotSubscriptions.get(root);
+                if (existing?.model === scm.scmModel) {
+                    continue;
+                }
+                if (existing) {
+                    // The provider was rebuilt for this root: the old subscription can never fire.
+                    existing.subscription.dispose();
+                    this._snapshotSubscriptions.delete(root);
+                    this._outputChannel?.info?.(`[ChangesView] Rebinding snapshot subscription for ${root}`);
+                }
+
+                const subscription = scm.scmModel.onDidChangeSnapshot(() => {
+                    this._guard('post state', () => this._postState());
+                });
+                this._snapshotSubscriptions.set(root, { model: scm.scmModel, subscription });
+            } catch (error: unknown) {
+                this._outputChannel?.error(
+                    `[ChangesView] Failed to subscribe to ${root}`,
+                    error instanceof Error ? error : new Error(String(error)),
+                );
+            }
         }
 
-        for (const [root, subscription] of this._snapshotSubscriptions) {
+        for (const [root, entry] of this._snapshotSubscriptions) {
             if (!alive.has(root)) {
-                subscription.dispose();
+                entry.subscription.dispose();
                 this._snapshotSubscriptions.delete(root);
             }
         }
@@ -502,32 +542,17 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         this._snapshotGuard.run();
     }
 
-    /**
-     * Verifies that the data behind each view matches the repository truth and repairs the
-     * stale side. Runs from `_postState`, so it does not depend on a view being visible.
-     */
-    private _verifyConsistency(): void {
-        const repos = this._repositoryManager.repositories;
-        const targets = this._mode === 'changes' ? repos.filter((repo) => repo.isFocused) : repos;
-        const verifiable: VerifiableState[] = targets.map((repo) => ({
-            root: repo.rootUri.fsPath,
-            truth: () => repo.getOpHeadsVersion(),
-            snapshotVersion: () => this._scmProviders.get(repo.rootUri.fsPath)?.scmModel.publishedVersion,
-            repairSnapshot: async () => {
-                const scm = this._scmProviders.get(repo.rootUri.fsPath) ?? this._ensureScmProvider?.(repo);
-                await scm?.refresh({ forceSnapshot: true, reason: 'consistency repair' });
-            },
-        }));
-        void this._stateCoordinator.verifyAndRepair(verifiable, `${this._mode} view`).catch((error: unknown) => {
-            this._outputChannel?.error(
-                '[Consistency] Verification failed',
-                error instanceof Error ? error : new Error(String(error)),
-            );
-        });
-    }
-
     private _postState(): void {
-        if (this._disposed || !this._view) {
+        if (this._disposed) {
+            return;
+        }
+        if (!this._view) {
+            if (!this._viewMissingLogged) {
+                this._viewMissingLogged = true;
+                this._outputChannel?.info?.(
+                    `[ChangesView] Skipping ${this._mode} push: the webview has not been resolved`,
+                );
+            }
             return;
         }
         // Self-heal: a provider registered after the last sync would otherwise never be
@@ -538,10 +563,11 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         this._updateTitle();
         const payload = this._statePayload();
         this._post({ type: 'state', payload });
+        this._lastPushedRoot = payload.focusedRoot;
+        this._lastPushedVersion = payload.snapshot?.version;
         this._outputChannel?.info?.(
             `[Changes] push ${this._mode} seq=${payload.seq} version=${payload.snapshot?.version?.slice(0, 8) ?? '-'} wc=${payload.snapshot?.workingCopyCount ?? '-'} ancestors=${payload.snapshot?.ancestors.length ?? '-'} first=${payload.snapshot?.ancestors[0]?.entry.change_id ?? '-'}`,
         );
-        this._verifyConsistency();
     }
 
     private _statePayload(): {
@@ -598,6 +624,9 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     private async _handleMessage(message: HostMessage): Promise<void> {
         switch (message?.type) {
             case 'ready':
+                // The webview can be ready before the first repository event; bind here too so a
+                // missed sync cannot leave the view without snapshot events.
+                this._syncSnapshotSubscriptions();
                 this._postInit();
                 return;
             case 'focusRepository': {
