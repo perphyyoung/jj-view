@@ -56,6 +56,25 @@ test.describe('JJ View Container E2E', () => {
         await expect(frame.locator('.scm-resource-item')).toHaveCount(3);
     });
 
+    test('Refresh clears the Changes view and reloads it', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('reload.txt', 'reload\n');
+
+        const { page } = await vscode.openWorkspace(repo);
+        await vscode.executeCommand('jj-view.changesView.focus');
+        const frame = await getWebviewFrame(page, 'jj-changes-root');
+        await expect(frame.locator('.scm-resource-item', { hasText: 'reload.txt' })).toBeVisible({ timeout: 5000 });
+
+        // The host's reload notice must clear the list before the new state arrives.
+        await frame.evaluate(() => window.postMessage({ type: 'reloading' }, '*'));
+        await expect(frame.locator('[data-testid="jj-changes-loading"]')).toBeVisible({ timeout: 5000 });
+
+        await vscode.executeCommand('jj-view.refreshChanges');
+        await expect(frame.locator('.scm-resource-item', { hasText: 'reload.txt' })).toBeVisible({ timeout: 5000 });
+        await expect(frame.locator('[data-testid="jj-changes-loading"]')).toHaveCount(0);
+    });
+
     test('container works without native SCM integration', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();

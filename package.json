@@ -3,7 +3,7 @@
     "publisher": "perphyyoung",
     "displayName": "JJ View Local (unofficial fork)",
     "description": "Local-first fork of JJ View: Jujutsu (jj) version control in VS Code, fully offline by default.",
-    "version": "3.3.38",
+    "version": "3.3.39",
     "packageManager": "pnpm@12.18.0",
     "license": "Apache-2.0",
     "author": "perphyyoung",
@@ -353,6 +353,12 @@
                 "icon": "$(refresh)"
             },
             {
+                "command": "jj-view.refreshChanges",
+                "title": "Refresh Changes",
+                "category": "JJ View Local",
+                "icon": "$(refresh)"
+            },
+            {
                 "command": "jj-view.refreshAll",
                 "title": "Force Refresh All Repositories",
                 "category": "JJ View Local",
@@ -666,6 +672,10 @@
         "menus": {
             "commandPalette": [
                 {
+                    "command": "jj-view.refreshChanges",
+                    "when": "false"
+                },
+                {
                     "command": "jj-view.uploadStack",
                     "when": "!config.jj-view.alwaysUploadStack"
                 },
@@ -777,7 +787,7 @@
                     "when": "view == jj-view.changesView"
                 },
                 {
-                    "command": "jj-view.refresh",
+                    "command": "jj-view.refreshChanges",
                     "group": "navigation@2",
                     "when": "view == jj-view.changesView"
                 },

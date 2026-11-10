@@ -96,9 +96,6 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
      */
     private readonly _snapshotSubscriptions = new Map<string, { model: ScmModel; subscription: { dispose(): void } }>();
     private readonly _snapshotGuard: FocusedSnapshotGuard;
-    /** Last state pushed to the webview, used by the visible-view recovery timer. */
-    private _lastPushedRoot: string | undefined;
-    private _lastPushedVersion: string | undefined;
     private _viewMissingLogged = false;
 
     private static readonly VIEW_MODE_KEY = 'jj-view.changesViewMode';
@@ -112,8 +109,6 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     /** Bounded wait so a hung first scan never leaves the view on "Loading" forever. */
     private _initialLoadTimedOut = false;
     private _initialLoadTimer: ReturnType<typeof setTimeout> | undefined;
-    /** Repairs snapshots that a missed change event left behind while the view is visible. */
-    private _consistencyTimer: ReturnType<typeof setInterval> | undefined;
 
     constructor(
         private readonly _extensionUri: Uri,
@@ -192,6 +187,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 vscode.commands.registerCommand('jj-view.revealChangesGroup', (args: unknown) =>
                     this._revealChangesGroup(args),
                 ),
+                vscode.commands.registerCommand('jj-view.refreshChanges', () => this._reloadChangesView()),
             );
         }
 
@@ -206,22 +202,35 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
             this._initialLoadTimedOut = true;
             this._postState();
         }, 8000);
+    }
 
-        // Recovery net for the Changes view: if an event or the subscription was lost, rebuild
-        // the binding and push the focused snapshot. The version check keeps an idle view from
-        // re-rendering every 5 seconds.
-        if (this._mode === 'changes') {
-            this._consistencyTimer = setInterval(() => {
-                if (this._disposed || !this._view?.visible) {
-                    return;
-                }
-                this._syncSnapshotSubscriptions();
-                const root = this._repositoryManager.focusedRepository?.rootUri.fsPath;
-                const version = root ? this._scmProviders.get(root)?.scmModel.snapshot?.version : undefined;
-                if (root !== this._lastPushedRoot || version !== this._lastPushedVersion) {
-                    this._postState();
-                }
-            }, 5000);
+    /**
+     * Toolbar refresh: clear the webview immediately, then reload the focused repository.
+     * The explicit reset makes a slow or failed jj run visible instead of looking like a no-op.
+     */
+    private async _reloadChangesView(): Promise<void> {
+        if (this._disposed) {
+            return;
+        }
+        this._post({ type: 'reloading' });
+        const root = this._repositoryManager.focusedRepository?.rootUri.fsPath;
+        const repo = root ? this._findRepository(root) : undefined;
+        const scm = root
+            ? (this._scmProviders.get(root) ?? (repo ? this._ensureScmProvider?.(repo) : undefined))
+            : undefined;
+        try {
+            if (scm) {
+                await scm.refresh({ forceSnapshot: true, reason: 'changes view refresh' });
+            } else {
+                await vscode.commands.executeCommand('jj-view.refresh');
+            }
+        } catch (error: unknown) {
+            this._outputChannel?.error(
+                '[ChangesView] Refresh failed',
+                error instanceof Error ? error : new Error(String(error)),
+            );
+        } finally {
+            this._postState();
         }
     }
 
@@ -339,10 +348,6 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         if (this._initialLoadTimer !== undefined) {
             clearTimeout(this._initialLoadTimer);
             this._initialLoadTimer = undefined;
-        }
-        if (this._consistencyTimer !== undefined) {
-            clearInterval(this._consistencyTimer);
-            this._consistencyTimer = undefined;
         }
         this._snapshotGuard.dispose();
         this._clearViewDisposables();
@@ -563,8 +568,6 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         this._updateTitle();
         const payload = this._statePayload();
         this._post({ type: 'state', payload });
-        this._lastPushedRoot = payload.focusedRoot;
-        this._lastPushedVersion = payload.snapshot?.version;
         this._outputChannel?.info?.(
             `[Changes] push ${this._mode} seq=${payload.seq} version=${payload.snapshot?.version?.slice(0, 8) ?? '-'} wc=${payload.snapshot?.workingCopyCount ?? '-'} ancestors=${payload.snapshot?.ancestors.length ?? '-'} first=${payload.snapshot?.ancestors[0]?.entry.change_id ?? '-'}`,
         );
@@ -637,6 +640,10 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 return;
             }
             case 'refresh': {
+                if (this._mode === 'changes') {
+                    await this._reloadChangesView();
+                    return;
+                }
                 const root = message.payload?.root ?? this._repositoryManager.focusedRepository?.rootUri.fsPath;
                 const targets = root
                     ? [this._scmProviders.get(root)].filter((scm): scm is VsCodeScmProvider => Boolean(scm))

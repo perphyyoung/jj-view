@@ -87,6 +87,8 @@ let viewMode = $state<'list' | 'tree'>('list');
 let openDiffOnClick = $state(true);
 // Starts true: the very first paint must not claim "no repositories" before the scan result.
 let reposLoading = $state(true);
+/** True between the host's reloading notice and the next state push. */
+let reloading = $state(false);
 let contributionsLoaded = false;
 
 let contextMenu = $state<ContextMenuState>({ visible: false, x: 0, y: 0, groups: [] });
@@ -112,6 +114,7 @@ function applyState(payload: StatePayload): void {
         return;
     }
     lastSeq = Math.max(lastSeq, seq);
+    reloading = false;
     repos = payload.repos ?? [];
     reposLoading = payload.reposLoading ?? false;
     focusedRoot = payload.focusedRoot;
@@ -122,6 +125,12 @@ function applyState(payload: StatePayload): void {
 
 useMessageListener<Record<string, unknown>>((raw) => {
     const type = raw?.type;
+    if (type === 'reloading') {
+        reloading = true;
+        // Clear immediately so stale rows cannot be mistaken for the refreshed state.
+        snapshot = undefined;
+        return;
+    }
     const payload = raw?.payload as Record<string, unknown> | undefined;
     if (!payload) {
         return;
@@ -321,7 +330,7 @@ $effect(() => {
     </div>
 {:else}
     <div class="changes-root" data-testid="jj-changes-root">
-        {#if reposLoading}
+        {#if reposLoading || reloading}
             <div class="empty-state" data-testid="jj-changes-loading">
                 <p>Loading…</p>
             </div>
