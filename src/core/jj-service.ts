@@ -526,11 +526,14 @@ export class JjService {
         }
     }
 
-    async getBookmarks(options: { revision?: string } = {}): Promise<JjBookmark[]> {
+    async getBookmarks(options: { revision?: string; allRemotes?: boolean } = {}): Promise<JjBookmark[]> {
         const template = buildLogTemplate(BOOKMARK_SCHEMA);
         const args = ['list', '-T', template];
         if (options.revision) {
             args.push('-r', options.revision);
+        }
+        if (options.allRemotes) {
+            args.push('--all-remotes');
         }
         const output = await this.run('bookmark', args, {
             useCachedSnapshot: true,

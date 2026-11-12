@@ -23,6 +23,8 @@ interface RepoSummary {
     /** `undefined` until the repository snapshot exists (cold start). */
     changeCount?: number;
     conflictCount: number;
+    /** Commits on the current line not pushed to a remote; `undefined` = no remote. */
+    unpushedCount?: number;
 }
 
 interface WireResourceState {
@@ -313,6 +315,15 @@ $effect(() => {
                             <i class="codicon codicon-repo" aria-hidden="true"></i>
                             <span class="repo-name">{repo.name}</span>
                         </button>
+                        {#if repo.unpushedCount !== undefined && repo.unpushedCount > 0}
+                            <span
+                                class="repo-unpushed"
+                                title={`${repo.unpushedCount} commits not pushed`}
+                                data-testid="jj-repo-unpushed"
+                            >
+                                ↑{repo.unpushedCount >= 100 ? '99+' : repo.unpushedCount}
+                            </span>
+                        {/if}
                         {#if repo.conflictCount > 0}
                             <span class="badge badge-conflict" title={`${repo.conflictCount} conflicts`}>
                                 {repo.conflictCount}
@@ -394,6 +405,7 @@ $effect(() => {
 }
 
 .repo-row {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 4px;
@@ -449,6 +461,18 @@ $effect(() => {
 .badge-conflict {
     background-color: var(--vscode-editorWarning-foreground, #cca700);
     color: var(--vscode-editor-background, #000);
+}
+
+/* Unpushed commits sit in the middle of the row, separate from the right-side counts. */
+.repo-unpushed {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--vscode-foreground);
+    font-size: 11px;
+    line-height: 16px;
+    white-space: nowrap;
+    pointer-events: none;
 }
 
 /* Same footprint as a count badge, so the row does not resize when the count arrives. */

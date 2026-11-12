@@ -58,6 +58,40 @@ describe('ScmModel Domain Unit Tests', () => {
         expect(lastSnapshot.workingCopyCount).toBeGreaterThanOrEqual(1);
     });
 
+    test('counts commits not pushed to a remote', async () => {
+        const remoteRepo = new TestRepo();
+        remoteRepo.init();
+        testRepo.addRemote('origin', remoteRepo.path);
+
+        testRepo.writeFile('tracked.txt', 'base\n');
+        testRepo.new();
+        testRepo.describe('pushed commit', '@-');
+        testRepo.bookmark('main', '@-');
+        testRepo.gitPush('main');
+
+        await scmModel.updateSnapshot({ reason: 'after push' });
+        expect(scmModel.snapshot?.unpushedCount).toBe(0);
+
+        testRepo.writeFile('local.txt', 'local\n');
+        testRepo.new();
+        testRepo.describe('local commit', '@-');
+        await scmModel.updateSnapshot({ reason: 'after local commit' });
+        expect(scmModel.snapshot?.unpushedCount).toBe(1);
+
+        testRepo.bookmarkMove('main', '@-');
+        testRepo.gitPush('main');
+        await scmModel.updateSnapshot({ reason: 'after second push' });
+        expect(scmModel.snapshot?.unpushedCount).toBe(0);
+    });
+
+    test('reports no unpushed count when the repository has no remote', async () => {
+        testRepo.writeFile('local.txt', 'local\n');
+
+        await scmModel.updateSnapshot({ reason: 'no remote' });
+
+        expect(scmModel.snapshot?.unpushedCount).toBeUndefined();
+    });
+
     test('detects mutable ancestors and builds ancestor entries', async () => {
         await buildGraph(testRepo, [
             { label: 'c1', description: 'first ancestor commit', files: { 'file1.txt': 'c1 content\n' } },

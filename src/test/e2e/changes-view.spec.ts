@@ -380,6 +380,53 @@ test.describe('JJ View Container E2E', () => {
         await expect(rows.first()).toContainText('alpha');
     });
 
+    test('Repositories view shows unpushed commit counts', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('a.txt', 'a\n');
+
+        const { page } = await vscode.openWorkspace(repo);
+        await vscode.executeCommand('jj-view.reposView.focus');
+        const frame = await getWebviewFrame(page, 'jj-repos-root');
+        await expect(frame.locator('[data-testid="jj-repo-row"]')).toHaveCount(1, { timeout: 5000 });
+
+        // Inject the state: the badge is a webview contract, and e2e does not need a real remote.
+        const inject = (unpushedCount: number, seq: number) =>
+            frame.evaluate(
+                ([count, sequence]) => {
+                    window.postMessage(
+                        {
+                            type: 'state',
+                            payload: {
+                                repos: [
+                                    {
+                                        root: '/demo',
+                                        name: 'demo',
+                                        changeCount: 3,
+                                        conflictCount: 0,
+                                        unpushedCount: count,
+                                    },
+                                ],
+                                focusedRoot: undefined,
+                                viewMode: 'list',
+                                revealChangeIds: [],
+                                reposLoading: false,
+                                seq: sequence,
+                            },
+                        },
+                        '*',
+                    );
+                },
+                [unpushedCount, seq],
+            );
+
+        await inject(2, 1001);
+        await expect(frame.locator('[data-testid="jj-repo-unpushed"]')).toHaveText('↑2', { timeout: 5000 });
+
+        await inject(0, 1002);
+        await expect(frame.locator('[data-testid="jj-repo-unpushed"]')).toHaveCount(0, { timeout: 5000 });
+    });
+
     test('Keeps a newly committed group collapsed', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();

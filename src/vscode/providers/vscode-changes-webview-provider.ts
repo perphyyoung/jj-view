@@ -48,6 +48,8 @@ export interface ChangesWireRepoSummary {
     conflictCount: number;
     /** Committer timestamp of `@`; used by the Recent Commit ordering. */
     lastCommitAt?: string;
+    /** Commits on `@`'s line not contained in any remote bookmark; `undefined` = no remote. */
+    unpushedCount?: number;
 }
 
 export type ChangesViewMode = 'repos' | 'changes';
@@ -593,6 +595,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 changeCount: snapshot ? snapshot.workingCopyCount : undefined,
                 conflictCount: snapshot ? snapshot.conflictedPaths.length : 0,
                 lastCommitAt: snapshot?.currentEntry?.committer.timestamp,
+                unpushedCount: snapshot?.unpushedCount,
             };
         });
         const repos = sortRepos(rows, this._repoSortKey);

@@ -36,6 +36,11 @@ export interface ScmSnapshot {
     hasChild: boolean;
     description: string;
     workingCopyCount: number;
+    /**
+     * Commits on the `@` line that no remote bookmark contains. `undefined` when the
+     * repository has no remote bookmark, `0` when everything is pushed.
+     */
+    unpushedCount?: number;
     /** Monotonic revision; the webview drops older pushes. */
     revision: number;
     /** Repository state version this snapshot was computed from. */
@@ -55,6 +60,8 @@ export class ScmModel implements Disposable {
     private _parentMutable = false;
     private _hasChild = false;
     private _currentEntry: JjLogEntry | undefined;
+    /** Unpushed-commit info cached by op version, so idle refreshes do not re-query jj. */
+    private _remoteStatus?: { version: string; unpushedCount: number | undefined };
 
     private readonly _onDidChangeSnapshot = new AsyncEventEmitter<ScmSnapshot>();
     public readonly onDidChangeSnapshot: AsyncEvent<ScmSnapshot> = this._onDidChangeSnapshot.event;
@@ -196,6 +203,7 @@ export class ScmModel implements Disposable {
 
             const workingCopyChanges = currentEntry?.changes || [];
             this._workingCopyStatuses = this.buildWorkingCopyStatusMap(workingCopyChanges, conflictedPaths);
+            const unpushedCount = await this.computeUnpushedCount(event.version);
 
             // The repository may have moved on while jj was running (a slow refresh started
             // before a commit must not overwrite the fresher result). Compare the state
@@ -225,6 +233,7 @@ export class ScmModel implements Disposable {
                 hasChild: this._hasChild,
                 description: currentEntry?.description ? currentEntry.description.trim() : '',
                 workingCopyCount: workingCopyChanges.length,
+                unpushedCount,
                 revision: this._revision,
                 version: this._publishedVersion,
             };
@@ -243,6 +252,37 @@ export class ScmModel implements Disposable {
                 await this._onDidChangeStatus.fire();
             }
         }
+    }
+
+    /**
+     * Commits on the current line that are not contained in any remote bookmark. `@` is
+     * excluded because its changes are already covered by `workingCopyCount`.
+     */
+    private async computeUnpushedCount(versionHint: string | undefined): Promise<number | undefined> {
+        const version = versionHint || (await this.repo.getOpHeadsVersion());
+        if (version && this._remoteStatus?.version === version) {
+            return this._remoteStatus.unpushedCount;
+        }
+
+        let unpushedCount: number | undefined;
+        try {
+            const bookmarks = await this.jj.getBookmarks({ allRemotes: true });
+            if (bookmarks.some((bookmark) => bookmark.remote)) {
+                const ids = await this.jj.getLogIds({
+                    revision: 'remote_bookmarks()..@ ~ @',
+                    limit: 100,
+                });
+                unpushedCount = ids.length;
+            }
+        } catch (error: unknown) {
+            this.outputChannel.error('[SCM] Failed to compute unpushed commits', toError(error));
+            unpushedCount = undefined;
+        }
+
+        if (version) {
+            this._remoteStatus = { version, unpushedCount };
+        }
+        return unpushedCount;
     }
 
     private isParentMutable(currentEntry: JjLogEntry | undefined): boolean {
