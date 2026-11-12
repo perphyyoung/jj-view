@@ -427,6 +427,24 @@ test.describe('JJ View Container E2E', () => {
         await expect(frame.locator('[data-testid="jj-repo-unpushed"]')).toHaveCount(0, { timeout: 5000 });
     });
 
+    test('Repositories refresh shows the loading state', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('a.txt', 'a\n');
+
+        const { page } = await vscode.openWorkspace(repo);
+        await vscode.executeCommand('jj-view.reposView.focus');
+        const frame = await getWebviewFrame(page, 'jj-repos-root');
+        await expect(frame.locator('[data-testid="jj-repo-row"]')).toHaveCount(1, { timeout: 5000 });
+
+        await frame.evaluate(() => window.postMessage({ type: 'reloading' }, '*'));
+        await expect(frame.locator('[data-testid="jj-repos-loading"]')).toBeVisible({ timeout: 5000 });
+
+        await vscode.executeCommand('jj-view.refreshAll');
+        await expect(frame.locator('[data-testid="jj-repo-row"]')).toHaveCount(1, { timeout: 5000 });
+        await expect(frame.locator('[data-testid="jj-repos-loading"]')).toHaveCount(0);
+    });
+
     test('Keeps a newly committed group collapsed', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();

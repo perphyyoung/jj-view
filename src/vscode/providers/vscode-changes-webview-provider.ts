@@ -99,6 +99,8 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     private readonly _snapshotSubscriptions = new Map<string, { model: ScmModel; subscription: { dispose(): void } }>();
     private readonly _snapshotGuard: FocusedSnapshotGuard;
     private _viewMissingLogged = false;
+    /** True during an explicit full reload; keeps the loading state even while the list is empty. */
+    private _reloadRequested = false;
 
     private static readonly VIEW_MODE_KEY = 'jj-view.changesViewMode';
 
@@ -239,12 +241,27 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         }
     }
 
+    /** Shows the loading state until `endReload()`. Used by the full repository refresh. */
+    public beginReload(): void {
+        this._reloadRequested = true;
+        this._post({ type: 'reloading' });
+    }
+
+    public endReload(): void {
+        if (!this._reloadRequested) {
+            return;
+        }
+        this._reloadRequested = false;
+        this._postState();
+    }
+
     /** True until the initial repository scan settles (or the bounded wait expires). */
     private _isReposLoading(): boolean {
         return (
-            !this._initialLoadTimedOut &&
-            !this._repositoryManager.isInitialScanComplete &&
-            this._repositoryManager.repositories.length === 0
+            this._reloadRequested ||
+            (!this._initialLoadTimedOut &&
+                !this._repositoryManager.isInitialScanComplete &&
+                this._repositoryManager.repositories.length === 0)
         );
     }
 

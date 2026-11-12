@@ -288,7 +288,7 @@ $effect(() => {
     </div>
 {:else if mode === 'repos'}
     <div class="repos-root" data-testid="jj-repos-root">
-        {#if reposLoading}
+        {#if reposLoading || reloading}
             <div class="empty-state" data-testid="jj-repos-loading">
                 <p>Loading repositories…</p>
             </div>

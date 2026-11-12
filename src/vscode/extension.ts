@@ -375,34 +375,45 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         const start = performance.now();
         const previousFocusedRoot = repositoryManager.focusedRepository?.rootUri.fsPath;
         outputChannel.info('[Extension] Force refresh all repositories: clearing and rescanning...');
-        await repositoryManager.clear();
-        await repositoryManager.scanForRepositories();
+        // `clear()` empties the list, which would otherwise render as "No repositories".
+        reposWebviewProvider.beginReload();
+        changesWebviewProvider.beginReload();
+        try {
+            await repositoryManager.clear();
+            await repositoryManager.scanForRepositories();
 
-        const repos = repositoryManager.repositories;
-        await Promise.all(
-            repos.map(async (repo) => {
-                try {
-                    await repo.jj.clearCache();
-                    const scm = ensureScmProvider(repo);
-                    await scm.refresh({ forceSnapshot: true, reason: 'force refresh all' });
-                    outputChannel.info(`[Extension] Refreshed repository ${repo.rootUri.fsPath}`);
-                } catch (e: unknown) {
-                    outputChannel.error(`[Extension] Failed to refresh repository ${repo.rootUri.fsPath}`, toError(e));
+            const repos = repositoryManager.repositories;
+            await Promise.all(
+                repos.map(async (repo) => {
+                    try {
+                        await repo.jj.clearCache();
+                        const scm = ensureScmProvider(repo);
+                        await scm.refresh({ forceSnapshot: true, reason: 'force refresh all' });
+                        outputChannel.info(`[Extension] Refreshed repository ${repo.rootUri.fsPath}`);
+                    } catch (e: unknown) {
+                        outputChannel.error(
+                            `[Extension] Failed to refresh repository ${repo.rootUri.fsPath}`,
+                            toError(e),
+                        );
+                    }
+                }),
+            );
+
+            // `clear()` drops the focused repository; restore it so the views keep showing
+            // the same project after a full rescan.
+            if (previousFocusedRoot) {
+                const restored = repos.find((repo) => repo.rootUri.fsPath === previousFocusedRoot);
+                if (restored) {
+                    repositoryManager.setFocusedRepository(restored);
                 }
-            }),
-        );
-
-        // `clear()` drops the focused repository; restore it so the views keep showing
-        // the same project after a full rescan.
-        if (previousFocusedRoot) {
-            const restored = repos.find((repo) => repo.rootUri.fsPath === previousFocusedRoot);
-            if (restored) {
-                repositoryManager.setFocusedRepository(restored);
             }
-        }
 
-        const elapsed = (performance.now() - start).toFixed(0);
-        outputChannel.info(`[Extension] Force refresh all done in ${elapsed}ms (${repos.length} repositories)`);
+            const elapsed = (performance.now() - start).toFixed(0);
+            outputChannel.info(`[Extension] Force refresh all done in ${elapsed}ms (${repos.length} repositories)`);
+        } finally {
+            reposWebviewProvider.endReload();
+            changesWebviewProvider.endReload();
+        }
     };
 
     context.subscriptions.push(
