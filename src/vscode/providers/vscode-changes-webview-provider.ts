@@ -108,6 +108,9 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     private _pushSeq = 0;
     /** Roots whose repository summary was already requested by the Repositories view. */
     private readonly _summaryRoots = new Set<string>();
+    /** Retry budget per root when the summary could not be requested or refreshed. */
+    private readonly _summaryRetries = new Map<string, number>();
+    private readonly _summaryRetryTimers = new Set<ReturnType<typeof setTimeout>>();
     /** Bounded wait so a hung first scan never leaves the view on "Loading" forever. */
     private _initialLoadTimedOut = false;
     private _initialLoadTimer: ReturnType<typeof setTimeout> | undefined;
@@ -351,6 +354,10 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
             clearTimeout(this._initialLoadTimer);
             this._initialLoadTimer = undefined;
         }
+        for (const timer of this._summaryRetryTimers) {
+            clearTimeout(timer);
+        }
+        this._summaryRetryTimers.clear();
         this._snapshotGuard.dispose();
         this._clearViewDisposables();
         for (const entry of this._snapshotSubscriptions.values()) {
@@ -420,9 +427,7 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
             try {
                 const scm = this._scmProviders.get(root) ?? this._ensureScmProvider?.(repo);
                 if (!scm) {
-                    this._outputChannel?.info?.(
-                        `[ChangesView] No SCM provider for ${root}; will retry on the next sync`,
-                    );
+                    this._outputChannel?.info?.(`[ChangesView] SCM provider for ${root} is not ready yet`);
                     continue;
                 }
 
@@ -485,6 +490,12 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         for (const root of this._summaryRoots) {
             if (!current.has(root)) {
                 this._summaryRoots.delete(root);
+                this._summaryRetries.delete(root);
+            }
+        }
+        for (const root of this._summaryRetries.keys()) {
+            if (!current.has(root)) {
+                this._summaryRetries.delete(root);
             }
         }
         const pending = this._repositoryManager.repositories.filter(
@@ -501,18 +512,49 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
             const scm = this._scmProviders.get(root) ?? this._ensureScmProvider?.(repo);
             if (!scm) {
                 this._summaryRoots.delete(root);
+                this._scheduleSummaryRetry(root);
                 return;
             }
             try {
                 await scm.refresh({ forceSnapshot: false, reason: 'repos view summaries' });
+                this._summaryRetries.delete(root);
             } catch (err) {
                 this._summaryRoots.delete(root);
                 this._outputChannel?.error(
                     `[ReposView] Summary refresh failed for ${root}`,
                     err instanceof Error ? err : new Error(String(err)),
                 );
+                this._scheduleSummaryRetry(root);
             }
         });
+    }
+
+    /**
+     * Retries a summary that could not start because the SCM provider was not created yet,
+     * or that failed while jj was busy. Without this, a repo resolved before activation
+     * finished would keep an unknown count until an unrelated repository event fired.
+     */
+    private _scheduleSummaryRetry(root: string): void {
+        const attempts = this._summaryRetries.get(root) ?? 0;
+        if (attempts >= 3) {
+            this._summaryRetries.delete(root);
+            this._outputChannel?.info?.(`[ReposView] Giving up on summary for ${root} after ${attempts} retries`);
+            return;
+        }
+        this._summaryRetries.set(root, attempts + 1);
+
+        const timer = setTimeout(() => {
+            this._summaryRetryTimers.delete(timer);
+            if (this._disposed) {
+                return;
+            }
+            if (!this._repositoryManager.repositories.some((repo) => repo.rootUri.fsPath === root)) {
+                this._summaryRetries.delete(root);
+                return;
+            }
+            this._ensureRepoSummaries();
+        }, 500);
+        this._summaryRetryTimers.add(timer);
     }
 
     /**

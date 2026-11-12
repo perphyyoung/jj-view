@@ -147,6 +147,17 @@ test.describe('Multi-Repo Switching E2E', () => {
         await vscode.executeCommand('jj-view.reposView.focus');
         const reposFrame = await getReposFrame(page);
 
+        // Both repositories have working-copy changes; their counts must load even when the
+        // view resolves before every SCM provider exists.
+        for (const folderName of [mainRepoFolderName, secondRepoFolderName]) {
+            await expect(
+                reposFrame
+                    .locator('[data-testid="jj-repo-row"]', { hasText: folderName })
+                    .first()
+                    .locator('.badge:not(.badge-pending)'),
+            ).toBeVisible({ timeout: 5000 });
+        }
+
         await reposFrame
             .locator('[data-testid="jj-repo-row"]', { hasText: secondRepoFolderName })
             .first()

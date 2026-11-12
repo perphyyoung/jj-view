@@ -259,6 +259,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         context,
         'repos',
         outputChannel,
+        // Same lazy closure as the Changes view: the Repositories view can resolve before
+        // providers exist, and without it those rows never receive a summary count.
+        (repo) => ensureScmProvider(repo),
     );
     const changesWebviewProvider = new VsCodeChangesWebviewProvider(
         context.extensionUri,
