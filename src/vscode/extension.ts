@@ -128,6 +128,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
     );
     context.subscriptions.push(repositoryManager);
 
+    // Restore the cached repository list before any view is registered, so the Repositories
+    // view paints rows on its first message instead of starting from an empty list. Only
+    // storage reads and directory stats happen here; jj queries stay in the background.
+    await repositoryManager.restoreCachedRepositories();
+
     if (hostEnvironment.config.onDidChangeConfiguration) {
         context.subscriptions.push(
             hostEnvironment.config.onDidChangeConfiguration(async (e) => {
@@ -494,9 +499,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
             }
         }),
     );
-
-    // Load cached repositories immediately
-    await repositoryManager.restoreCachedRepositories();
 
     // Restored repositories rely on `onDidOpenRepository`; ensure the providers exist even
     // if that event was emitted before the listener above was registered.

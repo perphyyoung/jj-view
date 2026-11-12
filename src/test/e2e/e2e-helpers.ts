@@ -21,6 +21,27 @@ import {
     launchNewVSCode,
 } from './vscode-fixture';
 
+/**
+ * Finds the webview iframe that renders the given test id. Webviews are separate frames, and
+ * their load timing differs per run, so callers poll instead of assuming a stable index.
+ */
+export async function getWebviewFrame(page: Page, testId: string, timeout = 20000): Promise<Frame> {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+        for (const frame of page.frames()) {
+            try {
+                if ((await frame.locator(`[data-testid="${testId}"]`).count()) > 0) {
+                    return frame;
+                }
+            } catch {
+                // Frame may be navigating; retry on the next tick.
+            }
+        }
+        await page.waitForTimeout(200);
+    }
+    throw new Error(`Webview frame containing [data-testid="${testId}"] was not found`);
+}
+
 export const test = fixtureTest;
 export const ROOT_ID = fixtureRootId;
 export const isMac = fixtureIsMac;

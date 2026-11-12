@@ -101,6 +101,12 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
     private _viewMissingLogged = false;
     /** True during an explicit full reload; keeps the loading state even while the list is empty. */
     private _reloadRequested = false;
+    /**
+     * Last snapshot pushed for the focused root. Reused when the provider is briefly missing
+     * (rebuild, scan churn) so a transient gap does not wipe the Changes view.
+     */
+    private _lastSnapshotRoot: string | undefined;
+    private _lastSnapshot: ScmSnapshot | undefined;
 
     private static readonly VIEW_MODE_KEY = 'jj-view.changesViewMode';
 
@@ -255,14 +261,12 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         this._postState();
     }
 
-    /** True until the initial repository scan settles (or the bounded wait expires). */
+    /** True only while there is nothing to render and the scan/reload is still running. */
     private _isReposLoading(): boolean {
-        return (
-            this._reloadRequested ||
-            (!this._initialLoadTimedOut &&
-                !this._repositoryManager.isInitialScanComplete &&
-                this._repositoryManager.repositories.length === 0)
-        );
+        if (this._repositoryManager.repositories.length > 0) {
+            return false;
+        }
+        return this._reloadRequested || (!this._initialLoadTimedOut && !this._repositoryManager.isInitialScanComplete);
     }
 
     /**
@@ -533,7 +537,15 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 return;
             }
             try {
-                await scm.refresh({ forceSnapshot: false, reason: 'repos view summaries' });
+                // Only refresh when the repository moved on since the snapshot we already have.
+                // In particular the focused repository usually has a fresh snapshot from
+                // activation, and re-refreshing it here made the Changes view rebuild for
+                // no reason right after the Repositories view finished loading.
+                const currentVersion = await repo.getOpHeadsVersion();
+                const snapshotVersion = scm.scmModel.snapshot?.version;
+                if (!snapshotVersion || !currentVersion || snapshotVersion !== currentVersion) {
+                    await scm.refresh({ forceSnapshot: false, reason: 'repos view summaries' });
+                }
                 this._summaryRetries.delete(root);
             } catch (err) {
                 this._summaryRoots.delete(root);
@@ -660,7 +672,21 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
         const repos = sortRepos(rows, this._repoSortKey);
 
         const focusedRoot = this._repositoryManager.focusedRepository?.rootUri.fsPath;
-        const focusedSnapshot = focusedRoot ? this._scmProviders.get(focusedRoot)?.scmModel.snapshot : undefined;
+        let focusedSnapshot = focusedRoot ? this._scmProviders.get(focusedRoot)?.scmModel.snapshot : undefined;
+
+        if (this._mode === 'changes' && focusedRoot) {
+            if (focusedSnapshot) {
+                this._lastSnapshotRoot = focusedRoot;
+                this._lastSnapshot = focusedSnapshot;
+            } else if (this._lastSnapshotRoot === focusedRoot && this._lastSnapshot) {
+                focusedSnapshot = this._lastSnapshot;
+                this._outputChannel?.info?.(
+                    `[ChangesView] Snapshot missing for ${focusedRoot} (provider=${
+                        this._scmProviders.has(focusedRoot) ? 'present' : 'absent'
+                    }); reusing the last snapshot`,
+                );
+            }
+        }
 
         // One-shot: the webview expands these groups once and the next push must not repeat.
         const revealChangeIds = this._revealChangeIds;

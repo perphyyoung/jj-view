@@ -5,89 +5,12 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { Frame, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { TestRepo } from '../test-repo';
 import { makeTestTmpDir } from '../test-tmp-root';
-import { expectNotificationToast, getLogWebview, openFileInEditor, test } from './e2e-helpers';
+import { expectNotificationToast, getWebviewFrame, openFileInEditor, test } from './e2e-helpers';
 
-async function getWebviewFrame(page: Page, testId: string, timeout = 20000): Promise<Frame> {
-    const deadline = Date.now() + timeout;
-    while (Date.now() < deadline) {
-        for (const frame of page.frames()) {
-            try {
-                if ((await frame.locator(`[data-testid="${testId}"]`).count()) > 0) {
-                    return frame;
-                }
-            } catch {
-                // Frame may be navigating; retry on the next tick.
-            }
-        }
-        await page.waitForTimeout(200);
-    }
-    throw new Error(`Webview frame containing [data-testid="${testId}"] was not found`);
-}
-
-test.describe('JJ View Container E2E', () => {
-    test('Changes view renders working copy files and toggles tree/list', async ({ vscode }) => {
-        const repo = new TestRepo();
-        repo.init();
-        repo.writeFile('root.txt', 'root\n');
-        repo.writeFile('src/a.ts', 'export const a = 1;\n');
-        repo.writeFile('src/nested/b.ts', 'export const b = 2;\n');
-        repo.describe('initial');
-
-        const { page } = await vscode.openWorkspace(repo);
-
-        await vscode.executeCommand('jj-view.changesView.focus');
-        const frame = await getWebviewFrame(page, 'jj-changes-root');
-
-        await expect(frame.locator('.scm-resource-item')).toHaveCount(3);
-        await expect(frame.locator('[data-testid="scm-group-working-copy"]')).toBeVisible();
-
-        // Ancestors start collapsed, so only the working copy group contributes file rows.
-        await vscode.executeCommand('jj-view.changesAsTree');
-        await expect(frame.locator('[data-testid="scm-tree-folder-src"]')).toBeVisible();
-        await expect(frame.locator('[data-testid^="scm-tree-folder-"]').first()).toBeVisible();
-        await expect(frame.locator('.scm-resource-item')).toHaveCount(3);
-
-        await vscode.executeCommand('jj-view.changesAsList');
-        await expect(frame.locator('[data-testid^="scm-tree-folder-"]')).toHaveCount(0);
-        await expect(frame.locator('.scm-resource-item')).toHaveCount(3);
-    });
-
-    test('Refresh clears the Changes view and reloads it', async ({ vscode }) => {
-        const repo = new TestRepo();
-        repo.init();
-        repo.writeFile('reload.txt', 'reload\n');
-
-        const { page } = await vscode.openWorkspace(repo);
-        await vscode.executeCommand('jj-view.changesView.focus');
-        const frame = await getWebviewFrame(page, 'jj-changes-root');
-        await expect(frame.locator('.scm-resource-item', { hasText: 'reload.txt' })).toBeVisible({ timeout: 5000 });
-
-        // The host's reload notice must clear the list before the new state arrives.
-        await frame.evaluate(() => window.postMessage({ type: 'reloading' }, '*'));
-        await expect(frame.locator('[data-testid="jj-changes-loading"]')).toBeVisible({ timeout: 5000 });
-
-        await vscode.executeCommand('jj-view.refreshChanges');
-        await expect(frame.locator('.scm-resource-item', { hasText: 'reload.txt' })).toBeVisible({ timeout: 5000 });
-        await expect(frame.locator('[data-testid="jj-changes-loading"]')).toHaveCount(0);
-    });
-
-    test('container works without native SCM integration', async ({ vscode }) => {
-        const repo = new TestRepo();
-        repo.init();
-        repo.writeFile('a.txt', 'a\n');
-        repo.describe('initial');
-
-        const { page } = await vscode.openWorkspace(repo);
-
-        await vscode.executeCommand('jj-view.changesView.focus');
-        const frame = await getWebviewFrame(page, 'jj-changes-root');
-        await expect(frame.locator('.scm-resource-item')).toHaveCount(1);
-    });
-
+test.describe('Changes Actions E2E', () => {
     test('Splits a file into a new commit above from the file context menu', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();
@@ -341,110 +264,6 @@ test.describe('JJ View Container E2E', () => {
         await expect.poll(() => alpha.getLog('@-', 'description'), { timeout: 5000 }).toContain('second draft');
     });
 
-    test('Sorts repositories from the title-bar command', async ({ vscode }) => {
-        const parent = makeTestTmpDir('jj-view-sort-');
-        const alpha = new TestRepo(path.join(parent, 'alpha'));
-        const beta = new TestRepo(path.join(parent, 'beta'));
-
-        alpha.init();
-        alpha.writeFile('a1.txt', 'a1\n');
-        alpha.writeFile('a2.txt', 'a2\n');
-        beta.init();
-        beta.writeFile('b1.txt', 'b1\n');
-        beta.describe('beta base');
-        beta.new();
-
-        const { page } = await vscode.openWorkspace(
-            { path: parent, waitForRepository: false },
-            { 'jj-view.detectSubRepositories': true },
-        );
-
-        await vscode.executeCommand('jj-view.reposView.focus');
-        const frame = await getWebviewFrame(page, 'jj-repos-root');
-        const rows = frame.locator('[data-testid="jj-repo-row"]');
-        await expect.poll(() => rows.count(), { timeout: 5000 }).toBe(2);
-
-        const header = page.locator('.pane-header', { hasText: 'Repositories' }).first();
-        await expect(header).toContainText('Name A→Z', { timeout: 5000 });
-
-        // Two changes in alpha, none in beta.
-        await vscode.executeCommand('jj-view.reposSort', 'changeCount');
-        await expect(rows.first()).toContainText('alpha');
-        await expect(header).toContainText('Changes', { timeout: 5000 });
-
-        await vscode.executeCommand('jj-view.reposSort', 'nameDesc');
-        await expect(rows.first()).toContainText('beta');
-
-        // Leave the shared window on the default ordering for the other tests.
-        await vscode.executeCommand('jj-view.reposSort', 'name');
-        await expect(rows.first()).toContainText('alpha');
-    });
-
-    test('Repositories view shows unpushed commit counts', async ({ vscode }) => {
-        const repo = new TestRepo();
-        repo.init();
-        repo.writeFile('a.txt', 'a\n');
-
-        const { page } = await vscode.openWorkspace(repo);
-        await vscode.executeCommand('jj-view.reposView.focus');
-        const frame = await getWebviewFrame(page, 'jj-repos-root');
-        await expect(frame.locator('[data-testid="jj-repo-row"]')).toHaveCount(1, { timeout: 5000 });
-
-        // Inject the state: the badge is a webview contract, and e2e does not need a real remote.
-        const inject = (unpushedCount: number, seq: number) =>
-            frame.evaluate(
-                ([count, sequence]) => {
-                    window.postMessage(
-                        {
-                            type: 'state',
-                            payload: {
-                                repos: [
-                                    {
-                                        root: '/demo',
-                                        name: 'demo',
-                                        changeCount: 3,
-                                        conflictCount: 0,
-                                        unpushedCount: count,
-                                    },
-                                ],
-                                focusedRoot: undefined,
-                                viewMode: 'list',
-                                revealChangeIds: [],
-                                reposLoading: false,
-                                seq: sequence,
-                            },
-                        },
-                        '*',
-                    );
-                },
-                [unpushedCount, seq],
-            );
-
-        await inject(2, 1001);
-        await expect(frame.locator('[data-testid="jj-repo-unpushed"]')).toHaveText('↑2', { timeout: 5000 });
-
-        await inject(0, 1002);
-        await expect(frame.locator('[data-testid="jj-repo-unpushed"]')).toHaveCount(0, { timeout: 5000 });
-    });
-
-    test('Repositories refresh shows the loading state', async ({ vscode }) => {
-        const repo = new TestRepo();
-        repo.init();
-        repo.writeFile('a.txt', 'a\n');
-
-        const { page } = await vscode.openWorkspace(repo);
-        await vscode.executeCommand('jj-view.reposView.focus');
-        const frame = await getWebviewFrame(page, 'jj-repos-root');
-        await expect(frame.locator('[data-testid="jj-repo-row"]')).toHaveCount(1, { timeout: 5000 });
-
-        await frame.evaluate(() => window.postMessage({ type: 'reloading' }, '*'));
-        await expect(frame.locator('[data-testid="jj-repos-loading"]')).toBeVisible({ timeout: 5000 });
-
-        await vscode.executeCommand('jj-view.refreshAll');
-        await expect(frame.locator('[data-testid="jj-repo-row"]')).toHaveCount(1, { timeout: 5000 });
-        await expect(frame.locator('[data-testid="jj-repos-loading"]')).toHaveCount(0);
-    });
-
     test('Keeps a newly committed group collapsed', async ({ vscode }) => {
         const repo = new TestRepo();
         repo.init();
@@ -487,55 +306,6 @@ test.describe('JJ View Container E2E', () => {
         // No repository switch: the view itself must pick up the post-commit snapshot.
         await expect(row).toHaveCount(0, { timeout: 5000 });
         expect(repo.getLog('@-', 'description')).toContain('commit it');
-    });
-
-    test('Shows the ancestor commits of the working copy', async ({ vscode }) => {
-        const repo = new TestRepo();
-        repo.init();
-        repo.writeFile('a.txt', 'a\n');
-        repo.describe('first commit');
-        repo.new();
-        repo.writeFile('b.txt', 'b\n');
-        repo.describe('second commit');
-        repo.new();
-        repo.writeFile('c.txt', 'c\n');
-
-        const parentId = repo.getChangeId('@-');
-        const grandParentId = repo.getChangeId('@--');
-
-        const { page } = await vscode.openWorkspace(repo);
-        await vscode.executeCommand('jj-view.changesView.focus');
-        const frame = await getWebviewFrame(page, 'jj-changes-root');
-
-        // Working copy row plus both ancestor groups, which start collapsed.
-        await expect(frame.locator('.scm-resource-item', { hasText: 'c.txt' })).toBeVisible({ timeout: 5000 });
-        await expect(frame.locator(`[data-change-id="${parentId}"]`)).toBeVisible({ timeout: 5000 });
-        await expect(frame.locator(`[data-change-id="${grandParentId}"]`)).toBeVisible({ timeout: 5000 });
-    });
-
-    test('Shows the same commits in JJ Log and Changes right after startup', async ({ vscode }) => {
-        const repo = new TestRepo();
-        repo.init();
-        repo.writeFile('a.txt', 'a1\n');
-        repo.describe('first commit');
-        repo.new();
-        repo.writeFile('a.txt', 'a2\n');
-        repo.writeFile('b.txt', 'b1\n');
-
-        const parentId = repo.getChangeId('@-');
-
-        const { page } = await vscode.openWorkspace(repo);
-
-        // Both views must agree on the history as soon as the window is up: the commit shown
-        // as the parent in JJ Log is the ancestor group in Changes.
-        await vscode.executeCommand('jj-view.logView.focus');
-        const logFrame = await getLogWebview(page);
-        await expect(logFrame.locator(`[data-change-id="${parentId}"]`)).toHaveCount(1, { timeout: 5000 });
-
-        await vscode.executeCommand('jj-view.changesView.focus');
-        const changesFrame = await getWebviewFrame(page, 'jj-changes-root');
-        await expect(changesFrame.locator(`[data-change-id="${parentId}"]`)).toHaveCount(1, { timeout: 5000 });
-        await expect(changesFrame.locator('.scm-resource-item', { hasText: 'b.txt' })).toBeVisible({ timeout: 5000 });
     });
 
     test('Committing twice does not create an empty second commit', async ({ vscode }) => {
@@ -587,21 +357,5 @@ test.describe('JJ View Container E2E', () => {
 
         // Leave the shared window on the list layout for the other tests.
         await vscode.executeCommand('jj-view.changesAsList');
-    });
-
-    test('Repositories view lists the repository with a change count badge', async ({ vscode }) => {
-        const repo = new TestRepo();
-        repo.init();
-        repo.writeFile('a.txt', 'a\n');
-        repo.writeFile('b.txt', 'b\n');
-        repo.describe('initial');
-
-        const { page } = await vscode.openWorkspace(repo);
-
-        await vscode.executeCommand('jj-view.reposView.focus');
-        const frame = await getWebviewFrame(page, 'jj-repos-root');
-
-        await expect(frame.locator('[data-testid="jj-repo-row"]')).toHaveCount(1);
-        await expect(frame.locator('[data-testid="jj-repo-row"] .badge').first()).toHaveText('2');
     });
 });
