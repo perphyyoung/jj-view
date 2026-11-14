@@ -6,7 +6,7 @@
 import path from 'pathe';
 import { getErrorMessage, toError } from '../../utils/error-utils';
 import type { LoggerChannel } from '../../utils/output-channel';
-import { extractUriFromArgs } from '../commands/command-utils';
+import { extractRevisions, extractUriFromArgs } from '../commands/command-utils';
 import type { JjRepository } from '../jj-repository';
 import type { JjRepositoryManager } from '../jj-repository-manager';
 import { JjService } from '../jj-service';
@@ -356,9 +356,13 @@ export function resolveRepository(
         }
     }
 
-    // 2. Check active editor URI / document URI from options or host
+    // 2. Check active editor URI / document URI from options or host.
+    // A command that already names a revision comes from an explicit view context (log row),
+    // so the focused repository is the right target. The active editor may belong to another
+    // repository and used to win here, running the command against the wrong repo.
+    const hasExplicitRevision = extractRevisions(options?.args ?? []).length > 0;
     const candidateActiveUri = options?.activeUri ?? options?.host?.documents.getActiveDocumentUri?.();
-    if (!uri && candidateActiveUri) {
+    if (!hasExplicitRevision && !uri && candidateActiveUri) {
         if (candidateActiveUri.scheme === 'jj-commit') {
             const { repoRoot } = parseCommitDetailsUri(candidateActiveUri);
             if (repoRoot) {
@@ -373,6 +377,10 @@ export function resolveRepository(
                 `[resolveRepository] Resolved candidate URI from active text editor: ${candidateActiveUri.toString()}`,
             );
         }
+    } else if (hasExplicitRevision) {
+        repositoryManager.outputChannel.info(
+            '[resolveRepository] Skipping active editor: the command carries an explicit revision',
+        );
     }
 
     // 3. Resolve repository matching candidate URI or fall back to focused repository

@@ -133,6 +133,24 @@ test.describe('Multi-Repo Switching E2E', () => {
         await waitForLogCommitRow(page, 'main base commit');
     });
 
+    test('log-view commands use the focused repository, not the active editor', async ({ vscode }) => {
+        // Bookmark sits on the parent; the command will advance it to the working copy.
+        mainRepo.bookmark('main', mainCommits['main-base'].changeId);
+
+        // The active editor now belongs to the second repository while the log view (and the
+        // focused repository) stays on the main one.
+        await openFileInEditor(vscode, page, 'second_file.txt');
+        await focusJJViewLocal(page);
+        await expect(
+            page.locator('.pane-header', { hasText: `JJ Log (${path.basename(mainRepo.path)})` }).first(),
+        ).toBeVisible({ timeout: 5000 });
+
+        // Same argument shape the log row context menu passes: a bare revision, no URI.
+        await vscode.executeCommand('jj-view.advanceBookmark', { revision: mainCommits['main-wc'].changeId });
+
+        await expect.poll(() => mainRepo.getCommitId('main'), { timeout: 5000 }).toBe(mainRepo.getCommitId('@'));
+    });
+
     test('repository switching from the Repositories view', async ({ vscode }) => {
         const mainRepoFolderName = path.basename(mainRepo.path);
         const secondRepoFolderName = path.basename(secondRepo.path);
