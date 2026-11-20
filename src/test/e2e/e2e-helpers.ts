@@ -182,6 +182,18 @@ export async function focusJJViewLocal(page: Page) {
 }
 
 /**
+ * Collapses or expands a view pane by clicking its title bar, waiting for the new state.
+ */
+export async function setPaneExpanded(page: Page, title: string, expanded: boolean): Promise<void> {
+    const header = page.locator('.pane-header', { hasText: title }).first();
+    if ((await header.getAttribute('aria-expanded')) !== String(expanded)) {
+        // Click the title, not the header center: the center can sit on a title action (commit).
+        await header.locator('h3.title').click();
+    }
+    await expect(header).toHaveAttribute('aria-expanded', String(expanded), { timeout: 5000 });
+}
+
+/**
  * Waits for a specific tab to become visible and selected.
  */
 export async function waitForTab(page: Page, namePattern: RegExp | string): Promise<Locator> {

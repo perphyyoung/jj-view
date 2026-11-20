@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import { expect } from '@playwright/test';
 import { TestRepo } from '../test-repo';
 import { makeTestTmpDir } from '../test-tmp-root';
-import { expectNotificationToast, getWebviewFrame, openFileInEditor, test } from './e2e-helpers';
+import { expectNotificationToast, getWebviewFrame, openFileInEditor, setPaneExpanded, test } from './e2e-helpers';
 
 test.describe('Changes Actions E2E', () => {
     test('Splits a file into a new commit above from the file context menu', async ({ vscode }) => {
@@ -63,11 +63,7 @@ test.describe('Changes Actions E2E', () => {
 
         // Collapse the JJ Log pane: the sidebar is short, and with both panes open the
         // Changes list only shows one ancestor group, hiding the commit created by the split.
-        const logPane = page.locator('.pane-header', { hasText: 'JJ Log' }).first();
-        if ((await logPane.getAttribute('aria-expanded')) !== 'false') {
-            await logPane.click();
-        }
-        await expect(logPane).toHaveAttribute('aria-expanded', 'false');
+        await setPaneExpanded(page, 'JJ Log', false);
 
         const frame = await getWebviewFrame(page, 'jj-changes-root');
 
@@ -104,10 +100,7 @@ test.describe('Changes Actions E2E', () => {
         const { page } = await vscode.openWorkspace(repo, {}, {}, true);
         await vscode.executeCommand('jj-view.changesView.focus');
 
-        const logPane = page.locator('.pane-header', { hasText: 'JJ Log' }).first();
-        if ((await logPane.getAttribute('aria-expanded')) !== 'false') {
-            await logPane.click();
-        }
+        await setPaneExpanded(page, 'JJ Log', false);
 
         const frame = await getWebviewFrame(page, 'jj-changes-root');
 
@@ -262,6 +255,33 @@ test.describe('Changes Actions E2E', () => {
         await vscode.executeCommand('jj-view.commit');
 
         await expect.poll(() => alpha.getLog('@-', 'description'), { timeout: 5000 }).toContain('second draft');
+    });
+
+    test('Keeps the typed commit message when the Changes view is collapsed and expanded', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('base.txt', 'base\n');
+        repo.describe('base');
+        repo.new();
+        repo.writeFile('a.txt', 'a\n');
+
+        const { page } = await vscode.openWorkspace(repo);
+        await vscode.executeCommand('jj-view.changesView.focus');
+        await setPaneExpanded(page, 'Changes', true);
+
+        const frame = await getWebviewFrame(page, 'jj-changes-root', 5000);
+        const input = frame.locator('[data-testid="scm-input-textarea"]');
+        await expect(input).toBeVisible({ timeout: 5000 });
+        await input.fill('draft kept across collapse');
+
+        // Collapse and expand the pane the way a user does it: click the Changes title bar.
+        await setPaneExpanded(page, 'Changes', false);
+        await setPaneExpanded(page, 'Changes', true);
+
+        const reopened = await getWebviewFrame(page, 'jj-changes-root', 5000);
+        await expect(reopened.locator('[data-testid="scm-input-textarea"]')).toHaveValue('draft kept across collapse', {
+            timeout: 5000,
+        });
     });
 
     test('Keeps a newly committed group collapsed', async ({ vscode }) => {
