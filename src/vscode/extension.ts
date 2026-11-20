@@ -283,7 +283,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
         reposWebviewProvider,
         changesWebviewProvider,
         vscode.window.registerWebviewViewProvider('jj-view.reposView', reposWebviewProvider),
-        vscode.window.registerWebviewViewProvider('jj-view.changesView', changesWebviewProvider),
+        vscode.window.registerWebviewViewProvider('jj-view.changesView', changesWebviewProvider, {
+            // Keep the DOM alive while the view is collapsed: destroying it reloaded the webview
+            // on expand and dropped the commit message typed in the input box.
+            webviewOptions: { retainContextWhenHidden: true },
+        }),
     );
 
     if (hostEnvironment.nav instanceof VsCodeHostNavigation) {
