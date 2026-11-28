@@ -1,5 +1,11 @@
 # AGENTS.md
 
+## 重要说明
+
+- 本项目由 jj-view 改造而来，差异见 [py-changes.md](py-changes.md)。
+- **禁止运行 `pnpm test:repo:heavy`**：它测试的是 jj 命令封装，失败不代表本项目（jvl）有问题，只会浪费时间并造成误判。
+- 确认 jvl 行为时不要依赖 repo 层测试；先读代码得出结论，需要自动化验证时用 `pnpm test:unit` 或相关 e2e。
+
 ## 协作
 
 - 使用中文回答
