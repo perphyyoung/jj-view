@@ -120,6 +120,46 @@ test.describe('Changes Actions E2E', () => {
         await expectNotificationToast(page, 'nothing to split');
     });
 
+    test('Offers split when the ancestor parent is already pushed', async ({ vscode }) => {
+        const repo = new TestRepo();
+        repo.init();
+        repo.writeFile('base.txt', 'base\n');
+        repo.describe('base');
+        repo.new();
+        repo.writeFile('a.txt', 'a\n');
+        repo.writeFile('b.txt', 'b\n');
+        repo.describe('target');
+        repo.new();
+
+        const targetId = repo.getChangeId('@-');
+
+        // The target's parent is immutable (as if pushed), so squashing into it is impossible.
+        // Splitting a file out of the target only rewrites the target itself and must stay offered.
+        repo.config('revset-aliases."immutable_heads()"', `commit_id("${repo.getCommitId('@--')}")`);
+
+        const { page } = await vscode.openWorkspace(repo);
+        await vscode.executeCommand('jj-view.changesView.focus');
+        await setPaneExpanded(page, 'JJ Log', false);
+
+        const frame = await getWebviewFrame(page, 'jj-changes-root', 5000);
+        const targetHeader = frame.locator(`[data-change-id="${targetId}"]`);
+        await expect(targetHeader).toBeVisible({ timeout: 5000 });
+        await targetHeader.locator('.chevron-icon').click();
+
+        const row = frame.locator('.scm-resource-item', { hasText: 'a.txt' }).first();
+        await expect(row).toBeVisible({ timeout: 5000 });
+        await row.click({ button: 'right' });
+
+        await expect(frame.locator('button.menu-item', { hasText: 'Split File into New Commit Above' })).toBeVisible({
+            timeout: 5000,
+        });
+        await expect(frame.locator('button.menu-item', { hasText: 'Split File into New Commit Below' })).toBeVisible({
+            timeout: 5000,
+        });
+        // Squashing into the immutable parent must remain unavailable.
+        await expect(frame.locator('button.menu-item', { hasText: 'Squash File(s) into Parent' })).toHaveCount(0);
+    });
+
     test('Commits to the repository shown in Changes when another repo file is open', async ({ vscode }) => {
         // One parent folder, two jj repos inside it, opened as a single workspace folder.
         const parent = makeTestTmpDir('jj-view-parent-');

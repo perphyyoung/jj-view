@@ -197,6 +197,8 @@ export class VsCodeScmProvider implements vscode.Disposable {
         for (const c of snapshot.workingCopyChanges) {
             const state = this.toResourceState(c, currentEntry?.change_id || '@', {
                 squashable: snapshot.parentMutable,
+                // The working copy is always mutable, even when its parent was pushed.
+                allowSplitCommit: true,
                 multipleAncestors: snapshot.ancestors.length > 1,
                 openDiffOnClick,
                 hasChild: snapshot.hasChild,
@@ -221,6 +223,9 @@ export class VsCodeScmProvider implements vscode.Disposable {
                 const state = this.toResourceState(c, ancestor.entry.change_id, {
                     editable: ancestor.isMutable,
                     squashable: ancestor.canSquash,
+                    // Listings only contain mutable ancestors, so splitting is allowed even
+                    // when the ancestor's parent is immutable (e.g. already pushed).
+                    allowSplitCommit: ancestor.isMutable,
                     multipleAncestors: remainingAncestors > 0,
                     openDiffOnClick,
                 });

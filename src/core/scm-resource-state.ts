@@ -44,6 +44,11 @@ export function createJjResourceState(
         inConflictGroup?: boolean;
         /** Working-copy entries only: `jj file untrack` can stop tracking this path. */
         allowUntrack?: boolean;
+        /**
+         * The owning commit is mutable, so a file can be split into a new adjacent commit.
+         * Independent of `squashable`: splitting never rewrites the parent commit.
+         */
+        allowSplitCommit?: boolean;
     } = {},
 ): JjResourceState {
     const isCurrentWorkingCopy = isWorkingCopyRevision(revision, options.workingCopyChangeId);
@@ -79,11 +84,12 @@ export function createJjResourceState(
     }
     if (options.squashable) {
         flags.push(ScmContextValue.ResourceAllowSquashIntoParent);
-        // Splitting rewrites the owning commit, so it needs the same mutability as squashing.
-        flags.push(ScmContextValue.ResourceAllowSplitCommit);
         if (options.multipleAncestors) {
             flags.push(ScmContextValue.ResourceAllowSquashIntoAncestor);
         }
+    }
+    if (options.allowSplitCommit) {
+        flags.push(ScmContextValue.ResourceAllowSplitCommit);
     }
     if (!isCurrentWorkingCopy || options.hasChild) {
         flags.push(ScmContextValue.ResourceAllowSquashIntoChild);

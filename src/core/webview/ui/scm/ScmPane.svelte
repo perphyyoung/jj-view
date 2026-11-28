@@ -82,6 +82,8 @@ const workingCopyItems: JjResourceState[] = $derived(
         .map((c) =>
             createJjResourceState(c, '@', workspaceRoot, {
                 squashable: snapshot?.parentMutable,
+                // The working copy is always mutable, even when its parent was pushed.
+                allowSplitCommit: true,
                 multipleAncestors: (snapshot?.ancestors.length ?? 0) > 1,
                 openDiffOnClick,
                 hasChild: snapshot?.hasChild,
@@ -178,6 +180,9 @@ $effect(() => {
                     createJjResourceState(c, ancestor.entry.change_id, workspaceRoot, {
                         editable: ancestor.isMutable,
                         squashable: ancestor.canSquash,
+                        // Listings only contain mutable ancestors, so splitting is allowed even
+                        // when the ancestor's parent is immutable (e.g. already pushed).
+                        allowSplitCommit: ancestor.isMutable,
                         multipleAncestors: remainingAncestors > 0,
                         openDiffOnClick,
                         workingCopyChangeId: currentChangeId,

@@ -903,6 +903,8 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                     .map((change) =>
                         createJjResourceState(change, '@', root, {
                             squashable: snapshot?.parentMutable,
+                            // The working copy is always mutable, even when its parent was pushed.
+                            allowSplitCommit: true,
                             multipleAncestors: (snapshot?.ancestors.length ?? 0) > 1,
                             openDiffOnClick,
                             hasChild: snapshot?.hasChild,
@@ -926,6 +928,9 @@ export class VsCodeChangesWebviewProvider implements vscode.WebviewViewProvider,
                 resourceStates: ancestor.changes.map((change) =>
                     createJjResourceState(change, ancestor.entry.change_id, root, {
                         squashable: ancestor.canSquash,
+                        // Listings only contain mutable ancestors, so splitting is allowed even
+                        // when the ancestor's parent is immutable (e.g. already pushed).
+                        allowSplitCommit: ancestor.isMutable,
                         multipleAncestors: remainingAncestors > 0,
                         openDiffOnClick,
                         workingCopyChangeId,
